@@ -3,15 +3,10 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
-import {
-  telegramSendMessage,
-  downloadTelegramFile,
-  generateTicketId,
-} from "@/lib/telegram";
+import { telegramSendMessage, generateTicketId } from "@/lib/telegram";
 
 /**
- * Minimal typing for the incoming Telegram update — we only care about `message` and `edited_message`.
- * The `message` shape is "any" because Telegram messages are large and varied; we narrow at runtime.
+ * Minimal Telegram update shape — we only use message / edited_message.
  */
 interface TelegramUpdate {
   update_id?: number;
@@ -29,7 +24,7 @@ function extractTextFromMessage(msg: any): string {
   return "";
 }
 
-/** Very small heuristic to categorize and pick priority/location */
+/** Small heuristics to detect category, priority, location */
 function detectCategoryAndPriorityAndLocation(text: string) {
   const t = (text || "").toLowerCase();
   const categories: Record<string, string[]> = {
@@ -65,17 +60,15 @@ function detectCategoryAndPriorityAndLocation(text: string) {
     }
   }
 
-  // location: look for patterns like "room 406" or "rm 101" or any 2-4 digit number (as fallback)
+  // location detection (room 406, rm 12, or any 2-4 digit fallback)
   let location: string | null = null;
   const locMatch = text.match(/\b(?:room|rm|r\.?)\s*#?\s*(\d{1,4})\b/i);
-  if (locMatch) {
-    location = `room ${locMatch[1]}`;
-  } else {
+  if (locMatch) location = `room ${locMatch[1]}`;
+  else {
     const roomNum = text.match(/\b(\d{2,4})\b/);
     if (roomNum) location = `room ${roomNum[1]}`;
   }
 
-  // priority heuristics
   let priority: "low" | "medium" | "high" = "medium";
   if (
     /\burgent\b|\basap\b|\bimmediately\b|\bdanger\b|\bfire\b|\belectric shock\b|\bno light\b|\bno power\b|\bnot working\b/i.test(
@@ -91,46 +84,42 @@ function detectCategoryAndPriorityAndLocation(text: string) {
 }
 
 /**
- * Webhook POST handler for Telegram updates
- * - Creates tickets for messages with text or photos
- * - Marks tickets as COMPLETED when someone replies "Done" to the bot message (or the ticket message)
+ * Webhook POST handler (Telegram -> Next.js)
+ * - Creates tickets for messages (text or photo)
+ * - Marks tickets as COMPLETED when someone replies "Done" to the bot's ticket message
+ *
+ * NOTE: This version SKIPS downloading/saving photos (for Vercel compatibility).
  */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as TelegramUpdate;
     const msg = body.message || body.edited_message;
-    if (!msg) {
-      // Not a message update (e.g., callback_query, inline_query). Ignore.
-      return NextResponse.json({ ok: true });
-    }
+    if (!msg) return NextResponse.json({ ok: true });
 
-    // ignore messages from other bots to prevent loops
-    if (msg.from?.is_bot) {
-      return NextResponse.json({ ok: true });
-    }
+    // Ignore messages from bots to avoid loops
+    if (msg.from?.is_bot) return NextResponse.json({ ok: true });
 
     const chat = msg.chat;
     const chatType = chat?.type;
 
-    // Only process group/supergroup messages (adjust if you also want private chats)
+    // Only process group/supergroup messages (change if you want private chat support)
     if (chatType !== "group" && chatType !== "supergroup") {
       return NextResponse.json({ ok: true });
     }
 
-    // Connect to DB early
     await connectToDB();
 
-    // If message is a reply and its text is "done" or "completed", try to mark ticket completed
+    // Normalize incoming text
     const incomingText = (msg.text || msg.caption || "")
       .toString()
       .trim()
       .toLowerCase();
 
+    // COMPLETION FLOW: If someone replies "Done" (or "completed") to the BOT's ticket message, mark ticket COMPLETE
+    // We require staff to reply to the bot's message so we can match by telegramMessageId.
     if (incomingText === "done" || incomingText === "completed") {
       const replyTo = msg.reply_to_message;
       if (replyTo && replyTo.message_id) {
-        // Try to find the ticket matching the message ID that was replied to.
-        // Tickets store the `telegramMessageId` (the message id of the original message that created the ticket).
         const telegramMessageId = replyTo.message_id;
         const telegramChatId = replyTo.chat?.id || chat?.id;
 
@@ -147,17 +136,17 @@ export async function POST(req: NextRequest) {
           ticket.completedAt = new Date();
           await ticket.save();
 
-          // notify the group
-          const text = `✔ Ticket ${ticket.ticketId} Completed by ${
+          // Notify group about completion
+          const completeText = `✔ Ticket ${ticket.ticketId} Completed by ${
             ticket.completedBy || "Unknown"
           }`;
           try {
-            await telegramSendMessage(telegramChatId, text);
+            await telegramSendMessage(telegramChatId, completeText);
           } catch (err) {
             console.error("Failed to notify group about completion:", err);
           }
         } else {
-          // Optionally: If no ticket found by message id, you might attempt to parse ticketId from the reply text or replied message.
+          // No matching ticket found for the replied message ID
           console.debug(
             "No matching pending ticket found for reply_to_message_id:",
             telegramMessageId
@@ -167,55 +156,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Otherwise: treat as a new ticket insertion when message has photo or sufficient text
-    const hasPhoto = !!msg.photo || !!msg.document; // doc might be an image as well
+    // NEW TICKET FLOW: create when message has photo OR has enough text
+    const hasPhoto = !!msg.photo || !!msg.document; // we skip saving photos but still treat their presence as actionable
     const text = extractTextFromMessage(msg).trim();
-    const shouldCreate = hasPhoto || text.length > 5; // threshold
+    const shouldCreate = hasPhoto || text.length > 5;
 
-    if (!shouldCreate) {
-      // Not an actionable message
-      return NextResponse.json({ ok: true });
-    }
+    if (!shouldCreate) return NextResponse.json({ ok: true });
 
-    // Build ticket fields
     const description = text || "No description provided";
     const { category, priority, location } =
       detectCategoryAndPriorityAndLocation(description);
 
-    // download photos/docs (if present)
+    // SKIPPING photo downloads — just keep photos array empty for now
     const photosSaved: string[] = [];
 
-    // If msg.photo exists: it's an array of sizes; pick the largest
-    if (Array.isArray(msg.photo) && msg.photo.length > 0) {
-      const largest = msg.photo[msg.photo.length - 1];
-      if (largest?.file_id) {
-        try {
-          const savedPath = await downloadTelegramFile(largest.file_id);
-          photosSaved.push(savedPath);
-        } catch (err) {
-          console.error("Failed downloading photo (photo array):", err);
-        }
-      }
-    }
-
-    // If msg.document exists and it's an image, or any file you want to save
-    if (msg.document && msg.document.file_id) {
-      try {
-        const savedPath = await downloadTelegramFile(msg.document.file_id);
-        photosSaved.push(savedPath);
-      } catch (err) {
-        console.error("Failed downloading document:", err);
-      }
-    }
-
-    // Create a ticket id (uses Ticket model count; consider atomic counter in prod)
+    // Create a unique ticket ID
     const ticketId = await generateTicketId();
 
     const createdBy =
       msg.from?.username ||
       `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim();
 
-    // Persist ticket
+    // Persist the ticket (initially save telegramMessageId as null; we'll update after bot replies)
     const ticket = await Ticket.create({
       ticketId,
       description,
@@ -226,26 +188,44 @@ export async function POST(req: NextRequest) {
       createdBy,
       createdAt: new Date(),
       status: "PENDING",
-      telegramMessageId: msg.message_id, // message id of the incoming message that triggered ticket creation
+      telegramMessageId: null, // to be set to bot's reply message id below
       telegramChatId: chat?.id,
     });
 
-    // Reply back in group, referencing the original message (so staff can reply to bot message with "Done")
+    // Reply in group with the ticket summary and capture bot's response so we can store the bot's message id.
     const replyText = `🆕 Ticket ${ticket.ticketId} Created\nIssue: ${ticket.description}`;
     try {
-      // Reply to the original reporter's message. Alternatively, you can reply to the bot's own message by capturing the sendMessage response.
-      await telegramSendMessage(chat.id, replyText, msg.message_id);
+      const botRes = await telegramSendMessage(
+        chat.id,
+        replyText,
+        msg.message_id
+      );
+      // Telegram's sendMessage returns the sent message in result; try to save its message_id so staff can reply to the bot message with "Done"
+      const botMessageId =
+        botRes && (botRes as any).result && (botRes as any).result.message_id
+          ? (botRes as any).result.message_id
+          : undefined;
+      if (botMessageId) {
+        ticket.telegramMessageId = botMessageId;
+        await ticket.save();
+      } else {
+        // As a fallback, store the original reporter's message id (less ideal UX)
+        ticket.telegramMessageId = msg.message_id;
+        await ticket.save();
+      }
     } catch (err) {
       console.error(
         "Failed to send Telegram reply after ticket creation:",
         err
       );
+      // fallback: still save telegramMessageId as reporter message id so the Done reply could be used if needed
+      ticket.telegramMessageId = msg.message_id;
+      await ticket.save();
     }
 
     return NextResponse.json({ ok: true, ticketId });
   } catch (err) {
     console.error("webhook error", err);
-    // Keep the response simple so Telegram doesn't retry spammy updates repeatedly.
     return NextResponse.json({
       ok: false,
       error: (err as any)?.message || String(err),
