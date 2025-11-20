@@ -261,8 +261,8 @@ export default function UserMasterPage() {
               Previous
             </button>
             <button
-              onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
-              disabled={page === pagination.totalPages}
+              onClick={() => setPage(Math.min(pagination?.totalPages || 1, page + 1))}
+              disabled={page === (pagination?.totalPages || 1)}
               className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
             >
               Next
@@ -272,7 +272,7 @@ export default function UserMasterPage() {
             <div>
               <p className="text-sm text-gray-700">
                 Showing page <span className="font-medium">{page}</span> of{" "}
-                <span className="font-medium">{pagination.totalPages}</span>
+                <span className="font-medium">{pagination?.totalPages || 0}</span>
               </p>
             </div>
             <div>
@@ -285,8 +285,8 @@ export default function UserMasterPage() {
                   Previous
                 </button>
                 <button
-                  onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
-                  disabled={page === pagination.totalPages}
+                  onClick={() => setPage(Math.min(pagination?.totalPages || 1, page + 1))}
+                  disabled={page === (pagination?.totalPages || 1)}
                   className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Next

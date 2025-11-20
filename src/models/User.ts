@@ -64,7 +64,7 @@ const UserSchema = new Schema<IUser>(
 );
 
 // Indexes for performance
-UserSchema.index({ telegramId: 1 }, { unique: true });
+// UserSchema.index({ telegramId: 1 }, { unique: true }); // Already defined in schema
 UserSchema.index({ username: 1 });
 UserSchema.index({ lastSyncedAt: 1 });
 UserSchema.index({ chatIds: 1 });

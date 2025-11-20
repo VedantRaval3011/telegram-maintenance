@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
             low: "🟢",
           };
 
-          const finalMessage = `🎫 <b>Ticket ${ticket.ticketId} Created</b>\n📝 Issue: ${ticket.description}\n\n<b>Category:</b> ${categoryEmoji[ticket.category || "other"]} ${ticket.category}\n<b>Priority:</b> ${priorityEmoji[ticket.priority]} ${ticket.priority}\n<b>Location:</b> ${ticket.location}\n<b>Created by:</b> ${createdBy}`;
+          const finalMessage = `🎫 <b>Ticket ${ticket.ticketId} Created</b>\n📝 Issue: ${ticket.description}\n\n<b>Category:</b> ${categoryEmoji[ticket.category || "other"] || "📋"} ${ticket.category}\n<b>Priority:</b> ${priorityEmoji[ticket.priority] || "⚪"} ${ticket.priority}\n<b>Location:</b> ${ticket.location}\n<b>Created by:</b> ${createdBy}`;
 
           await editMessageText(chatId, messageId, finalMessage, []);
           await deleteWizardSession(messageId);
@@ -413,10 +413,48 @@ export async function POST(req: NextRequest) {
 
     // Create wizard session
     try {
-      const wizardMessage = `🛠 <b>Ticket Wizard</b>\n📝 Issue: ${description}\n\n<b>Category:</b> —\n<b>Priority:</b> —\n<b>Location:</b> —\n\n⚠️ Please complete the selections below:`;
+      // Auto-detect category
+      let detectedCategory: string | null = null;
+      let categoryEmojiChar = "📋";
+      
+      try {
+        const categories = await Category.find({ isActive: true });
+        const lowerDesc = description.toLowerCase();
+        
+        for (const cat of categories) {
+          if (cat.keywords && cat.keywords.length > 0) {
+            for (const keyword of cat.keywords) {
+              if (lowerDesc.includes(keyword.toLowerCase())) {
+                detectedCategory = cat.name;
+                // Try to find emoji for this category
+                const categoryEmoji: Record<string, string> = {
+                  electrical: "⚡",
+                  plumbing: "🚰",
+                  furniture: "🪑",
+                  cleaning: "🧹",
+                  hvac: "❄️",
+                  paint: "🎨",
+                  other: "📋",
+                };
+                categoryEmojiChar = categoryEmoji[cat.name] || "📋";
+                break;
+              }
+            }
+          }
+          if (detectedCategory) break;
+        }
+      } catch (err) {
+        console.error("Failed to auto-detect category:", err);
+      }
+
+      const categoryDisplay = detectedCategory 
+        ? `${categoryEmojiChar} ${detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)}` 
+        : "—";
+
+      const wizardMessage = `🛠 <b>Ticket Wizard</b>\n📝 Issue: ${description}\n\n<b>Category:</b> ${categoryDisplay}\n<b>Priority:</b> —\n<b>Location:</b> —\n\n${detectedCategory ? "✅ Category auto-detected! Change if needed." : "⚠️ Please complete the selections below:"}`;
 
       const keyboard = [
-        [{ text: "📂 Select Category", callback_data: `step_TEMP_category` }],
+        [{ text: detectedCategory ? "📂 Change Category" : "📂 Select Category", callback_data: `step_TEMP_category` }],
         [{ text: "⚡ Select Priority", callback_data: `step_TEMP_priority` }],
         [{ text: "📍 Select Location", callback_data: `step_TEMP_location` }],
       ];
@@ -435,11 +473,11 @@ export async function POST(req: NextRequest) {
 
       if (botMessageId) {
         // Create wizard session
-        await createWizardSession(chat.id, msg.from.id, botMessageId, description);
+        await createWizardSession(chat.id, msg.from.id, botMessageId, description, detectedCategory);
 
         // Update keyboard with actual message ID
         const updatedKeyboard = [
-          [{ text: "📂 Select Category", callback_data: `step_${botMessageId}_category` }],
+          [{ text: detectedCategory ? "📂 Change Category" : "📂 Select Category", callback_data: `step_${botMessageId}_category` }],
           [{ text: "⚡ Select Priority", callback_data: `step_${botMessageId}_priority` }],
           [{ text: "📍 Select Location", callback_data: `step_${botMessageId}_location` }],
         ];

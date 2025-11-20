@@ -10,21 +10,22 @@ export async function createWizardSession(
   chatId: number,
   userId: number,
   botMessageId: number,
-  originalText: string
+  originalText: string,
+  initialCategory: string | null = null
 ): Promise<IWizardSession> {
   const session = await WizardSession.create({
     chatId,
     userId,
     botMessageId,
     originalText,
-    category: null,
+    category: initialCategory,
     priority: null,
     location: {
       building: null,
       floor: null,
       room: null,
     },
-    currentStep: "category",
+    currentStep: initialCategory ? "priority" : "category",
     waitingForInput: false,
     inputField: null,
     customLocation: null,
@@ -215,17 +216,18 @@ export function buildLocationRoomKeyboard(botMessageId: number, floor: string): 
 export function buildWizardKeyboard(session: IWizardSession): any[] {
   const keyboard: any[] = [];
 
-  if (!session.category) {
-    keyboard.push([{ text: "📂 Select Category", callback_data: `step_${session.botMessageId}_category` }]);
-  }
+  // Category button (always show)
+  const categoryText = session.category ? "📂 Change Category" : "📂 Select Category";
+  keyboard.push([{ text: categoryText, callback_data: `step_${session.botMessageId}_category` }]);
 
-  if (!session.priority) {
-    keyboard.push([{ text: "⚡ Select Priority", callback_data: `step_${session.botMessageId}_priority` }]);
-  }
+  // Priority button (always show)
+  const priorityText = session.priority ? "⚡ Change Priority" : "⚡ Select Priority";
+  keyboard.push([{ text: priorityText, callback_data: `step_${session.botMessageId}_priority` }]);
 
-  if ((!session.location.building || !session.location.floor || !session.location.room) && !session.customLocation) {
-    keyboard.push([{ text: "📍 Select Location", callback_data: `step_${session.botMessageId}_location` }]);
-  }
+  // Location button (always show)
+  const hasLocation = (session.location.building && session.location.floor && session.location.room) || session.customLocation;
+  const locationText = hasLocation ? "📍 Change Location" : "📍 Select Location";
+  keyboard.push([{ text: locationText, callback_data: `step_${session.botMessageId}_location` }]);
 
   if (isWizardComplete(session)) {
     keyboard.push([{ text: "✅ Create Ticket", callback_data: `submit_${session.botMessageId}` }]);

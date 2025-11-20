@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { User } from "@/models/User";
+import { Location } from "@/models/Location";
 import { connectToDB } from "@/lib/mongodb";
 import { z } from "zod";
 
