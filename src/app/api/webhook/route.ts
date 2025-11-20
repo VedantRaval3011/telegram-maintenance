@@ -223,7 +223,13 @@ export async function POST(req: NextRequest) {
             callback.from?.username ||
             `${callback.from?.first_name || ""} ${callback.from?.last_name || ""}`.trim();
 
+          console.log("[TICKET] Creating ticket from wizard session");
+          console.log("[TICKET] Session photos:", updatedSession.photos);
+          
           const ticket = await createTicketFromWizard(updatedSession, createdBy);
+          
+          console.log("[TICKET] Created ticket:", ticket.ticketId);
+          console.log("[TICKET] Ticket photos:", ticket.photos);
 
           // Format final ticket message
           const categoryEmoji: Record<string, string> = {
@@ -422,8 +428,12 @@ export async function POST(req: NextRequest) {
           : msg.document?.file_id;
 
         if (fileId) {
+          console.log("[PHOTO] Downloading file:", fileId);
           const localPath = await downloadTelegramFile(fileId, "./tmp"); // Use tmp folder
+          console.log("[PHOTO] Downloaded to:", localPath);
+          
           uploadedPhotoUrl = await uploadToCloudinary(localPath);
+          console.log("[PHOTO] Uploaded to Cloudinary:", uploadedPhotoUrl);
           
           // Clean up local file
           const fs = await import("fs");
@@ -444,11 +454,18 @@ export async function POST(req: NextRequest) {
     }).sort({ createdAt: -1 });
 
     if (existingSession && !isWizardComplete(existingSession) && uploadedPhotoUrl) {
+      console.log("[PHOTO] Adding to existing session:", existingSession.botMessageId);
+      console.log("[PHOTO] Current photos:", existingSession.photos);
+      
       // Add photo to existing session
       await updateWizardSession(existingSession.botMessageId, {
         photos: [...(existingSession.photos || []), uploadedPhotoUrl]
       });
-      await updateWizardUI(await getWizardSession(existingSession.botMessageId) as any);
+      
+      const updatedSession = await getWizardSession(existingSession.botMessageId);
+      console.log("[PHOTO] Updated session photos:", updatedSession?.photos);
+      
+      await updateWizardUI(updatedSession as any);
       
       // Delete user's message to keep chat clean? Maybe not for photos.
       return NextResponse.json({ ok: true });
