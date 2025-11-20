@@ -418,30 +418,62 @@ export async function POST(req: NextRequest) {
     // Handle Photo Upload
     let uploadedPhotoUrl: string | null = null;
     if (hasPhoto) {
+      console.log("[PHOTO] Message has photo, attempting to process...");
       try {
         const { downloadTelegramFile } = await import("@/lib/telegram");
         const { uploadToCloudinary } = await import("@/lib/cloudinary");
+        const path = await import("path");
+        const fs = await import("fs");
         
         // Get the largest photo
         const fileId = msg.photo 
           ? msg.photo[msg.photo.length - 1].file_id 
           : msg.document?.file_id;
 
+        console.log("[PHOTO] File ID:", fileId);
+
         if (fileId) {
           console.log("[PHOTO] Downloading file:", fileId);
-          const localPath = await downloadTelegramFile(fileId, "./tmp"); // Use tmp folder
+          
+          // Use absolute path for tmp directory
+          const tmpDir = path.join(process.cwd(), "tmp");
+          
+          // Ensure tmp directory exists
+          if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir, { recursive: true });
+            console.log("[PHOTO] Created tmp directory:", tmpDir);
+          }
+          
+          const localPath = await downloadTelegramFile(fileId, tmpDir);
           console.log("[PHOTO] Downloaded to:", localPath);
+          
+          console.log("[PHOTO] Uploading to Cloudinary...");
+          console.log("[PHOTO] Cloudinary config check:", {
+            hasCloudName: !!process.env.CLOUDINARY_CLOUD_NAME,
+            hasApiKey: !!process.env.CLOUDINARY_API_KEY,
+            hasApiSecret: !!process.env.CLOUDINARY_API_SECRET,
+          });
           
           uploadedPhotoUrl = await uploadToCloudinary(localPath);
           console.log("[PHOTO] Uploaded to Cloudinary:", uploadedPhotoUrl);
           
           // Clean up local file
-          const fs = await import("fs");
-          if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+          if (fs.existsSync(localPath)) {
+            fs.unlinkSync(localPath);
+            console.log("[PHOTO] Cleaned up local file");
+          }
+        } else {
+          console.log("[PHOTO] No file ID found");
         }
       } catch (err) {
-        console.error("Failed to process photo:", err);
+        console.error("[PHOTO] Failed to process photo:", err);
+        console.error("[PHOTO] Error details:", {
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
       }
+    } else {
+      console.log("[PHOTO] Message does not have photo");
     }
 
     // Check if user has an active wizard session (for adding photos to existing session)
