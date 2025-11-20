@@ -1,0 +1,263 @@
+// app/api/webhook/route.ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { connectToDB } from "@/lib/mongodb";
+import { Ticket } from "@/models/Ticket";
+import { telegramSendMessage, generateTicketId } from "@/lib/telegram";
+
+/**
+ * Minimal Telegram update shape — we only use message / edited_message.
+ */
+interface TelegramUpdate {
+  update_id?: number;
+  message?: any;
+  edited_message?: any;
+}
+
+/** Prefer caption (for photos), fallback to text */
+function extractTextFromMessage(msg: any): string {
+  if (!msg) return "";
+  if (typeof msg.caption === "string" && msg.caption.trim().length)
+    return msg.caption.trim();
+  if (typeof msg.text === "string" && msg.text.trim().length)
+    return msg.text.trim();
+  return "";
+}
+
+/** Small heuristics to detect category, priority, location */
+function detectCategoryAndPriorityAndLocation(text: string) {
+  const t = (text || "").toLowerCase();
+  const categories: Record<string, string[]> = {
+    electrical: [
+      "light",
+      "bulb",
+      "electr",
+      "switch",
+      "plug",
+      "socket",
+      "fan",
+      "power",
+    ],
+    plumbing: ["leak", "tap", "toilet", "flush", "plumb", "drain", "water"],
+    furniture: ["table", "chair", "desk", "sofa", "broken", "furniture"],
+    cleaning: ["spill", "trash", "clean", "dirty", "stain"],
+    hvac: [
+      "ac",
+      "aircon",
+      "air conditioner",
+      "temperature",
+      "cooling",
+      "heater",
+    ],
+    other: [],
+  };
+
+  let category: string | null = null;
+  for (const [k, keywords] of Object.entries(categories)) {
+    if (keywords.some((kw) => t.includes(kw))) {
+      category = k;
+      break;
+    }
+  }
+
+  // location detection (room 406, rm 12, or any 2-4 digit fallback)
+  let location: string | null = null;
+  const locMatch = text.match(/\b(?:room|rm|r\.?)\s*#?\s*(\d{1,4})\b/i);
+  if (locMatch) location = `room ${locMatch[1]}`;
+  else {
+    const roomNum = text.match(/\b(\d{2,4})\b/);
+    if (roomNum) location = `room ${roomNum[1]}`;
+  }
+
+  let priority: "low" | "medium" | "high" = "medium";
+  if (
+    /\burgent\b|\basap\b|\bimmediately\b|\bdanger\b|\bfire\b|\belectric shock\b|\bno light\b|\bno power\b|\bnot working\b/i.test(
+      text
+    )
+  ) {
+    priority = "high";
+  } else if (/\bsoon\b|\bplease\b|\bwhenever\b/i.test(text)) {
+    priority = "low";
+  }
+
+  return { category, priority, location };
+}
+
+/**
+ * Webhook POST handler (Telegram -> Next.js)
+ * - Creates tickets for messages (text or photo)
+ * - Marks tickets as COMPLETED when someone replies "Done" to the bot's ticket message
+ *
+ * NOTE: This version SKIPS downloading/saving photos (for Vercel compatibility).
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json()) as TelegramUpdate;
+    const msg = body.message || body.edited_message;
+    if (!msg) return NextResponse.json({ ok: true });
+
+    // Ignore messages from bots to avoid loops
+    if (msg.from?.is_bot) return NextResponse.json({ ok: true });
+
+    const chat = msg.chat;
+    const chatType = chat?.type;
+
+    // Only process group/supergroup messages (change if you want private chat support)
+    if (chatType !== "group" && chatType !== "supergroup") {
+      return NextResponse.json({ ok: true });
+    }
+
+    await connectToDB();
+
+    // Track user from webhook message (NEW - does not affect existing ticket logic)
+    if (msg.from && !msg.from.is_bot) {
+      try {
+        const { upsertUser } = await import("@/services/syncService");
+        await upsertUser(
+          {
+            id: msg.from.id,
+            username: msg.from.username,
+            first_name: msg.from.first_name,
+            last_name: msg.from.last_name,
+            is_bot: msg.from.is_bot,
+            language_code: msg.from.language_code,
+          },
+          "webhook",
+          chat.id
+        );
+      } catch (err) {
+        console.error("Failed to track user from webhook:", err);
+        // Don't fail the webhook processing - existing ticket logic continues
+      }
+    }
+
+
+    // Normalize incoming text
+    const incomingText = (msg.text || msg.caption || "")
+      .toString()
+      .trim()
+      .toLowerCase();
+
+    // COMPLETION FLOW: If someone replies "Done" (or "completed") to the BOT's ticket message, mark ticket COMPLETE
+    // We require staff to reply to the bot's message so we can match by telegramMessageId.
+    if (incomingText === "done" || incomingText === "completed") {
+      const replyTo = msg.reply_to_message;
+      if (replyTo && replyTo.message_id) {
+        const telegramMessageId = replyTo.message_id;
+        const telegramChatId = replyTo.chat?.id || chat?.id;
+
+        const ticket = await Ticket.findOne({
+          telegramMessageId,
+          telegramChatId,
+          status: "PENDING",
+        });
+        if (ticket) {
+          ticket.status = "COMPLETED";
+          ticket.completedBy =
+            msg.from?.username ||
+            `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim();
+          ticket.completedAt = new Date();
+          await ticket.save();
+
+          // Notify group about completion
+          const completeText = `✔ Ticket ${ticket.ticketId} Completed by ${
+            ticket.completedBy || "Unknown"
+          }`;
+          try {
+            await telegramSendMessage(telegramChatId, completeText);
+          } catch (err) {
+            console.error("Failed to notify group about completion:", err);
+          }
+        } else {
+          // No matching ticket found for the replied message ID
+          console.debug(
+            "No matching pending ticket found for reply_to_message_id:",
+            telegramMessageId
+          );
+        }
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // NEW TICKET FLOW: create when message has photo OR has enough text
+    const hasPhoto = !!msg.photo || !!msg.document; // we skip saving photos but still treat their presence as actionable
+    const text = extractTextFromMessage(msg).trim();
+    const shouldCreate = hasPhoto || text.length > 5;
+
+    if (!shouldCreate) return NextResponse.json({ ok: true });
+
+    const description = text || "No description provided";
+    const { category, priority, location } =
+      detectCategoryAndPriorityAndLocation(description);
+
+    // SKIPPING photo downloads — just keep photos array empty for now
+    const photosSaved: string[] = [];
+
+    // Create a unique ticket ID
+    const ticketId = await generateTicketId();
+
+    const createdBy =
+      msg.from?.username ||
+      `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim();
+
+    // Persist the ticket (initially save telegramMessageId as null; we'll update after bot replies)
+    const ticket = await Ticket.create({
+      ticketId,
+      description,
+      category,
+      priority,
+      location, 
+      photos: photosSaved,
+      createdBy,
+      createdAt: new Date(),
+      status: "PENDING",
+      telegramMessageId: null, // to be set to bot's reply message id below
+      telegramChatId: chat?.id,
+    });
+
+    // Reply in group with the ticket summary and capture bot's response so we can store the bot's message id.
+    let replyText = `🆕 Ticket ${ticket.ticketId} Created\nIssue: ${ticket.description}`;
+    
+    // If location is not detected, ask user to provide it
+    if (!location) {
+      replyText += `\n\n📍 <b>Location not detected!</b>\nPlease reply to this message with the location (e.g., "room 45", "Building A", "3rd floor")`;
+    }
+    
+    try {
+      const botRes = await telegramSendMessage(
+        chat.id,
+        replyText,
+        msg.message_id
+      );
+      // Telegram's sendMessage returns the sent message in result; try to save its message_id so staff can reply to the bot message with "Done"
+      const botMessageId =
+        botRes && (botRes as any).result && (botRes as any).result.message_id
+          ? (botRes as any).result.message_id
+          : undefined;
+      if (botMessageId) {
+        ticket.telegramMessageId = botMessageId;
+        await ticket.save();
+      } else {
+        // As a fallback, store the original reporter's message id (less ideal UX)
+        ticket.telegramMessageId = msg.message_id;
+        await ticket.save();
+      }
+    } catch (err) {
+      console.error(
+        "Failed to send Telegram reply after ticket creation:",
+        err
+      );
+      // fallback: still save telegramMessageId as reporter message id so the Done reply could be used if needed
+      ticket.telegramMessageId = msg.message_id;
+      await ticket.save();
+    }
+
+    return NextResponse.json({ ok: true, ticketId });
+  } catch (err) {
+    console.error("webhook error", err);
+    return NextResponse.json({
+      ok: false,
+      error: (err as any)?.message || String(err),
+    });
+  }
+}

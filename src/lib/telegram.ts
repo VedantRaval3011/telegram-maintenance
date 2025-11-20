@@ -199,3 +199,52 @@ export async function generateTicketId(): Promise<string> {
     return `TCK-${String(fallback).padStart(3, "0")}`;
   }
 }
+
+/** Edit an existing message */
+export async function editMessageText(
+  chatId: number | string,
+  messageId: number,
+  text: string,
+  inlineKeyboard?: any
+): Promise<TelegramApiResponse> {
+  const url = `${TELEGRAM_API}/editMessageText`;
+  const body: any = {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: "HTML",
+  };
+  if (inlineKeyboard) body.reply_markup = { inline_keyboard: inlineKeyboard };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = (await res.json()) as TelegramApiResponse;
+  if (!json.ok) console.error("editMessageText error:", json);
+  return json;
+}
+
+/** Answer a callback query (button click) */
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text?: string,
+  showAlert = false
+): Promise<TelegramApiResponse> {
+  const url = `${TELEGRAM_API}/answerCallbackQuery`;
+  const body: any = { callback_query_id: callbackQueryId };
+  if (text) body.text = text;
+  if (showAlert) body.show_alert = true;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = (await res.json()) as TelegramApiResponse;
+  if (!json.ok) console.error("answerCallbackQuery error:", json);
+  return json;
+}
