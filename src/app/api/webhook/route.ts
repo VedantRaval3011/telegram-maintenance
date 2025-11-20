@@ -409,7 +409,52 @@ export async function POST(req: NextRequest) {
 
     if (!shouldCreate) return NextResponse.json({ ok: true });
 
-    const description = text || "No description provided";
+    // Handle Photo Upload
+    let uploadedPhotoUrl: string | null = null;
+    if (hasPhoto) {
+      try {
+        const { downloadTelegramFile } = await import("@/lib/telegram");
+        const { uploadToCloudinary } = await import("@/lib/cloudinary");
+        
+        // Get the largest photo
+        const fileId = msg.photo 
+          ? msg.photo[msg.photo.length - 1].file_id 
+          : msg.document?.file_id;
+
+        if (fileId) {
+          const localPath = await downloadTelegramFile(fileId, "./tmp"); // Use tmp folder
+          uploadedPhotoUrl = await uploadToCloudinary(localPath);
+          
+          // Clean up local file
+          const fs = await import("fs");
+          if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+        }
+      } catch (err) {
+        console.error("Failed to process photo:", err);
+      }
+    }
+
+    // Check if user has an active wizard session (for adding photos to existing session)
+    // We check this BEFORE creating a new session
+    const existingSession = await WizardSession.findOne({
+      userId: msg.from.id,
+      // We want to attach photo to ANY active session, not just waitingForInput
+      // But usually we only want to do this if the user is interacting with the wizard
+      // For simplicity, if there is a session that is NOT complete, we attach to it
+    }).sort({ createdAt: -1 });
+
+    if (existingSession && !isWizardComplete(existingSession) && uploadedPhotoUrl) {
+      // Add photo to existing session
+      await updateWizardSession(existingSession.botMessageId, {
+        photos: [...(existingSession.photos || []), uploadedPhotoUrl]
+      });
+      await updateWizardUI(await getWizardSession(existingSession.botMessageId) as any);
+      
+      // Delete user's message to keep chat clean? Maybe not for photos.
+      return NextResponse.json({ ok: true });
+    }
+
+    const description = text || (hasPhoto ? "Photo attachment" : "No description provided");
 
     // Create wizard session
     try {
@@ -451,7 +496,12 @@ export async function POST(req: NextRequest) {
         ? `${categoryEmojiChar} ${detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)}` 
         : "—";
 
-      const wizardMessage = `🛠 <b>Ticket Wizard</b>\n📝 Issue: ${description}\n\n<b>Category:</b> ${categoryDisplay}\n<b>Priority:</b> —\n<b>Location:</b> —\n\n${detectedCategory ? "✅ Category auto-detected! Change if needed." : "⚠️ Please complete the selections below:"}`;
+      const initialPhotos = uploadedPhotoUrl ? [uploadedPhotoUrl] : [];
+      const photosText = initialPhotos.length > 0 
+        ? `📸 <b>Photos:</b> ${initialPhotos.length} attached`
+        : "📸 <b>Photos:</b> None (Send an image to attach)";
+
+      const wizardMessage = `🛠 <b>Ticket Wizard</b>\n📝 Issue: ${description}\n\n<b>Category:</b> ${categoryDisplay}\n<b>Priority:</b> —\n<b>Location:</b> —\n${photosText}\n\n${detectedCategory ? "✅ Category auto-detected! Change if needed." : "⚠️ Please complete the selections below:"}`;
 
       const keyboard = [
         [{ text: detectedCategory ? "📂 Change Category" : "📂 Select Category", callback_data: `step_TEMP_category` }],
@@ -473,7 +523,7 @@ export async function POST(req: NextRequest) {
 
       if (botMessageId) {
         // Create wizard session
-        await createWizardSession(chat.id, msg.from.id, botMessageId, description, detectedCategory);
+        await createWizardSession(chat.id, msg.from.id, botMessageId, description, detectedCategory, initialPhotos);
 
         // Update keyboard with actual message ID
         const updatedKeyboard = [

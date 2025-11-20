@@ -11,7 +11,8 @@ export async function createWizardSession(
   userId: number,
   botMessageId: number,
   originalText: string,
-  initialCategory: string | null = null
+  initialCategory: string | null = null,
+  initialPhotos: string[] = []
 ): Promise<IWizardSession> {
   const session = await WizardSession.create({
     chatId,
@@ -29,6 +30,7 @@ export async function createWizardSession(
     waitingForInput: false,
     inputField: null,
     customLocation: null,
+    photos: initialPhotos,
   });
 
   return session;
@@ -112,6 +114,10 @@ export function formatWizardMessage(session: IWizardSession): string {
     locationText = session.location.building;
   }
 
+  const photosText = session.photos && session.photos.length > 0
+    ? `📸 <b>Photos:</b> ${session.photos.length} attached`
+    : "📸 <b>Photos:</b> None (Send an image to attach)";
+
   if (session.waitingForInput) {
     const inputPrompt = session.inputField === "category" 
       ? "✍️ Please type the <b>Category</b> name below:" 
@@ -120,7 +126,7 @@ export function formatWizardMessage(session: IWizardSession): string {
     return `🛠 <b>Ticket Wizard</b>\n\n${inputPrompt}`;
   }
 
-  return `🛠 <b>Ticket Wizard</b>\n📝 Issue: ${session.originalText}\n\n<b>Category:</b> ${categoryText}\n<b>Priority:</b> ${priorityText}\n<b>Location:</b> ${locationText}\n\n${
+  return `🛠 <b>Ticket Wizard</b>\n📝 Issue: ${session.originalText}\n\n<b>Category:</b> ${categoryText}\n<b>Priority:</b> ${priorityText}\n<b>Location:</b> ${locationText}\n${photosText}\n\n${
     isWizardComplete(session) ? "✅ All information complete!" : "⚠️ Please complete the selections below:"
   }`;
 }
@@ -255,7 +261,7 @@ export async function createTicketFromWizard(
     category: session.category,
     priority: session.priority,
     location: locationString,
-    photos: [],
+    photos: session.photos || [],
     createdBy,
     createdAt: new Date(),
     status: "PENDING",
