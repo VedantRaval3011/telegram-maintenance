@@ -11,12 +11,13 @@ import { z } from "zod";
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
-    const category = await Category.findById(params.id).lean();
+    const { id } = await params;
+    const category = await Category.findById(id).lean();
 
     if (!category) {
       return NextResponse.json(
@@ -60,11 +61,12 @@ const UpdateCategorySchema = z.object({
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
+    const { id } = await params;
     const body = await req.json();
     const validation = UpdateCategorySchema.safeParse(body);
 
@@ -80,7 +82,7 @@ export async function PUT(
     }
 
     const category = await Category.findByIdAndUpdate(
-      params.id,
+      id,
       { $set: validation.data },
       { new: true, runValidators: true }
     );
@@ -117,12 +119,13 @@ export async function PUT(
  */
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
-    const category = await Category.findByIdAndDelete(params.id);
+    const { id } = await params;
+    const category = await Category.findByIdAndDelete(id);
 
     if (!category) {
       return NextResponse.json(

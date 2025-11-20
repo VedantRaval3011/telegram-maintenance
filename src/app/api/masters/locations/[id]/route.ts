@@ -11,12 +11,13 @@ import { z } from "zod";
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
-    const location = await Location.findById(params.id)
+    const { id } = await params;
+    const location = await Location.findById(id)
       .populate("parentLocationId")
       .lean();
 
@@ -64,11 +65,12 @@ const UpdateLocationSchema = z.object({
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
+    const { id } = await params;
     const body = await req.json();
     const validation = UpdateLocationSchema.safeParse(body);
 
@@ -84,7 +86,7 @@ export async function PUT(
     }
 
     const location = await Location.findByIdAndUpdate(
-      params.id,
+      id,
       { $set: validation.data },
       { new: true, runValidators: true }
     ).populate("parentLocationId");
@@ -121,12 +123,13 @@ export async function PUT(
  */
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
-    const location = await Location.findByIdAndDelete(params.id);
+    const { id } = await params;
+    const location = await Location.findByIdAndDelete(id);
 
     if (!location) {
       return NextResponse.json(

@@ -11,12 +11,13 @@ import { z } from "zod";
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
-    const user = await User.findById(params.id).populate("locationId").lean();
+    const { id } = await params;
+    const user = await User.findById(id).populate("locationId").lean();
 
     if (!user) {
       return NextResponse.json(
@@ -59,11 +60,12 @@ const UpdateUserSchema = z.object({
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
+    const { id } = await params;
     const body = await req.json();
     const validation = UpdateUserSchema.safeParse(body);
 
@@ -79,7 +81,7 @@ export async function PUT(
     }
 
     const user = await User.findByIdAndUpdate(
-      params.id,
+      id,
       { $set: validation.data },
       { new: true, runValidators: true }
     ).populate("locationId");
@@ -116,12 +118,13 @@ export async function PUT(
  */
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectToDB();
 
-    const user = await User.findByIdAndDelete(params.id);
+    const { id } = await params;
+    const user = await User.findByIdAndDelete(id);
 
     if (!user) {
       return NextResponse.json(
