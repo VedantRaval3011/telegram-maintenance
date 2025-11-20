@@ -1,7 +1,9 @@
+// app/masters/categories/page.tsx (or wherever your CategoryMasterPage lives)
 "use client";
 
 import { useState } from "react";
 import useSWR from "swr";
+import Navbar from "@/components/Navbar";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -178,8 +180,11 @@ export default function CategoryMasterPage() {
   const categories: Category[] = data.data || [];
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex justify-between items-center">
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* NAVBAR ADDED */}
+      <Navbar />
+
+      <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2">Category Master</h1>
           <p className="text-gray-600">Manage maintenance categories and keywords</p>
@@ -201,7 +206,7 @@ export default function CategoryMasterPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <div className="card-soft mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -212,7 +217,7 @@ export default function CategoryMasterPage() {
               placeholder="Name, description..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-base"
             />
           </div>
 
@@ -223,7 +228,7 @@ export default function CategoryMasterPage() {
             <select
               value={activeFilter}
               onChange={(e) => setActiveFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-base"
             >
               <option value="">All Status</option>
               <option value="true">Active</option>
@@ -351,7 +356,7 @@ export default function CategoryMasterPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value.toLowerCase().replace(/\s/g, "_") })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -366,7 +371,7 @@ export default function CategoryMasterPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, displayName: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -381,7 +386,7 @@ export default function CategoryMasterPage() {
                       setFormData({ ...formData, keywords: e.target.value })
                     }
                     placeholder="light, bulb, power"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -395,7 +400,7 @@ export default function CategoryMasterPage() {
                       setFormData({ ...formData, description: e.target.value })
                     }
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -424,7 +429,7 @@ export default function CategoryMasterPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, icon: e.target.value })
                       }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="input-base"
                     />
                   </div>
                 </div>
@@ -439,7 +444,7 @@ export default function CategoryMasterPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, priority: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -512,7 +517,7 @@ export default function CategoryMasterPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, displayName: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -527,7 +532,7 @@ export default function CategoryMasterPage() {
                       setFormData({ ...formData, keywords: e.target.value })
                     }
                     placeholder="light, bulb, power"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -541,7 +546,7 @@ export default function CategoryMasterPage() {
                       setFormData({ ...formData, description: e.target.value })
                     }
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 
@@ -570,7 +575,7 @@ export default function CategoryMasterPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, icon: e.target.value })
                       }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="input-base"
                     />
                   </div>
                 </div>
@@ -585,7 +590,7 @@ export default function CategoryMasterPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, priority: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input-base"
                   />
                 </div>
 

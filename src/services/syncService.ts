@@ -87,16 +87,26 @@ export async function syncTelegramUsers(
           continue;
         }
 
-        // Upsert user
+        // Upsert user and get location operation
         const result = await upsertUser(user, "admin_sync", Number(chatId), status);
 
-        if (result === "created") {
+        if (result.userAction === "created") {
           metrics.users.created++;
-        } else if (result === "updated") {
+        } else if (result.userAction === "updated") {
           metrics.users.updated++;
         } else {
           metrics.users.skipped++;
         }
+
+        // collect location metrics if any
+        if (result.locationOp === "created") {
+          metrics.locations.created++;
+        } else if (result.locationOp === "updated") {
+          metrics.locations.updated++;
+        } else if (result.locationOp === "skipped") {
+          metrics.locations.skipped++;
+        }
+
       } catch (err) {
         metrics.users.errors++;
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -125,21 +135,74 @@ export async function syncTelegramUsers(
   }
 }
 
+// add a small type for the expanded upsert result
+type UpsertUserResult = {
+  userAction: "created" | "updated" | "skipped";
+  userDoc: IUser;
+  locationOp?: "created" | "updated" | "skipped" | null;
+  location?: ILocation | null;
+};
+
 /**
- * Upsert a user into the database (idempotent)
+ * Find a recent ticket for the user and attach a derived/created location to the user (if possible)
+ */
+async function attachLocationToUser(userDoc: IUser): Promise<{ operation: "created" | "updated" | "skipped" | null; location?: ILocation | null }> {
+  try {
+    // dynamically import Ticket to avoid circular import problems
+    const { Ticket } = await import("@/models/Ticket");
+
+    // try multiple possible createdBy matches: username, full name, firstName, lastName
+    const candidates: string[] = [];
+
+    if (userDoc.username) candidates.push(userDoc.username);
+    const fullName = `${userDoc.firstName || ""} ${userDoc.lastName || ""}`.trim();
+    if (fullName) candidates.push(fullName);
+    if (userDoc.firstName) candidates.push(userDoc.firstName);
+    if (userDoc.lastName) candidates.push(userDoc.lastName);
+
+    // Query latest ticket where createdBy matches any candidate
+    const ticket = await Ticket.findOne({
+      createdBy: { $in: candidates.length ? candidates : ["__no_match__"] },
+    }).sort({ createdAt: -1 }).lean();
+
+    if (!ticket || !ticket.description) {
+      return { operation: null, location: null };
+    }
+
+    // derive / upsert location from ticket description using your helper
+    const { location, operation } = await deriveAndUpsertLocation(ticket.description);
+
+    if (!location) return { operation: null, location: null };
+
+    // attach if different
+    if (!userDoc.locationId || String(userDoc.locationId) !== String(location._id)) {
+      userDoc.locationId = location._id;
+      await userDoc.save();
+      return { operation: operation === "created" ? "created" : "updated", location };
+    }
+
+    // already attached and matches
+    return { operation: "skipped", location };
+  } catch (err) {
+    console.error("[SyncService] attachLocationToUser error:", err);
+    return { operation: null, location: null };
+  }
+}
+
+/**
+ * Upsert a user into the database (idempotent) — now returns location operation as well.
  */
 export async function upsertUser(
   telegramUser: TelegramUser,
   source: "webhook" | "admin_sync" | "manual",
   chatId: number,
   role?: "creator" | "administrator" | "member" | "restricted" | "left" | "kicked"
-): Promise<"created" | "updated" | "skipped"> {
-  const existingUser = await User.findOne({ telegramId: telegramUser.id });
-
+): Promise<UpsertUserResult> {
+  // ensure DB connected upstream (syncTelegramUsers does connectToDB)
   const now = new Date();
+  let existingUser = await User.findOne({ telegramId: telegramUser.id });
 
   if (existingUser) {
-    // Update existing user
     let hasChanges = false;
 
     if (telegramUser.username && existingUser.username !== telegramUser.username) {
@@ -184,15 +247,18 @@ export async function upsertUser(
 
     if (hasChanges) {
       await existingUser.save();
-      return "updated";
+      // after save, attempt to attach location
+      const { operation: locationOp, location } = await attachLocationToUser(existingUser);
+      return { userAction: "updated", userDoc: existingUser, locationOp: locationOp ?? null, location: location ?? null };
     }
 
-    // No changes, just update timestamps
+    // no content changes, but update timestamps and still attempt attach
     await existingUser.save();
-    return "skipped";
+    const { operation: locationOp2, location: location2 } = await attachLocationToUser(existingUser);
+    return { userAction: "skipped", userDoc: existingUser, locationOp: locationOp2 ?? null, location: location2 ?? null };
   } else {
-    // Create new user
-    await User.create({
+    // create new user
+    const created = await User.create({
       telegramId: telegramUser.id,
       username: telegramUser.username || null,
       firstName: telegramUser.first_name || null,
@@ -208,7 +274,9 @@ export async function upsertUser(
       chatIds: [chatId],
     });
 
-    return "created";
+    // try to attach location (if there's a matching ticket)
+    const { operation: locationOp, location } = await attachLocationToUser(created);
+    return { userAction: "created", userDoc: created, locationOp: locationOp ?? null, location: location ?? null };
   }
 }
 

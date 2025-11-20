@@ -1,1 +1,59 @@
 @import "tailwindcss";
+/* in globals.css or tailwind layer */
+.input-base {
+  @apply w-full border rounded px-3 py-2 text-sm bg-white;
+}
+
+/* styles/globals.css (append) */
+
+/* page background & container */
+:root {
+  --brand-1: #0f172a;     /* deep indigo for text */
+  --brand-2: #0ea5a4;     /* teal */
+  --brand-3: #2563eb;     /* indigo */
+  --muted: #94a3b8;
+}
+
+/* subtle app background similar to fintech dashboards */
+body {
+  background: linear-gradient(180deg, rgba(37,99,235,0.04) 0%, rgba(14,165,164,0.02) 100%), #f8fafc;
+}
+
+/* consistent input style used via className="input-base" */
+.input-base {
+  @apply w-full rounded-md border border-gray-200 px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-0;
+  transition: box-shadow .15s ease, transform .05s ease;
+}
+.input-base:focus {
+  @apply ring-2 ring-offset-0;
+  box-shadow: 0 6px 18px rgba(16,24,40,0.06);
+}
+
+/* compact card look */
+.card-soft {
+  @apply bg-white border border-transparent rounded-2xl p-4 shadow-sm;
+}
+
+/* badges (status) */
+.badge {
+  @apply inline-flex items-center gap-2 text-xs font-medium px-2.5 py-1 rounded-full;
+}
+.badge-pending {
+  background: rgba(250,204,21,0.12);
+  color: #92400e;
+}
+.badge-completed {
+  background: rgba(16,185,129,0.12);
+  color: #065f46;
+}
+.badge-inprogress {
+  background: rgba(59,130,246,0.08);
+  color: #1e40af;
+}
+
+/* small subtle shadow for hero */
+.hero-glass {
+  background: linear-gradient(90deg, rgba(255,255,255,0.85), rgba(255,255,255,0.6));
+  box-shadow: 0 8px 30px rgba(16,24,40,0.06);
+  border-radius: 16px;
+}

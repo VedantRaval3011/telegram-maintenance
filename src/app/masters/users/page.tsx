@@ -1,7 +1,9 @@
+// app/masters/users/page.tsx (or wherever your UserMasterPage lives)
 "use client";
 
 import { useState } from "react";
 import useSWR from "swr";
+import Navbar from "@/components/Navbar";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -64,14 +66,18 @@ export default function UserMasterPage() {
   const pagination = data.pagination;
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">User Master</h1>
-        <p className="text-gray-600">Manage Telegram users synced from groups</p>
+    <div className="p-6 max-w-7xl mx-auto">
+      <Navbar />
+
+      <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900 mb-1">User Master</h1>
+          <p className="text-sm text-gray-500">Manage Telegram users synced from groups</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <div className="card-soft mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -85,7 +91,7 @@ export default function UserMasterPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-base"
             />
           </div>
 
@@ -99,7 +105,7 @@ export default function UserMasterPage() {
                 setRoleFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-base"
             >
               <option value="">All Roles</option>
               <option value="creator">Creator</option>
@@ -118,7 +124,7 @@ export default function UserMasterPage() {
                 setSourceFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input-base"
             >
               <option value="">All Sources</option>
               <option value="webhook">Webhook</option>
@@ -145,26 +151,26 @@ export default function UserMasterPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-sm text-gray-600">Total Users</div>
-          <div className="text-2xl font-bold">{pagination?.total || 0}</div>
+        <div className="card-soft">
+          <div className="text-sm text-gray-500">Total Users</div>
+          <div className="mt-2 text-2xl font-semibold text-gray-900">{pagination?.total || 0}</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-sm text-gray-600">Current Page</div>
-          <div className="text-2xl font-bold">{page}</div>
+        <div className="card-soft">
+          <div className="text-sm text-gray-500">Current Page</div>
+          <div className="mt-2 text-2xl font-semibold text-gray-900">{page}</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-sm text-gray-600">Total Pages</div>
-          <div className="text-2xl font-bold">{pagination?.totalPages || 0}</div>
+        <div className="card-soft">
+          <div className="text-sm text-gray-500">Total Pages</div>
+          <div className="mt-2 text-2xl font-semibold text-gray-900">{pagination?.totalPages || 0}</div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="text-sm text-gray-600">Showing</div>
-          <div className="text-2xl font-bold">{users.length}</div>
+        <div className="card-soft">
+          <div className="text-sm text-gray-500">Showing</div>
+          <div className="mt-2 text-2xl font-semibold text-gray-900">{users.length}</div>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-2xl shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -192,11 +198,14 @@ export default function UserMasterPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-gray-100">
               {users.map((user) => (
                 <tr key={user._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-700">
+                        {user.firstName ? user.firstName[0].toUpperCase() : user.username ? user.username[0].toUpperCase() : "U"}
+                      </div>
                       <div>
                         <div className="text-sm font-medium text-gray-900">
                           {user.firstName || user.lastName
@@ -209,33 +218,39 @@ export default function UserMasterPage() {
                       </div>
                     </div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {user.telegramId}
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-50 text-blue-700">
                       {user.role || "member"}
                     </span>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         user.source === "webhook"
-                          ? "bg-green-100 text-green-800"
+                          ? "bg-green-50 text-green-700"
                           : user.source === "admin_sync"
-                          ? "bg-purple-100 text-purple-800"
-                          : "bg-gray-100 text-gray-800"
+                          ? "bg-purple-50 text-purple-700"
+                          : "bg-gray-50 text-gray-700"
                       }`}
                     >
                       {user.source}
                     </span>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {user.locationId?.name || "-"}
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(user.lastSeenAt).toLocaleDateString()}
+                    {user.lastSeenAt ? new Date(user.lastSeenAt).toLocaleDateString() : "-"}
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button
                       onClick={() => handleDelete(user._id)}

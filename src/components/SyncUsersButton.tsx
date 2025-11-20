@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface SyncMetrics {
   users: {
@@ -36,12 +36,8 @@ export default function SyncUsersButton() {
     try {
       const response = await fetch("/api/sync/users", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          syncLocations: true, // Also sync locations from tickets
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ syncLocations: true }),
       });
 
       const data: SyncResponse = await response.json();
@@ -56,22 +52,33 @@ export default function SyncUsersButton() {
     }
   };
 
+  // 🔥 Auto hide message after 3 seconds
+  useEffect(() => {
+    if (!result) return;
+
+    const timer = setTimeout(() => {
+      setResult(null);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [result]);
+
   return (
-    <div className="space-y-4">
-      <div>
+    <div className="w-full md:w-auto">
+      <div className="flex items-center gap-3">
         <button
           onClick={handleSync}
           disabled={loading}
-          className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
             loading
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700 text-white"
+              ? "bg-gray-300 cursor-not-allowed text-gray-700"
+              : "bg-gradient-to-r from-teal-500 to-indigo-600 text-white shadow-lg hover:opacity-95"
           }`}
         >
           {loading ? (
             <span className="flex items-center gap-2">
               <svg
-                className="animate-spin h-5 w-5"
+                className="animate-spin h-4 w-4"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -87,23 +94,23 @@ export default function SyncUsersButton() {
                 <path
                   className="opacity-75"
                   fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                 ></path>
               </svg>
               Syncing...
             </span>
           ) : (
-            "🔄 Sync Telegram Users"
+            <span>🔄 Sync Telegram Users</span>
           )}
         </button>
       </div>
 
       {result && (
         <div
-          className={`p-4 rounded-lg border ${
+          className={`mt-3 p-4 rounded-lg ${
             result.success
-              ? "bg-green-50 border-green-200"
-              : "bg-red-50 border-red-200"
+              ? "bg-green-50 border border-green-200"
+              : "bg-red-50 border border-red-200"
           }`}
         >
           {result.success ? (
