@@ -14,6 +14,9 @@ export interface IWizardSession extends Document {
     room: string | null;
   };
   currentStep: "category" | "priority" | "location_building" | "location_floor" | "location_room" | "complete";
+  waitingForInput: boolean;
+  inputField: "category" | "location" | null;
+  customLocation: string | null;
   createdAt: Date;
 }
 
@@ -30,11 +33,14 @@ const WizardSessionSchema = new Schema<IWizardSession>(
       floor: { type: String, default: null },
       room: { type: String, default: null },
     },
+    customLocation: { type: String, default: null },
     currentStep: {
       type: String,
       enum: ["category", "priority", "location_building", "location_floor", "location_room", "complete"],
       default: "category",
     },
+    waitingForInput: { type: Boolean, default: false },
+    inputField: { type: String, enum: ["category", "location", null], default: null },
     createdAt: { type: Date, default: Date.now },
   },
   {

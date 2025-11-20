@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
+import { Category } from "@/models/Category";
+import { Location } from "@/models/Location";
+import { WizardSession } from "@/models/WizardSession";
 import {
   telegramSendMessage,
   generateTicketId,
@@ -87,6 +90,14 @@ export async function POST(req: NextRequest) {
         await updateWizardSession(messageId, { category });
         await updateWizardUI(session);
         await answerCallbackQuery(callback.id, `Category: ${category}`);
+      } else if (action === "cat" && parts[2] === "manual") {
+        // Manual category entry
+        await updateWizardSession(messageId, {
+          waitingForInput: true,
+          inputField: "category",
+        });
+        await updateWizardUI(session);
+        await answerCallbackQuery(callback.id, "Please type the category name");
       } else if (action === "pri") {
         // Priority selection: pri_<msgId>_high
         const priority = parts[2] as "low" | "medium" | "high";
@@ -95,10 +106,18 @@ export async function POST(req: NextRequest) {
         await answerCallbackQuery(callback.id, `Priority: ${priority}`);
       } else if (action === "loc") {
         // Location selection
-        const locType = parts[1]; // bld, flr, room
+        const locType = parts[1]; // bld, flr, room, manual
         const value = parts[3];
 
-        if (locType === "bld") {
+        if (locType === "manual") {
+          // Manual location entry
+          await updateWizardSession(messageId, {
+            waitingForInput: true,
+            inputField: "location",
+          });
+          await updateWizardUI(session);
+          await answerCallbackQuery(callback.id, "Please type the location details");
+        } else if (locType === "bld") {
           // Building selected
           const currentSession = await getWizardSession(messageId);
           await updateWizardSession(messageId, {
@@ -274,6 +293,77 @@ export async function POST(req: NextRequest) {
       .toString()
       .trim()
       .toLowerCase();
+
+    // ==================== HANDLE WIZARD INPUT ====================
+    // Check if user has an active wizard session waiting for input
+    const activeSession = await WizardSession.findOne({
+      userId: msg.from.id,
+      waitingForInput: true,
+    });
+
+    if (activeSession) {
+      const inputText = (msg.text || msg.caption || "").trim();
+      
+      if (inputText.length > 0) {
+        if (activeSession.inputField === "category") {
+          // Update session
+          await updateWizardSession(activeSession.botMessageId, {
+            category: inputText.toLowerCase(),
+            waitingForInput: false,
+            inputField: null,
+          });
+
+          // Update Category Master
+          try {
+            await Category.findOneAndUpdate(
+              { name: inputText.toLowerCase() },
+              {
+                name: inputText.toLowerCase(),
+                displayName: inputText, // Use original casing for display if possible, but here we have input text
+                isActive: true,
+              },
+              { upsert: true, new: true }
+            );
+          } catch (err) {
+            console.error("Failed to update Category master:", err);
+          }
+
+        } else if (activeSession.inputField === "location") {
+          // Update session
+          await updateWizardSession(activeSession.botMessageId, {
+            customLocation: inputText,
+            waitingForInput: false,
+            inputField: null,
+            currentStep: "complete",
+          });
+
+          // Update Location Master
+          try {
+            await Location.findOneAndUpdate(
+              { name: inputText },
+              {
+                name: inputText,
+                type: "other",
+                isActive: true,
+              },
+              { upsert: true, new: true }
+            );
+          } catch (err) {
+            console.error("Failed to update Location master:", err);
+          }
+        }
+
+        // Update UI
+        const updatedSession = await getWizardSession(activeSession.botMessageId);
+        if (updatedSession) {
+          await updateWizardUI(updatedSession);
+        }
+        
+        // Delete user's input message to keep chat clean (optional, skipping for now to avoid permission issues)
+      }
+      
+      return NextResponse.json({ ok: true });
+    }
 
     // COMPLETION FLOW: Mark ticket as COMPLETED
     if (incomingText === "done" || incomingText === "completed") {

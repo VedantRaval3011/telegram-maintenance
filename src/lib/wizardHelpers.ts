@@ -25,6 +25,9 @@ export async function createWizardSession(
       room: null,
     },
     currentStep: "category",
+    waitingForInput: false,
+    inputField: null,
+    customLocation: null,
   });
 
   return session;
@@ -65,9 +68,7 @@ export function isWizardComplete(session: IWizardSession): boolean {
   return !!(
     session.category &&
     session.priority &&
-    session.location.building &&
-    session.location.floor &&
-    session.location.room
+    ((session.location.building && session.location.floor && session.location.room) || session.customLocation)
   );
 }
 
@@ -100,12 +101,22 @@ export function formatWizardMessage(session: IWizardSession): string {
     : "—";
 
   let locationText = "—";
-  if (session.location.building && session.location.floor && session.location.room) {
+  if (session.customLocation) {
+    locationText = session.customLocation;
+  } else if (session.location.building && session.location.floor && session.location.room) {
     locationText = `${session.location.building} - Floor ${session.location.floor} - Room ${session.location.room}`;
   } else if (session.location.building && session.location.floor) {
     locationText = `${session.location.building} - Floor ${session.location.floor}`;
   } else if (session.location.building) {
     locationText = session.location.building;
+  }
+
+  if (session.waitingForInput) {
+    const inputPrompt = session.inputField === "category" 
+      ? "✍️ Please type the <b>Category</b> name below:" 
+      : "✍️ Please type the <b>Location</b> details below:";
+    
+    return `🛠 <b>Ticket Wizard</b>\n\n${inputPrompt}`;
   }
 
   return `🛠 <b>Ticket Wizard</b>\n📝 Issue: ${session.originalText}\n\n<b>Category:</b> ${categoryText}\n<b>Priority:</b> ${priorityText}\n<b>Location:</b> ${locationText}\n\n${
@@ -130,7 +141,7 @@ export function buildCategoryKeyboard(botMessageId: number): any[] {
       { text: "❄️ HVAC", callback_data: `cat_${botMessageId}_hvac` },
       { text: "🎨 Paint", callback_data: `cat_${botMessageId}_paint` },
     ],
-    [{ text: "📋 Other", callback_data: `cat_${botMessageId}_other` }],
+    [{ text: "📋 Other (Manual Entry)", callback_data: `cat_${botMessageId}_manual` }],
   ];
 }
 
@@ -158,6 +169,9 @@ export function buildLocationBuildingKeyboard(botMessageId: number): any[] {
     ],
     [
       { text: "🏢 Building C", callback_data: `loc_bld_${botMessageId}_C` },
+    ],
+    [
+      { text: "✍️ Manual Entry", callback_data: `loc_manual_${botMessageId}` },
     ],
   ];
 }
@@ -209,7 +223,7 @@ export function buildWizardKeyboard(session: IWizardSession): any[] {
     keyboard.push([{ text: "⚡ Select Priority", callback_data: `step_${session.botMessageId}_priority` }]);
   }
 
-  if (!session.location.building || !session.location.floor || !session.location.room) {
+  if ((!session.location.building || !session.location.floor || !session.location.room) && !session.customLocation) {
     keyboard.push([{ text: "📍 Select Location", callback_data: `step_${session.botMessageId}_location` }]);
   }
 
@@ -229,7 +243,9 @@ export async function createTicketFromWizard(
 ): Promise<any> {
   const ticketId = await generateTicketId();
 
-  const locationString = `${session.location.building} - Floor ${session.location.floor} - Room ${session.location.room}`;
+  const locationString = session.customLocation 
+    ? session.customLocation 
+    : `${session.location.building} - Floor ${session.location.floor} - Room ${session.location.room}`;
 
   const ticket = await Ticket.create({
     ticketId,
