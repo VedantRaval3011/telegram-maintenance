@@ -255,6 +255,8 @@ export async function createTicketFromWizard(
     ? session.customLocation 
     : `${session.location.building} - Floor ${session.location.floor} - Room ${session.location.room}`;
 
+  console.log("[CREATE_TICKET] About to create ticket with photos:", session.photos);
+
   const ticket = await Ticket.create({
     ticketId,
     description: session.originalText,
@@ -268,6 +270,10 @@ export async function createTicketFromWizard(
     telegramMessageId: session.botMessageId,
     telegramChatId: session.chatId,
   });
+
+  console.log("[CREATE_TICKET] Ticket created, checking photos field:");
+  console.log("[CREATE_TICKET] ticket.photos:", ticket.photos);
+  console.log("[CREATE_TICKET] ticket object:", JSON.stringify(ticket, null, 2));
 
   return ticket;
 }
