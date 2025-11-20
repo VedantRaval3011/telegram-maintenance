@@ -42,11 +42,13 @@ type TelegramGetFileResponse =
 export async function telegramSendMessage(
   chatId: number | string,
   text: string,
-  replyToMessageId?: number
+  replyToMessageId?: number,
+  inlineKeyboard?: any
 ): Promise<TelegramApiResponse> {
   const url = `${TELEGRAM_API}/sendMessage`;
   const body: any = { chat_id: chatId, text, parse_mode: "HTML" };
   if (replyToMessageId) body.reply_to_message_id = replyToMessageId;
+  if (inlineKeyboard) body.reply_markup = { inline_keyboard: inlineKeyboard };
 
   const res = await fetch(url, {
     method: "POST",
