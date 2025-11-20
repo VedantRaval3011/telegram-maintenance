@@ -85,19 +85,22 @@ export async function POST(req: NextRequest) {
 
       // Handle different actions
       if (action === "cat") {
-        // Category selection: cat_<msgId>_electrical
         const category = parts[2];
-        await updateWizardSession(messageId, { category });
-        await updateWizardUI(session);
-        await answerCallbackQuery(callback.id, `Category: ${category}`);
-      } else if (action === "cat" && parts[2] === "manual") {
-        // Manual category entry
-        await updateWizardSession(messageId, {
-          waitingForInput: true,
-          inputField: "category",
-        });
-        await updateWizardUI(session);
-        await answerCallbackQuery(callback.id, "Please type the category name");
+        
+        if (category === "manual") {
+          // Manual category entry
+          await updateWizardSession(messageId, {
+            waitingForInput: true,
+            inputField: "category",
+          });
+          await updateWizardUI(session);
+          await answerCallbackQuery(callback.id, "Please type the category name");
+        } else {
+          // Standard category selection
+          await updateWizardSession(messageId, { category });
+          await updateWizardUI(session);
+          await answerCallbackQuery(callback.id, `Category: ${category}`);
+        }
       } else if (action === "pri") {
         // Priority selection: pri_<msgId>_high
         const priority = parts[2] as "low" | "medium" | "high";
