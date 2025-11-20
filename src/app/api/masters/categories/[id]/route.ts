@@ -1,0 +1,152 @@
+// app/api/masters/categories/[id]/route.ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { Category } from "@/models/Category";
+import { connectToDB } from "@/lib/mongodb";
+import { z } from "zod";
+
+/**
+ * GET /api/masters/categories/[id]
+ * Get a single category by ID
+ */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await connectToDB();
+
+    const category = await Category.findById(params.id).lean();
+
+    if (!category) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Category not found",
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: category,
+    });
+  } catch (err) {
+    console.error("[API] Failed to fetch category:", err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PUT /api/masters/categories/[id]
+ * Update a category
+ */
+const UpdateCategorySchema = z.object({
+  displayName: z.string().min(1).optional(),
+  keywords: z.array(z.string()).optional(),
+  description: z.string().nullable().optional(),
+  color: z.string().optional(),
+  icon: z.string().optional(),
+  isActive: z.boolean().optional(),
+  priority: z.number().optional(),
+});
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await connectToDB();
+
+    const body = await req.json();
+    const validation = UpdateCategorySchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid request body",
+          details: validation.error.issues,
+        },
+        { status: 400 }
+      );
+    }
+
+    const category = await Category.findByIdAndUpdate(
+      params.id,
+      { $set: validation.data },
+      { new: true, runValidators: true }
+    );
+
+    if (!category) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Category not found",
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: category,
+    });
+  } catch (err) {
+    console.error("[API] Failed to update category:", err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/masters/categories/[id]
+ * Delete a category
+ */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await connectToDB();
+
+    const category = await Category.findByIdAndDelete(params.id);
+
+    if (!category) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Category not found",
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Category deleted successfully",
+      data: category,
+    });
+  } catch (err) {
+    console.error("[API] Failed to delete category:", err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
+}

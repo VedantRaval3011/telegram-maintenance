@@ -109,6 +109,29 @@ export async function POST(req: NextRequest) {
 
     await connectToDB();
 
+    // Track user from webhook message (NEW - does not affect existing ticket logic)
+    if (msg.from && !msg.from.is_bot) {
+      try {
+        const { upsertUser } = await import("@/services/syncService");
+        await upsertUser(
+          {
+            id: msg.from.id,
+            username: msg.from.username,
+            first_name: msg.from.first_name,
+            last_name: msg.from.last_name,
+            is_bot: msg.from.is_bot,
+            language_code: msg.from.language_code,
+          },
+          "webhook",
+          chat.id
+        );
+      } catch (err) {
+        console.error("Failed to track user from webhook:", err);
+        // Don't fail the webhook processing - existing ticket logic continues
+      }
+    }
+
+
     // Normalize incoming text
     const incomingText = (msg.text || msg.caption || "")
       .toString()
@@ -193,7 +216,13 @@ export async function POST(req: NextRequest) {
     });
 
     // Reply in group with the ticket summary and capture bot's response so we can store the bot's message id.
-    const replyText = `🆕 Ticket ${ticket.ticketId} Created\nIssue: ${ticket.description}`;
+    let replyText = `🆕 Ticket ${ticket.ticketId} Created\nIssue: ${ticket.description}`;
+    
+    // If location is not detected, ask user to provide it
+    if (!location) {
+      replyText += `\n\n📍 <b>Location not detected!</b>\nPlease reply to this message with the location (e.g., "room 45", "Building A", "3rd floor")`;
+    }
+    
     try {
       const botRes = await telegramSendMessage(
         chat.id,

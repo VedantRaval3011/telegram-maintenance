@@ -167,6 +167,24 @@ export async function downloadTelegramFile(
   return `/uploads/${fileName}`;
 }
 
+/** Get chat administrators */
+export async function telegramGetChatAdministrators(
+  chatId: number | string
+): Promise<TelegramApiResponse> {
+  const url = `${TELEGRAM_API}/getChatAdministrators`;
+  const body = { chat_id: chatId };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = (await res.json()) as TelegramApiResponse;
+  if (!json.ok) console.error("telegramGetChatAdministrators error:", json);
+  return json;
+}
+
 /** Simple ticket id generator - not concurrency safe */
 export async function generateTicketId(): Promise<string> {
   try {
