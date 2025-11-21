@@ -79,13 +79,13 @@ export async function GET(req: NextRequest) {
  */
 const CreateLocationSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  type: z.enum(["room", "building", "floor", "area", "other"]),
-  code: z.string().optional(),
-  description: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
+  type: z.string().optional().nullable(),
+  code: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  latitude: z.number().optional().nullable(),
+  longitude: z.number().optional().nullable(),
   parentLocationId: z.string().nullable().optional(),
-  capacity: z.number().optional(),
+  capacity: z.number().optional().nullable(),
   isActive: z.boolean().optional().default(true),
 });
 

@@ -1,44 +1,85 @@
-// app/masters/locations/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
+import { 
+  Plus, 
+  Trash2, 
+  Edit2, 
+  Search, 
+  CornerDownRight, 
+  X,
+  MoreVertical
+} from "lucide-react";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
+// --- Types ---
 interface Location {
   _id: string;
   name: string;
-  type: string;
+  type?: string;
   code?: string;
   description?: string;
   isActive: boolean;
-  capacity?: number;
+  capacity?: number | null;
   parentLocationId?: any;
   createdAt: string;
   updatedAt: string;
 }
 
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
 export default function LocationMasterPage() {
+  // --- State ---
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  
+  // Search & Filter State
+  const [searchTerm, setSearchTerm] = useState(""); // Immediate input
+  const [debouncedSearch, setDebouncedSearch] = useState(""); // Delayed query
   const [typeFilter, setTypeFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [formData, setFormData] = useState({
+  
+  // Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // UI Interaction State
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; loc: Location } | null>(null);
+  const [mobileSelectedId, setMobileSelectedId] = useState<string | null>(null); // For mobile tap-to-show-actions
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  const [formData, setFormData] = useState<any>({
     name: "",
-    type: "room",
+    type: "",
     code: "",
     description: "",
     capacity: "",
     isActive: true,
+    parentLocationId: null,
   });
 
+  // --- Debounce Search ---
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(1);
+    }, 400); // 400ms delay
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // --- Close Context Menu on Click ---
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, []);
+
+  // --- Data Fetching ---
   const queryParams = new URLSearchParams({
     page: page.toString(),
-    limit: "20",
-    ...(search && { search }),
+    limit: "200",
+    ...(debouncedSearch && { search: debouncedSearch }),
     ...(typeFilter && { type: typeFilter }),
     ...(activeFilter && { isActive: activeFilter }),
   });
@@ -48,331 +89,569 @@ export default function LocationMasterPage() {
     fetcher
   );
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this location?")) return;
-
-    try {
-      const res = await fetch(`/api/masters/locations/${id}`, {
-        method: "DELETE",
-      });
-
-      if (res.ok) {
-        mutate();
-        alert("Location deleted successfully");
-      } else {
-        const data = await res.json();
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err) {
-      alert("Failed to delete location");
+  // Auto-hide toast
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
     }
+  }, [toast]);
+
+  // --- Helpers ---
+  function getDepth(loc: Location, allLocs: Location[]) {
+    let depth = 0;
+    let current: Location | null = loc;
+    while (current?.parentLocationId) {
+      depth++;
+      current = allLocs.find((x) => x._id === current?.parentLocationId?._id) || null;
+    }
+    return depth;
+  }
+
+  function sortByHierarchy(locList: Location[]) {
+    const map = new Map<string, Location[]>();
+    locList.forEach((loc) => {
+      const parent = loc.parentLocationId?._id || "root";
+      if (!map.has(parent)) map.set(parent, []);
+      map.get(parent)!.push(loc);
+    });
+
+    const result: Location[] = [];
+    function traverse(parentId: string | null) {
+      const children = map.get(parentId || "root") || [];
+      children.sort((a, b) => a.name.localeCompare(b.name));
+      for (const child of children) {
+        result.push(child);
+        traverse(child._id);
+      }
+    }
+    traverse(null);
+    return result;
+  }
+
+  const locationsRaw = data?.data || [];
+  const locations: Location[] = sortByHierarchy(locationsRaw);
+
+  // --- Actions ---
+  const handleDelete = async () => {
+    if (!deleteTargetId) return;
+    const res = await fetch(`/api/masters/locations/${deleteTargetId}`, { method: "DELETE" });
+    
+    if (res.ok) {
+      mutate();
+      setToast({ msg: "Location deleted successfully", type: "success" });
+    } else {
+      const d = await res.json();
+      setToast({ msg: d.error || "Failed to delete", type: "error" });
+    }
+    setDeleteTargetId(null);
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: any) => {
     e.preventDefault();
+    const body = {
+      ...formData,
+      type: formData.type || null,
+      code: formData.code || null,
+      description: formData.description || null,
+      capacity: formData.capacity ? Number(formData.capacity) : null,
+      parentLocationId: formData.parentLocationId === "" ? null : formData.parentLocationId,
+    };
 
-    try {
-      const res = await fetch("/api/masters/locations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          capacity: formData.capacity ? parseInt(formData.capacity) : undefined,
-        }),
+    const url = editingId 
+      ? `/api/masters/locations/${editingId}` 
+      : "/api/masters/locations";
+    
+    const method = editingId ? "PUT" : "POST";
+
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const r = await res.json();
+    if (res.ok) {
+      mutate();
+      setToast({ 
+        msg: editingId ? "Location updated successfully" : "Location created successfully", 
+        type: "success" 
       });
-
-      if (res.ok) {
-        mutate();
-        setShowCreateModal(false);
-        setFormData({
-          name: "",
-          type: "room",
-          code: "",
-          description: "",
-          capacity: "",
-          isActive: true,
-        });
-        alert("Location created successfully");
-      } else {
-        const data = await res.json();
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err) {
-      alert("Failed to create location");
+      setIsCreateModalOpen(false);
+      resetForm();
+    } else {
+      setToast({ msg: r.error || "Failed to save", type: "error" });
     }
   };
 
-  if (error) return <div className="p-6">Failed to load locations</div>;
-  if (!data) return <div className="p-6">Loading...</div>;
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      type: "",
+      code: "",
+      description: "",
+      capacity: "",
+      isActive: true,
+      parentLocationId: null,
+    });
+    setEditingId(null);
+  };
 
-  const locations: Location[] = data.data || [];
-  const pagination = data.pagination || { totalPages: 1, total: 0 };
+  const openCreateModal = (parentId: string | null = null) => {
+    resetForm();
+    if (parentId) setFormData((prev: any) => ({ ...prev, parentLocationId: parentId }));
+    setIsCreateModalOpen(true);
+  };
+
+  const openEditModal = (loc: Location) => {
+    resetForm();
+    setEditingId(loc._id);
+    setFormData({
+      name: loc.name,
+      type: loc.type || "",
+      code: loc.code || "",
+      description: loc.description || "",
+      capacity: loc.capacity || "",
+      isActive: loc.isActive,
+      parentLocationId: loc.parentLocationId?._id || loc.parentLocationId || null,
+    });
+    setIsCreateModalOpen(true);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, loc: Location) => {
+    e.preventDefault();
+    setContextMenu({ x: e.pageX, y: e.pageY, loc });
+  };
+
+  const handleMobileRowClick = (locId: string) => {
+    // Toggle selection on mobile
+    if (mobileSelectedId === locId) {
+      setMobileSelectedId(null);
+    } else {
+      setMobileSelectedId(locId);
+    }
+  };
+
+  // --- Render ---
+
+  if (error) return <div className="p-10 text-center text-rose-500">Failed to load data.</div>;
+  if (!data) return <div className="p-10 text-center text-emerald-700 animate-pulse">Loading locations...</div>;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-[#ecfdf5] pb-20 font-sans">
       <Navbar />
 
-      <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 mb-1">Location Master</h1>
-          <p className="text-sm text-gray-500">Manage locations and facilities</p>
-        </div>
-        <div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+          <div>
+            <h1 className="text-4xl font-extrabold text-emerald-950 tracking-tight">
+              Locations
+            </h1>
+            <p className="text-emerald-700/80 mt-2 text-sm font-medium">
+              Manage your building hierarchy and spaces
+            </p>
+          </div>
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-gradient-to-r from-teal-500 to-indigo-600 text-white rounded-md shadow hover:opacity-95"
+            onClick={() => openCreateModal()}
+            className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-emerald-200/50 transition-all active:scale-95"
           >
-            + Create Location
+            <Plus className="w-5 h-5" />
+            <span>Add Location</span>
           </button>
         </div>
-      </div>
 
-      {/* Filters */}
-      <div className="card-soft mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+        {/* Filters & Search Toolbar */}
+        <div className="bg-white/60 backdrop-blur-md border border-emerald-100 rounded-2xl p-4 mb-8 flex flex-col md:flex-row gap-4 items-center shadow-sm">
+          <div className="relative flex-1 w-full group">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-400 group-focus-within:text-emerald-600 transition-colors">
+              <Search className="w-5 h-5" />
+            </div>
             <input
-              type="text"
-              placeholder="Name, code, description..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="input-base"
+              className="pl-10 w-full bg-white/50 border border-emerald-100 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all py-3 text-sm text-emerald-900 placeholder-emerald-400/70"
+              placeholder="Search locations..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+          
+          <div className="flex gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 no-scrollbar">
             <select
+              className="bg-white/50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-800 focus:ring-2 focus:ring-emerald-500/20 outline-none min-w-[140px] appearance-none cursor-pointer hover:bg-white/80 transition-colors"
               value={typeFilter}
-              onChange={(e) => {
-                setTypeFilter(e.target.value);
-                setPage(1);
-              }}
-              className="input-base"
+              onChange={(e) => setTypeFilter(e.target.value)}
             >
               <option value="">All Types</option>
-              <option value="room">Room</option>
               <option value="building">Building</option>
               <option value="floor">Floor</option>
-              <option value="area">Area</option>
-              <option value="other">Other</option>
+              <option value="room">Room</option>
             </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            
             <select
+              className="bg-white/50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-800 focus:ring-2 focus:ring-emerald-500/20 outline-none min-w-[120px] appearance-none cursor-pointer hover:bg-white/80 transition-colors"
               value={activeFilter}
-              onChange={(e) => {
-                setActiveFilter(e.target.value);
-                setPage(1);
-              }}
-              className="input-base"
+              onChange={(e) => setActiveFilter(e.target.value)}
             >
               <option value="">All Status</option>
               <option value="true">Active</option>
               <option value="false">Inactive</option>
             </select>
-          </div>
 
-          <div className="flex items-end">
-            <button
-              onClick={() => {
-                setSearch("");
-                setTypeFilter("");
-                setActiveFilter("");
-                setPage(1);
-              }}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-            >
-              Clear Filters
-            </button>
+            {(searchTerm || typeFilter || activeFilter) && (
+              <button
+                onClick={() => { setSearchTerm(""); setTypeFilter(""); setActiveFilter(""); }}
+                className="text-sm text-emerald-600 hover:text-emerald-800 px-4 font-medium transition-colors whitespace-nowrap"
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="card-soft">
-          <div className="text-sm text-gray-500">Total Locations</div>
-          <div className="mt-2 text-2xl font-semibold text-gray-900">{pagination?.total || 0}</div>
-        </div>
-        <div className="card-soft">
-          <div className="text-sm text-gray-500">Current Page</div>
-          <div className="mt-2 text-2xl font-semibold text-gray-900">{page}</div>
-        </div>
-        <div className="card-soft">
-          <div className="text-sm text-gray-500">Total Pages</div>
-          <div className="mt-2 text-2xl font-semibold text-gray-900">{pagination?.totalPages || 0}</div>
-        </div>
-        <div className="card-soft">
-          <div className="text-sm text-gray-500">Showing</div>
-          <div className="mt-2 text-2xl font-semibold text-gray-900">{locations.length}</div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capacity</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {locations.map((location) => (
-                <tr key={location._id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">{location.name}</div>
-                    {location.description && <div className="text-sm text-gray-500">{location.description}</div>}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{location.code || "-"}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        location.type === "room"
-                          ? "bg-blue-50 text-blue-700"
-                          : location.type === "building"
-                          ? "bg-purple-50 text-purple-700"
-                          : location.type === "floor"
-                          ? "bg-green-50 text-green-700"
-                          : location.type === "area"
-                          ? "bg-yellow-50 text-yellow-700"
-                          : "bg-gray-50 text-gray-700"
-                      }`}
-                    >
-                      {location.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{location.capacity || "-"}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${location.isActive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                      {location.isActive ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(location.createdAt).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onClick={() => handleDelete(location._id)} className="text-red-600 hover:text-red-900">Delete</button>
-                  </td>
+        {/* Locations Table */}
+        <div className="bg-white/40 backdrop-blur-sm border border-emerald-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-emerald-50/50 border-b border-emerald-100 text-xs uppercase tracking-wider text-emerald-600 font-bold">
+                  <th className="px-6 py-5">Location Name</th>
+                  <th className="px-6 py-5 hidden md:table-cell">Code</th>
+                  <th className="px-6 py-5 hidden sm:table-cell">Type</th>
+                  <th className="px-6 py-5 hidden lg:table-cell">Capacity</th>
+                  <th className="px-6 py-5">Status</th>
+                  <th className="px-6 py-5 text-right hidden md:table-cell">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-emerald-50">
+                {locations.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-16 text-center text-emerald-400 italic">
+                      No locations found. Try adjusting your filters.
+                    </td>
+                  </tr>
+                ) : (
+                  locations.map((loc) => {
+                    const depth = getDepth(loc, locationsRaw);
+                    const isMobileSelected = mobileSelectedId === loc._id;
 
-        {/* Pagination */}
-        <div className="bg-gray-50 px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-          <div className="flex-1 flex justify-between sm:hidden">
-            <button
-              onClick={() => setPage(Math.max(1, page - 1))}
-              disabled={page === 1}
-              className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
-              disabled={page === pagination.totalPages}
-              className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
+                    return (
+                      <tr 
+                        key={loc._id} 
+                        onContextMenu={(e) => handleContextMenu(e, loc)}
+                        className={`group transition-all duration-200 ${
+                          isMobileSelected ? "bg-emerald-100/50" : "hover:bg-emerald-50/60"
+                        }`}
+                      >
+                        {/* Name Column - Clickable on Mobile */}
+                        <td 
+                          className="px-6 py-4 cursor-pointer md:cursor-default"
+                          onClick={() => handleMobileRowClick(loc._id)}
+                        >
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center" style={{ paddingLeft: `${depth * 20}px` }}>
+                              {depth > 0 && (
+                                <span className="text-emerald-300 mr-2">
+                                  <CornerDownRight className="w-4 h-4" />
+                                </span>
+                              )}
+                              <div className="flex flex-col">
+                                <span className={`font-medium text-base ${depth === 0 ? 'text-emerald-950' : 'text-emerald-800'}`}>
+                                  {loc.name}
+                                </span>
+                                {loc.description && (
+                                  <span className="text-[11px] text-emerald-500/80 truncate max-w-[200px]">
+                                    {loc.description}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Mobile Actions Panel (Visible when selected) */}
+                            {isMobileSelected && (
+                              <div className="md:hidden flex items-center gap-3 mt-3 pl-2 animate-in slide-in-from-top-2 duration-200">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openEditModal(loc); }}
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium"
+                                >
+                                  <Edit2 className="w-3 h-3" /> Edit
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openCreateModal(loc._id); }}
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium"
+                                >
+                                  <Plus className="w-3 h-3" />Child
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setDeleteTargetId(loc._id); }}
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-rose-100 text-rose-600 rounded-lg text-xs font-medium"
+                                >
+                                  <Trash2 className="w-3 h-3" /> Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
 
-          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm text-gray-700">
-                Showing page <span className="font-medium">{page}</span> of <span className="font-medium">{pagination.totalPages}</span>
-              </p>
-            </div>
-            <div>
-              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                <button
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
-                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setPage(Math.min(pagination.totalPages, page + 1))}
-                  disabled={page === pagination.totalPages}
-                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </nav>
-            </div>
+                        <td className="px-6 py-4 text-sm text-emerald-600/80 font-mono hidden md:table-cell">{loc.code || "—"}</td>
+                        <td className="px-6 py-4 hidden sm:table-cell">
+                          {loc.type ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-600 text-xs font-medium border border-emerald-100">
+                              {loc.type}
+                            </span>
+                          ) : "—"}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-emerald-600/80 hidden lg:table-cell">{loc.capacity || "—"}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                            loc.isActive 
+                              ? "bg-emerald-100 text-emerald-700 border-emerald-200" 
+                              : "bg-slate-100 border-slate-200 text-slate-500"
+                          }`}>
+                            {loc.isActive ? "Active" : "Inactive"}
+                          </span>
+                        </td>
+                        
+                        {/* Desktop Actions */}
+                        <td className="px-6 py-4 text-right hidden md:table-cell">
+                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                            <button
+                              onClick={() => openEditModal(loc)}
+                              className="p-2 text-emerald-400 hover:text-emerald-700 hover:bg-emerald-100 rounded-lg transition-all"
+                              title="Edit Location"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => openCreateModal(loc._id)}
+                              className="p-2 text-emerald-400 hover:text-emerald-700 hover:bg-emerald-100 rounded-lg transition-all"
+                              title="Add Child Location"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteTargetId(loc._id)}
+                              className="p-2 text-emerald-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                              title="Delete Location"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 border-2 border-gray-200 shadow-xl">
-            <h2 className="text-2xl font-bold mb-4">Create New Location</h2>
-            <form onSubmit={handleCreate}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+      {/* --- Context Menu (Right Click) --- */}
+      {contextMenu && (
+        <div 
+          className="fixed z-50 bg-white/90 backdrop-blur-md border border-emerald-100 rounded-xl shadow-xl py-1 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button 
+            onClick={() => { openEditModal(contextMenu.loc); setContextMenu(null); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-emerald-800 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2"
+          >
+            <Edit2 className="w-4 h-4" /> Edit
+          </button>
+          <button 
+            onClick={() => { openCreateModal(contextMenu.loc._id); setContextMenu(null); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-emerald-800 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Add Child
+          </button>
+          <div className="h-px bg-emerald-100 my-1" />
+          <button 
+            onClick={() => { setDeleteTargetId(contextMenu.loc._id); setContextMenu(null); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" /> Delete
+          </button>
+        </div>
+      )}
+
+      {/* --- Create/Edit Modal --- */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-emerald-900/20 backdrop-blur-sm transition-all">
+          <div className="bg-[#f0fdfa] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-emerald-100">
+            <div className="px-6 py-4 border-b border-emerald-100 flex justify-between items-center bg-emerald-50/50">
+              <h2 className="text-lg font-bold text-emerald-900">
+                {editingId 
+                  ? "Edit Location" 
+                  : formData.parentLocationId 
+                    ? "Add Sub-Location" 
+                    : "Create New Location"}
+              </h2>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-emerald-400 hover:text-emerald-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSave} className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-5">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">Name *</label>
                   <input
-                    type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="input-base"
+                    className="w-full bg-white border border-emerald-100 rounded-lg px-3 py-2.5 text-emerald-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    placeholder="e.g. Main Building"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">Type</label>
+                  <input
+                    list="location-types"
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    className="w-full bg-white border border-emerald-100 rounded-lg px-3 py-2.5 text-emerald-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    placeholder="e.g. Floor"
+                  />
+                  <datalist id="location-types">
+                    <option value="Location" />
+                    <option value="Building" />
+                    <option value="Floor" />
+                    <option value="Room" />
+                    <option value="Wing" />
+                    <option value="Area" />
+                  </datalist>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">Code</label>
+                  <input
+                    value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    className="w-full bg-white border border-emerald-100 rounded-lg px-3 py-2.5 text-emerald-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    placeholder="e.g. BLD-01"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">Description</label>
+                  <textarea
+                    rows={2}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full bg-white border border-emerald-100 rounded-lg px-3 py-2.5 text-emerald-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all resize-none"
+                    placeholder="Optional description..."
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
-                  <select value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })} className="input-base">
-                    <option value="room">Room</option>
-                    <option value="building">Building</option>
-                    <option value="floor">Floor</option>
-                    <option value="area">Area</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">Capacity</label>
+                  <input
+                    type="number"
+                    value={formData.capacity}
+                    onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
+                    className="w-full bg-white border border-emerald-100 rounded-lg px-3 py-2.5 text-emerald-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    placeholder="0"
+                  />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
-                  <input type="text" value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} className="input-base" />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                  <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows={3} className="input-base" />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
-                  <input type="number" value={formData.capacity} onChange={(e) => setFormData({ ...formData, capacity: e.target.value })} className="input-base" />
-                </div>
-
-                <div className="flex items-center">
-                  <input type="checkbox" id="isActive" checked={formData.isActive} onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })} className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                  <label htmlFor="isActive" className="ml-2 block text-sm text-gray-900">Active</label>
+                <div className="flex items-center pt-2">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={formData.isActive}
+                        onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                        className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-emerald-200 bg-white checked:bg-emerald-600 checked:border-emerald-600 transition-all"
+                      />
+                      <svg className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" viewBox="0 0 14 14" fill="none">
+                        <path d="M3 8L6 11L11 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="text-sm text-emerald-700 group-hover:text-emerald-900 transition-colors">Active Status</span>
+                  </label>
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end space-x-3">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-gradient-to-r from-teal-500 to-indigo-600 text-white rounded-md hover:opacity-95">Create</button>
+              {/* Parent Selector (Optional override) */}
+              <div className="pt-4 border-t border-emerald-100 mt-2">
+                <label className="block text-xs font-semibold text-emerald-600 mb-1.5 uppercase tracking-wide">Parent Location (Optional)</label>
+                <select
+                  className="w-full bg-white border border-emerald-100 rounded-lg px-3 py-2.5 text-emerald-800 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                  value={formData.parentLocationId || ""}
+                  onChange={(e) => setFormData({ ...formData, parentLocationId: e.target.value || null })}
+                >
+                  <option value="">No Parent (Top Level)</option>
+                  {locations.map((loc) => (
+                    <option key={loc._id} value={loc._id}>
+                      {Array(getDepth(loc, locationsRaw)).fill("— ").join("")} {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="px-5 py-2.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-lg shadow-emerald-200 transition-all active:scale-95"
+                >
+                  {editingId ? "Update Location" : "Create Location"}
+                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- Delete Confirmation Modal --- */}
+      {deleteTargetId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-emerald-900/20 backdrop-blur-sm">
+          <div className="bg-[#f0fdfa] rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in-95 duration-200 border border-emerald-100">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mb-4">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-xl font-bold text-emerald-950 mb-2">Delete Location?</h3>
+              <p className="text-sm text-emerald-700/70 mb-6">
+                Are you sure you want to delete this location? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setDeleteTargetId(null)}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-lg shadow-rose-200 transition-all"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Toast Notification --- */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 duration-300">
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border backdrop-blur-md ${
+            toast.type === 'success' 
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}>
+            <div className={`w-2.5 h-2.5 rounded-full ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            <span className="text-sm font-medium tracking-wide">{toast.msg}</span>
           </div>
         </div>
       )}

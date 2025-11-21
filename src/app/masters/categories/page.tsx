@@ -7,6 +7,12 @@ import Navbar from "@/components/Navbar";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
+const fetchSubCategories = async (categoryId: string) => {
+  const res = await fetch(`/api/masters/subcategories?categoryId=${categoryId}`);
+  const json = await res.json();
+  return json.data || [];
+};
+
 interface Category {
   _id: string;
   name: string;
@@ -17,6 +23,7 @@ interface Category {
   icon?: string;
   isActive: boolean;
   priority: number;
+  subCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -27,6 +34,19 @@ export default function CategoryMasterPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [showSubModal, setShowSubModal] = useState(false);
+  const [subCategoryList, setSubCategoryList] = useState<any[]>([]);
+  const [subCategoryCategoryId, setSubCategoryCategoryId] = useState<string | null>(null);
+
+  const [subForm, setSubForm] = useState({
+    name: "",
+    icon: "",
+    description: "",
+    isActive: true,
+  });
+
+  const [editingSub, setEditingSub] = useState<any | null>(null);
+
   const [formData, setFormData] = useState({
     name: "",
     displayName: "",
@@ -308,7 +328,23 @@ export default function CategoryMasterPage() {
               </span>
             </div>
 
-            <div className="flex gap-2">
+            <div className="mt-4">
+              <button
+                onClick={async () => {
+                  const subs = await fetchSubCategories(category._id);
+                  setSubCategoryList(subs);
+                  setSubCategoryCategoryId(category._id);
+                  setShowSubModal(true);
+                  setEditingSub(null);
+                  setSubForm({ name: "", icon: "", description: "", isActive: true });
+                }}
+                className="w-full px-3 py-2 text-sm bg-purple-50 text-purple-600 rounded hover:bg-purple-100"
+              >
+                🧩 Manage Subcategories ({category.subCount || 0})
+              </button>
+            </div>
+
+            <div className="flex gap-2 mt-2">
               <button
                 onClick={() => openEditModal(category)}
                 className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
@@ -632,6 +668,175 @@ export default function CategoryMasterPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUBCATEGORY MODAL */}
+      {showSubModal && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto shadow-xl border border-gray-200">
+
+            <h2 className="text-xl font-bold mb-3">Manage Subcategories</h2>
+
+            {/* List */}
+            <div className="space-y-2 mb-4">
+              {subCategoryList.length === 0 && (
+                <p className="text-gray-500 text-sm">No subcategories yet.</p>
+              )}
+
+              {subCategoryList.map((sub) => (
+                <div
+                  key={sub._id}
+                  className="p-3 bg-gray-50 rounded border flex justify-between items-center"
+                >
+                  <div>
+                    <div className="font-medium">{sub.icon || "🔹"} {sub.name}</div>
+                    {sub.description && (
+                      <div className="text-xs text-gray-500">{sub.description}</div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingSub(sub);
+                        setSubForm({
+                          name: sub.name,
+                          icon: sub.icon || "",
+                          description: sub.description || "",
+                          isActive: sub.isActive
+                        });
+                      }}
+                      className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Delete this subcategory?")) return;
+                        await fetch(`/api/masters/subcategories/${sub._id}`, {
+                          method: "DELETE",
+                        });
+                        const newList = await fetchSubCategories(subCategoryCategoryId!);
+                        setSubCategoryList(newList);
+                        mutate(); // refresh category grid counts
+                      }}
+                      className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* CREATE / EDIT FORM */}
+            <h3 className="text-lg font-semibold mb-2">
+              {editingSub ? "Edit Subcategory" : "Add Subcategory"}
+            </h3>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+
+                const payload = {
+                  categoryId: subCategoryCategoryId,
+                  name: subForm.name,
+                  icon: subForm.icon,
+                  description: subForm.description,
+                  isActive: subForm.isActive,
+                };
+
+                if (editingSub) {
+                  await fetch(`/api/masters/subcategories/${editingSub._id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                  });
+                } else {
+                  await fetch(`/api/masters/subcategories`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                  });
+                }
+
+                const fresh = await fetchSubCategories(subCategoryCategoryId!);
+                setSubCategoryList(fresh);
+                setEditingSub(null);
+                setSubForm({ name: "", icon: "", description: "", isActive: true });
+                mutate(); // refresh category grid counts
+              }}
+              className="space-y-3"
+            >
+              <input
+                type="text"
+                placeholder="Name"
+                required
+                value={subForm.name}
+                onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
+                className="input-base"
+              />
+
+              <input
+                type="text"
+                placeholder="Icon (emoji)"
+                value={subForm.icon}
+                onChange={(e) => setSubForm({ ...subForm, icon: e.target.value })}
+                className="input-base"
+              />
+
+              <textarea
+                placeholder="Description"
+                value={subForm.description}
+                onChange={(e) => setSubForm({ ...subForm, description: e.target.value })}
+                className="input-base"
+                rows={2}
+              />
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={subForm.isActive}
+                  onChange={(e) =>
+                    setSubForm({ ...subForm, isActive: e.target.checked })
+                  }
+                />
+                Active
+              </label>
+
+              <div className="flex justify-end gap-2">
+                {editingSub && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSub(null);
+                      setSubForm({ name: "", icon: "", description: "", isActive: true });
+                    }}
+                    className="px-3 py-2 bg-gray-100 rounded"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded"
+                >
+                  {editingSub ? "Update" : "Add"}
+                </button>
+              </div>
+            </form>
+
+            {/* CLOSE */}
+            <button
+              onClick={() => setShowSubModal(false)}
+              className="mt-4 w-full px-4 py-2 bg-gray-200 rounded"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

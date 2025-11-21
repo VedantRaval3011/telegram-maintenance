@@ -53,7 +53,7 @@ export async function GET(
  */
 const UpdateLocationSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.enum(["room", "building", "floor", "area", "other"]).optional(),
+  type: z.string().optional().nullable(),
   code: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   latitude: z.number().nullable().optional(),

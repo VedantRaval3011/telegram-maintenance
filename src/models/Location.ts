@@ -1,24 +1,19 @@
-// models/Location.ts
 import mongoose, { Document, Model, Schema } from "mongoose";
 
 export interface ILocation extends Document {
-  name: string; // e.g., "room number 43", "Building A"
-  type: "room" | "building" | "floor" | "area" | "other";
-  code?: string; // e.g., "R43", "BLDG-A"
-  description?: string;
+  name: string;              // Example: "136", "Nutra", "G1", "L2", "Room 304"
+  type?: string;             // Fully dynamic: "building", "glevel", "l1", "special", "other", etc.
+  code?: string | null;      
+  description?: string | null;
 
-  // Coordinates (optional)
-  latitude?: number;
-  longitude?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 
-  // Hierarchy
-  parentLocationId?: mongoose.Types.ObjectId;
+  parentLocationId?: mongoose.Types.ObjectId | null;
 
-  // Metadata
-  capacity?: number;
+  capacity?: number | null;
   isActive: boolean;
 
-  // Tracking
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,17 +21,26 @@ export interface ILocation extends Document {
 const LocationSchema = new Schema<ILocation>(
   {
     name: { type: String, required: true },
-    type: {
-      type: String,
-      enum: ["room", "building", "floor", "area", "other"],
-      default: "other",
-    },
+
+    /**
+     * DYNAMIC TYPE
+     * - remove enum
+     * - admin can create anything:
+     *   "building", "floor", "wing", "area", "glevel", "special"
+     * - or can leave it null
+     */
+    type: { type: String, default: null },
+
     code: { type: String, default: null },
     description: { type: String, default: null },
 
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
 
+    /**
+     * Hierarchical parent reference
+     * If null → top-level Location
+     */
     parentLocationId: {
       type: Schema.Types.ObjectId,
       ref: "Location",
@@ -46,15 +50,13 @@ const LocationSchema = new Schema<ILocation>(
     capacity: { type: Number, default: null },
     isActive: { type: Boolean, default: true },
   },
-  {
-    timestamps: true, // Adds createdAt and updatedAt automatically
-  }
+  { timestamps: true }
 );
 
 // Indexes for performance
-LocationSchema.index({ code: 1 }, { unique: true, sparse: true }); // sparse allows null values
 LocationSchema.index({ name: 1 });
-LocationSchema.index({ type: 1 });
+LocationSchema.index({ code: 1 }, { sparse: true });
+LocationSchema.index({ parentLocationId: 1 });
 LocationSchema.index({ isActive: 1 });
 
 export const Location: Model<ILocation> =

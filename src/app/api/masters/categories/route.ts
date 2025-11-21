@@ -37,11 +37,26 @@ export async function GET(req: NextRequest) {
     // Execute query with pagination
     const skip = (page - 1) * limit;
     const [categories, total] = await Promise.all([
-      Category.find(query)
-        .sort({ priority: -1, name: 1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
+      Category.aggregate([
+        { $match: query },
+        {
+          $lookup: {
+            from: "subcategories",
+            localField: "_id",
+            foreignField: "categoryId",
+            as: "subs",
+          },
+        },
+        {
+          $addFields: {
+            subCount: { $size: "$subs" },
+          },
+        },
+        { $project: { subs: 0 } },
+        { $sort: { priority: -1, name: 1 } },
+        { $skip: skip },
+        { $limit: limit },
+      ]),
       Category.countDocuments(query),
     ]);
 
