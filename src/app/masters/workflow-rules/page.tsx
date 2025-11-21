@@ -17,9 +17,11 @@ import {
   MapPin,
   Truck,
   Users,
-  Calendar
+  Calendar,
+  Eye
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import Link from "next/link";
 
 interface ICategory {
   _id: string;
@@ -210,13 +212,29 @@ export default function WorkflowRulesPage() {
             <h1 className="text-3xl font-bold text-emerald-950">Workflow Rules</h1>
             <p className="text-emerald-700/80 mt-1">Configure dynamic wizard flows for each category</p>
           </div>
-          <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-medium transition-all shadow-lg shadow-emerald-200 hover:shadow-emerald-300"
-          >
-            <Plus className="w-5 h-5" />
-            New Rule
-          </button>
+          <div className="flex gap-3">
+            <Link
+              href="/masters/workflow-rules/preview"
+              className="flex items-center gap-2 bg-white border-2 border-slate-300 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-xl font-medium transition-all"
+            >
+              <Eye className="w-5 h-5" />
+              Button View
+            </Link>
+            <Link
+              href="/masters/workflow-rules/preview-expanded"
+              className="flex items-center gap-2 bg-white border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50 px-4 py-2.5 rounded-xl font-medium transition-all"
+            >
+              <Eye className="w-5 h-5" />
+              Expanded View
+            </Link>
+            <button
+              onClick={() => handleOpenModal()}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-medium transition-all shadow-lg shadow-emerald-200 hover:shadow-emerald-300"
+            >
+              <Plus className="w-5 h-5" />
+              New Rule
+            </button>
+          </div>
         </div>
 
         {/* Search */}

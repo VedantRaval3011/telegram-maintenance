@@ -202,9 +202,9 @@ export async function resolveNextStep(session: IWizardSession): Promise<string> 
 /** --- Formatting helpers --- */
 
 export function formatWizardMessage(session: IWizardSession): string {
-  // Category display
-  const categoryDisplay = session.category ? toDisplayName(session.category) : "—";
-  const subCategoryDisplay = session.subCategoryId ? session.subCategoryId : "—"; // we'll show name when possible in webhook by populating session
+  // Use stored display names (populated when category/subcategory selected)
+  const categoryDisplay = (session as any).categoryDisplay || session.category || "—";
+  const subCategoryDisplay = (session as any).subCategoryDisplay || session.subCategoryId || "—";
 
   const priorityText = session.priority ? session.priority.toUpperCase() : "—";
 
@@ -213,7 +213,16 @@ export function formatWizardMessage(session: IWizardSession): string {
   const sourceLocation = session.sourceLocationPath && session.sourceLocationPath.length > 0 ? locationPathToString(session.sourceLocationPath) : "—";
   const targetLocation = session.targetLocationPath && session.targetLocationPath.length > 0 ? locationPathToString(session.targetLocationPath) : "—";
 
-  const agencyText = session.agencyRequired === null || session.agencyRequired === undefined ? "—" : session.agencyRequired ? `Yes${session.agencyDate ? ` (by ${session.agencyDate.toISOString().split("T")[0]})` : ""}` : "No";
+  // Agency - show name if provided
+  let agencyText = "—";
+  if (session.agencyRequired === true) {
+    agencyText = session.agencyName || "Yes";
+    if (session.agencyDate) {
+      agencyText += ` (Date: ${session.agencyDate.toISOString().split("T")[0]})`;
+    }
+  } else if (session.agencyRequired === false) {
+    agencyText = "No";
+  }
 
   const additionalLines: string[] = [];
   if (session.additionalFieldValues) {
@@ -222,7 +231,7 @@ export function formatWizardMessage(session: IWizardSession): string {
     }
   }
 
-  const photosText = session.photos && session.photos.length > 0 ? `📸 <b>Photos:</b> ${session.photos.length} attached` : "📸 <b>Photos:</b> None (Send an image to attach)";
+  const photosText = session.photos && session.photos.length > 0 ? `📸 <b>Photos:</b> ${session.photos.length} attached` : `📸 <b>Photos:</b> None`;
 
   return [
     `🛠 <b>Ticket Wizard</b>`,
@@ -237,8 +246,6 @@ export function formatWizardMessage(session: IWizardSession): string {
     `<b>Agency:</b> ${agencyText}`,
     additionalLines.length ? additionalLines.join("\n") : "",
     photosText,
-    ``,
-    (session.currentStep === "complete") ? "✅ All information complete!" : "⚠️ Please complete the selections below:"
   ].filter(Boolean).join("\n");
 }
 

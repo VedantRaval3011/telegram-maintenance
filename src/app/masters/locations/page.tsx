@@ -238,23 +238,23 @@ export default function LocationMasterPage() {
   if (!data) return <div className="p-10 text-center text-emerald-700 animate-pulse">Loading locations...</div>;
 
   return (
-    <div className="min-h-screen bg-[#ecfdf5] pb-20 font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-amber-950 via-stone-900 to-neutral-950 pb-20 font-sans">
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-extrabold text-emerald-950 tracking-tight">
+            <h1 className="text-4xl font-extrabold text-amber-100 tracking-tight">
               Locations
             </h1>
-            <p className="text-emerald-700/80 mt-2 text-sm font-medium">
+            <p className="text-amber-200/70 mt-2 text-sm font-medium">
               Manage your building hierarchy and spaces
             </p>
           </div>
           <button
             onClick={() => openCreateModal()}
-            className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-emerald-200/50 transition-all active:scale-95"
+            className="inline-flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-amber-900/50 transition-all active:scale-95"
           >
             <Plus className="w-5 h-5" />
             <span>Add Location</span>
@@ -262,13 +262,13 @@ export default function LocationMasterPage() {
         </div>
 
         {/* Filters & Search Toolbar */}
-        <div className="bg-white/60 backdrop-blur-md border border-emerald-100 rounded-2xl p-4 mb-8 flex flex-col md:flex-row gap-4 items-center shadow-sm">
+        <div className="bg-stone-800/50 backdrop-blur-md border border-amber-900/30 rounded-2xl p-4 mb-8 flex flex-col md:flex-row gap-4 items-center shadow-sm">
           <div className="relative flex-1 w-full group">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-400 group-focus-within:text-emerald-600 transition-colors">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-amber-400 group-focus-within:text-amber-300 transition-colors">
               <Search className="w-5 h-5" />
             </div>
             <input
-              className="pl-10 w-full bg-white/50 border border-emerald-100 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all py-3 text-sm text-emerald-900 placeholder-emerald-400/70"
+              className="pl-10 w-full bg-stone-900/50 border border-amber-900/30 rounded-xl focus:ring-2 focus:ring-amber-600/40 focus:border-amber-600 transition-all py-3 text-sm text-amber-100 placeholder-amber-700"
               placeholder="Search locations..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -277,7 +277,7 @@ export default function LocationMasterPage() {
           
           <div className="flex gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 no-scrollbar">
             <select
-              className="bg-white/50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-800 focus:ring-2 focus:ring-emerald-500/20 outline-none min-w-[140px] appearance-none cursor-pointer hover:bg-white/80 transition-colors"
+              className="bg-stone-900/50 border border-amber-900/30 rounded-xl px-4 py-3 text-sm text-amber-200 focus:ring-2 focus:ring-amber-600/40 outline-none min-w-[140px] appearance-none cursor-pointer hover:bg-stone-800/50 transition-colors"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >
@@ -300,7 +300,7 @@ export default function LocationMasterPage() {
             {(searchTerm || typeFilter || activeFilter) && (
               <button
                 onClick={() => { setSearchTerm(""); setTypeFilter(""); setActiveFilter(""); }}
-                className="text-sm text-emerald-600 hover:text-emerald-800 px-4 font-medium transition-colors whitespace-nowrap"
+                className="text-sm text-amber-300 hover:text-amber-100 px-4 font-medium transition-colors whitespace-nowrap"
               >
                 Clear Filters
               </button>
@@ -309,11 +309,11 @@ export default function LocationMasterPage() {
         </div>
 
         {/* Locations Table */}
-        <div className="bg-white/40 backdrop-blur-sm border border-emerald-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-stone-800/40 backdrop-blur-sm border border-amber-900/30 rounded-2xl shadow-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-emerald-50/50 border-b border-emerald-100 text-xs uppercase tracking-wider text-emerald-600 font-bold">
+                <tr className="bg-amber-900/20 border-b border-amber-800/30 text-xs uppercase tracking-wider text-amber-200 font-bold">
                   <th className="px-6 py-5">Location Name</th>
                   <th className="px-6 py-5 hidden md:table-cell">Code</th>
                   <th className="px-6 py-5 hidden sm:table-cell">Type</th>
@@ -322,10 +322,10 @@ export default function LocationMasterPage() {
                   <th className="px-6 py-5 text-right hidden md:table-cell">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-emerald-50">
+              <tbody className="divide-y divide-amber-900/20">
                 {locations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center text-emerald-400 italic">
+                    <td colSpan={6} className="px-6 py-16 text-center text-amber-400/70 italic">
                       No locations found. Try adjusting your filters.
                     </td>
                   </tr>
@@ -339,7 +339,7 @@ export default function LocationMasterPage() {
                         key={loc._id} 
                         onContextMenu={(e) => handleContextMenu(e, loc)}
                         className={`group transition-all duration-200 ${
-                          isMobileSelected ? "bg-emerald-100/50" : "hover:bg-emerald-50/60"
+                          isMobileSelected ? "bg-amber-900/30" : "hover:bg-stone-800/50"
                         }`}
                       >
                         {/* Name Column - Clickable on Mobile */}
@@ -350,16 +350,16 @@ export default function LocationMasterPage() {
                           <div className="flex flex-col gap-2">
                             <div className="flex items-center" style={{ paddingLeft: `${depth * 20}px` }}>
                               {depth > 0 && (
-                                <span className="text-emerald-300 mr-2">
+                                <span className="text-amber-500/70 mr-2">
                                   <CornerDownRight className="w-4 h-4" />
                                 </span>
                               )}
                               <div className="flex flex-col">
-                                <span className={`font-medium text-base ${depth === 0 ? 'text-emerald-950' : 'text-emerald-800'}`}>
+                                <span className={`font-medium text-base ${depth === 0 ? 'text-amber-100' : 'text-amber-200/90'}`}>
                                   {loc.name}
                                 </span>
                                 {loc.description && (
-                                  <span className="text-[11px] text-emerald-500/80 truncate max-w-[200px]">
+                                  <span className="text-[11px] text-amber-300/60 truncate max-w-[200px]">
                                     {loc.description}
                                   </span>
                                 )}
@@ -371,7 +371,7 @@ export default function LocationMasterPage() {
                               <div className="md:hidden flex items-center gap-3 mt-3 pl-2 animate-in slide-in-from-top-2 duration-200">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); openEditModal(loc); }}
-                                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium"
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-900/30 text-blue-300 rounded-lg text-xs font-medium border border-blue-700/30"
                                 >
                                   <Edit2 className="w-3 h-3" /> Edit
                                 </button>

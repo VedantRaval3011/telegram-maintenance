@@ -10,6 +10,8 @@ export interface IWorkflowRule extends Document {
   requiresTargetLocation: boolean; // transfer → true
 
   requiresAgency: boolean; // paint, civil → true
+  agencyType: "boolean" | "name"; // boolean = Yes/No, name = Select from list
+  agencyList: string[]; // List of agency names (when agencyType = "name")
   requiresAgencyDate: boolean; // if requiresAgency === true
 
   // Additional dynamic fields
@@ -35,6 +37,8 @@ const WorkflowRuleSchema = new Schema<IWorkflowRule>(
     requiresTargetLocation: { type: Boolean, default: false },
 
     requiresAgency: { type: Boolean, default: false },
+    agencyType: { type: String, enum: ["boolean", "name"], default: "boolean" },
+    agencyList: { type: [String], default: [] },
     requiresAgencyDate: { type: Boolean, default: false },
 
     additionalFields: [

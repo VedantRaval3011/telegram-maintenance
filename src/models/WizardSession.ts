@@ -33,6 +33,7 @@ export interface IWizardSession extends Document {
 
   /** Agency Logic */
   agencyRequired: boolean | null;
+  agencyName: string | null;
   agencyDate: Date | null;
 
   /** Dynamic Additional Fields */
@@ -115,6 +116,7 @@ const WizardSessionSchema = new Schema<IWizardSession>(
 
     /** Agency fields */
     agencyRequired: { type: Boolean, default: null },
+    agencyName: { type: String, default: null },
     agencyDate: { type: Date, default: null },
 
     /** Additional dynamic fields */

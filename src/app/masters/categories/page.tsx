@@ -200,25 +200,25 @@ export default function CategoryMasterPage() {
   const categories: Category[] = data.data || [];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-amber-950 via-stone-900 to-neutral-950 p-6">
       {/* NAVBAR ADDED */}
       <Navbar />
 
       <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Category Master</h1>
-          <p className="text-gray-600">Manage maintenance categories and keywords</p>
+          <h1 className="text-3xl font-bold mb-2 text-amber-100">Category Master</h1>
+          <p className="text-amber-200/70">Manage maintenance categories and keywords</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={handleSeed}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            className="px-4 py-2 bg-emerald-700 text-white rounded-md hover:bg-emerald-600 transition-colors"
           >
             🌱 Seed Defaults
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-500 transition-colors"
           >
             + Create Category
           </button>
@@ -226,10 +226,10 @@ export default function CategoryMasterPage() {
       </div>
 
       {/* Filters */}
-      <div className="card-soft mb-6">
+      <div className="bg-stone-800/50 backdrop-blur-sm border border-amber-900/30 rounded-xl p-6 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-amber-200 mb-1">
               Search
             </label>
             <input
@@ -237,7 +237,7 @@ export default function CategoryMasterPage() {
               placeholder="Name, description..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="input-base"
+              className="w-full px-3 py-2 bg-stone-900/50 border border-amber-900/30 rounded-md text-amber-100 placeholder-amber-700 focus:ring-2 focus:ring-amber-600 focus:border-transparent"
             />
           </div>
 
@@ -262,7 +262,7 @@ export default function CategoryMasterPage() {
                 setSearch("");
                 setActiveFilter("");
               }}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              className="px-4 py-2 text-amber-200 bg-stone-800 rounded-md hover:bg-stone-700 transition-colors"
             >
               Clear Filters
             </button>
@@ -275,17 +275,17 @@ export default function CategoryMasterPage() {
         {categories.map((category) => (
           <div
             key={category._id}
-            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
+            className="bg-gradient-to-br from-stone-800 to-stone-900 rounded-lg shadow-xl border border-amber-900/20 p-6 hover:shadow-2xl hover:border-amber-700/40 transition-all"
             style={{ borderLeft: `4px solid ${category.color}` }}
           >
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-3xl">{category.icon}</span>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">
+                  <h3 className="text-lg font-bold text-amber-100">
                     {category.displayName}
                   </h3>
-                  <p className="text-sm text-gray-500">{category.name}</p>
+                  <p className="text-sm text-amber-300/70">{category.name}</p>
                 </div>
               </div>
               <span
@@ -300,28 +300,28 @@ export default function CategoryMasterPage() {
             </div>
 
             {category.description && (
-              <p className="text-sm text-gray-600 mb-3">{category.description}</p>
+              <p className="text-sm text-amber-200/80 mb-3">{category.description}</p>
             )}
 
             <div className="mb-3">
-              <div className="text-xs font-medium text-gray-500 mb-1">Keywords:</div>
+              <div className="text-xs font-medium text-amber-300 mb-1">Keywords:</div>
               <div className="flex flex-wrap gap-1">
                 {category.keywords.length > 0 ? (
                   category.keywords.map((keyword, idx) => (
                     <span
                       key={idx}
-                      className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded"
+                      className="px-2 py-1 text-xs bg-amber-900/30 text-amber-200 rounded border border-amber-700/30"
                     >
                       {keyword}
                     </span>
                   ))
                 ) : (
-                  <span className="text-xs text-gray-400">No keywords</span>
+                  <span className="text-xs text-amber-500/50">No keywords</span>
                 )}
               </div>
             </div>
 
-            <div className="flex justify-between items-center text-xs text-gray-500 mb-3">
+            <div className="flex justify-between items-center text-xs text-amber-300/70 mb-3">
               <span>Priority: {category.priority}</span>
               <span>
                 {new Date(category.createdAt).toLocaleDateString()}
@@ -338,7 +338,7 @@ export default function CategoryMasterPage() {
                   setEditingSub(null);
                   setSubForm({ name: "", icon: "", description: "", isActive: true });
                 }}
-                className="w-full px-3 py-2 text-sm bg-purple-50 text-purple-600 rounded hover:bg-purple-100"
+                className="w-full px-3 py-2 text-sm bg-purple-900/30 text-purple-300 rounded hover:bg-purple-800/40 border border-purple-700/30 transition-colors"
               >
                 🧩 Manage Subcategories ({category.subCount || 0})
               </button>
@@ -347,13 +347,13 @@ export default function CategoryMasterPage() {
             <div className="flex gap-2 mt-2">
               <button
                 onClick={() => openEditModal(category)}
-                className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                className="flex-1 px-3 py-2 text-sm bg-blue-900/30 text-blue-300 rounded hover:bg-blue-800/40 border border-blue-700/30 transition-colors"
               >
                 Edit
               </button>
               <button
                 onClick={() => handleDelete(category._id)}
-                className="flex-1 px-3 py-2 text-sm bg-red-50 text-red-600 rounded hover:bg-red-100"
+                className="flex-1 px-3 py-2 text-sm bg-red-900/30 text-red-300 rounded hover:bg-red-800/40 border border-red-700/30 transition-colors"
               >
                 Delete
               </button>
@@ -363,11 +363,11 @@ export default function CategoryMasterPage() {
       </div>
 
       {categories.length === 0 && (
-        <div className="text-center py-12 bg-white rounded-lg shadow">
-          <p className="text-gray-500 mb-4">No categories found</p>
+        <div className="text-center py-12 bg-stone-800/50 border border-amber-900/30 rounded-lg">
+          <p className="text-amber-300/70 mb-4">No categories found</p>
           <button
             onClick={handleSeed}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            className="px-4 py-2 bg-emerald-700 text-white rounded-md hover:bg-emerald-600 transition-colors"
           >
             🌱 Seed Default Categories
           </button>
