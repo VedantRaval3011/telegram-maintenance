@@ -271,43 +271,54 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
       break;
     }
 
-    case "location":
-    case "source_location":
-    case "target_location": {
-      // Get current parent from session
-      let parentId = null;
-      if (field.type === "location") {
-        const path = session.locationPath || [];
-        parentId = path.length > 0 ? path[path.length - 1].id : null;
-      } else if (field.type === "source_location") {
-        const path = session.sourceLocationPath || [];
-        parentId = path.length > 0 ? path[path.length - 1].id : null;
-      } else {
-        const path = session.targetLocationPath || [];
-        parentId = path.length > 0 ? path[path.length - 1].id : null;
-      }
+case "location":
+case "source_location":
+case "target_location": {
+  // ✅ FIX: Get current parent from session - use the LAST item in path as parent
+  let parentId = null;
+  let currentPath = [];
+  
+  if (field.type === "location") {
+    currentPath = session.locationPath || [];
+  } else if (field.type === "source_location") {
+    currentPath = session.sourceLocationPath || [];
+  } else {
+    currentPath = session.targetLocationPath || [];
+  }
+  
+  // ✅ CRITICAL: If location is NOT complete, use last item in path as parent
+  // This allows drilling down into hierarchy
+  const isComplete = field.type === "location" 
+    ? session.locationComplete 
+    : field.type === "source_location" 
+    ? session.sourceLocationComplete 
+    : session.targetLocationComplete;
+  
+  if (!isComplete && currentPath.length > 0) {
+    parentId = currentPath[currentPath.length - 1].id;
+  }
 
-      const locations = await Location.find({
-        parentLocationId: parentId,
-        isActive: true
-      }).sort({ name: 1 }).lean();
+  const locations = await Location.find({
+    parentLocationId: parentId,
+    isActive: true
+  }).sort({ name: 1 }).lean();
 
-      for (const loc of locations) {
-        keyboard.push([{
-          text: loc.name,
-          callback_data: `select_${botMessageId}_${field.type}_${loc._id}`
-        }]);
-      }
+  for (const loc of locations) {
+    keyboard.push([{
+      text: loc.name,
+      callback_data: `select_${botMessageId}_${field.type}_${loc._id}`
+    }]);
+  }
 
-      // Back button if we're not at root
-      if (parentId) {
-        keyboard.push([{
-          text: "⬅️ Back",
-          callback_data: `back_${botMessageId}_${field.type}`
-        }]);
-      }
-      break;
-    }
+  // Back button if we're not at root
+  if (currentPath.length > 0) {
+    keyboard.push([{
+      text: "⬅️ Back",
+      callback_data: `back_${botMessageId}_${field.type}`
+    }]);
+  }
+  break;
+}
 
     case "agency": {
       const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
