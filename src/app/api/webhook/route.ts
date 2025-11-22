@@ -1,3 +1,4 @@
+// app/api/webhook/dynamic/route.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
@@ -13,29 +14,20 @@ import {
   answerCallbackQuery,
 } from "@/lib/telegram";
 
-import {
-  createWizardSession,
-  getWizardSession,
-  updateWizardSession,
-  deleteWizardSession,
-  isWizardComplete,
-  // formatWizardMessage, // Replaced by local enhanced version
-  buildWizardKeyboard,
-  buildCategoryKeyboard,
-  buildSubCategoryKeyboard,
-  buildPriorityKeyboard,
-  buildLocationChildrenKeyboard,
-  buildAgencyKeyboard,
-  buildAdditionalFieldsKeyboard,
-  createTicketFromWizard,
-  updateWizardUI,
-  resolveNextStep,
-  appendLocationNodeToPath,
-} from "@/lib/wizardHelpers";
-
 /**
- * Telegram update shape (partial)
+ * DYNAMIC WORKFLOW-CONTROLLED TELEGRAM WEBHOOK
+ * 
+ * This webhook is 100% controlled by WorkflowRule configuration.
+ * All fields, their order, and requirements come from the database.
+ * 
+ * Key Features:
+ * - Single persistent message for entire wizard
+ * - All fields shown at once (completed ✓, current expanded, remaining listed)
+ * - Auto-advances to next required field after each selection
+ * - Quick jump navigation between sections
+ * - Submit only when all required fields complete
  */
+
 interface TelegramUpdate {
   update_id?: number;
   message?: any;
@@ -43,285 +35,578 @@ interface TelegramUpdate {
   callback_query?: any;
 }
 
-/** Prefer caption (for photos), fallback to text */
-function extractTextFromMessage(msg: any): string {
-  if (!msg) return "";
-  if (typeof msg.caption === "string" && msg.caption.trim().length)
-    return msg.caption.trim();
-  if (typeof msg.text === "string" && msg.text.trim().length)
-    return msg.text.trim();
-  return "";
+interface WizardField {
+  key: string;
+  label: string;
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "additional";
+  required: boolean;
+  completed: boolean;
+  value?: any;
+  additionalFieldKey?: string; // For additional fields
 }
 
 /**
- * Generates the enhanced UI message string for Telegram
- * Matches the "Expanded Wizard Preview" design:
- * - Header
- * - Completed Fields (with checkmarks)
- * - Divider
- * - (The Active Section Prompt is appended by the caller)
+ * Build the complete field list based on WorkflowRule
  */
-async function formatEnhancedWizardMessage(session: any): Promise<string> {
-  const { description } = session;
+async function buildFieldsFromRule(categoryId: string | null): Promise<WizardField[]> {
+  const fields: WizardField[] = [];
+
+  // Always include category and priority
+  fields.push({
+    key: "category",
+    label: "📂 Category",
+    type: "category",
+    required: true,
+    completed: false,
+  });
+
+  fields.push({
+    key: "priority",
+    label: "⚡ Priority",
+    type: "priority",
+    required: true,
+    completed: false,
+  });
+
+  // If category selected, load workflow rule
+  if (categoryId) {
+    const rule = await WorkflowRule.findOne({ categoryId }).lean();
+    
+    if (rule) {
+      // Subcategory
+      if (rule.hasSubcategories) {
+        fields.push({
+          key: "subcategory",
+          label: "🧩 Subcategory",
+          type: "subcategory",
+          required: true,
+          completed: false,
+        });
+      }
+
+      // Location(s)
+      if (rule.requiresLocation) {
+        fields.push({
+          key: "location",
+          label: "📍 Location",
+          type: "location",
+          required: true,
+          completed: false,
+        });
+      }
+
+      if (rule.requiresSourceLocation) {
+        fields.push({
+          key: "source_location",
+          label: "📍 Source Location (From)",
+          type: "source_location",
+          required: true,
+          completed: false,
+        });
+      }
+
+      if (rule.requiresTargetLocation) {
+        fields.push({
+          key: "target_location",
+          label: "📍 Target Location (To)",
+          type: "target_location",
+          required: true,
+          completed: false,
+        });
+      }
+
+      // Agency
+      if (rule.requiresAgency) {
+        fields.push({
+          key: "agency",
+          label: "🧾 Agency/Contractor",
+          type: "agency",
+          required: true,
+          completed: false,
+        });
+
+        if (rule.requiresAgencyDate) {
+          fields.push({
+            key: "agency_date",
+            label: "📅 Agency Date",
+            type: "agency_date",
+            required: true,
+            completed: false,
+          });
+        }
+      }
+
+      // Additional fields
+      if (rule.additionalFields && rule.additionalFields.length > 0) {
+        for (const addField of rule.additionalFields) {
+          fields.push({
+            key: `additional_${addField.key}`,
+            label: `📝 ${addField.label}`,
+            type: "additional",
+            required: true,
+            completed: false,
+            additionalFieldKey: addField.key,
+          });
+        }
+      }
+    }
+  }
+
+  return fields;
+}
+
+/**
+ * Mark fields as completed based on session data
+ */
+function updateFieldCompletion(fields: WizardField[], session: any): WizardField[] {
+  return fields.map(field => {
+    let completed = false;
+    let value: any = undefined;
+
+    switch (field.type) {
+      case "category":
+        completed = !!session.category;
+        if (completed) {
+          value = session.categoryDisplay || session.category;
+        }
+        break;
+      
+      case "priority":
+        completed = !!session.priority;
+        value = session.priority;
+        break;
+      
+      case "subcategory":
+        completed = !!session.subCategoryId;
+        value = session.subCategoryDisplay || "Selected";
+        break;
+      
+      case "location":
+        completed = session.locationComplete === true;
+        value = session.locationPath?.map((n: any) => n.name).join(" → ") || "Selected";
+        break;
+      
+      case "source_location":
+        completed = session.sourceLocationComplete === true;
+        value = session.sourceLocationPath?.map((n: any) => n.name).join(" → ") || "Selected";
+        break;
+      
+      case "target_location":
+        completed = session.targetLocationComplete === true;
+        value = session.targetLocationPath?.map((n: any) => n.name).join(" → ") || "Selected";
+        break;
+      
+      case "agency":
+        completed = session.agencyRequired !== undefined;
+        value = session.agencyRequired ? (session.agencyName || "Yes") : "No";
+        break;
+      
+      case "agency_date":
+        completed = !!session.agencyDate;
+        value = session.agencyDate ? new Date(session.agencyDate).toLocaleDateString() : undefined;
+        break;
+      
+      case "additional":
+        if (field.additionalFieldKey) {
+          const fieldValue = session.additionalFieldValues?.[field.additionalFieldKey];
+          completed = fieldValue !== undefined && fieldValue !== null && fieldValue !== "";
+          value = fieldValue;
+        }
+        break;
+    }
+
+    return { ...field, completed, value };
+  });
+}
+
+/**
+ * Find the first incomplete required field
+ */
+function findCurrentField(fields: WizardField[]): WizardField | null {
+  return fields.find(f => f.required && !f.completed) || null;
+}
+
+/**
+ * Build keyboard for a specific field
+ */
+async function buildFieldKeyboard(field: WizardField, session: any, botMessageId: number): Promise<any[][]> {
+  const keyboard: any[][] = [];
+
+  switch (field.type) {
+    case "category": {
+      const categories = await Category.find({ isActive: true }).sort({ displayName: 1 }).lean();
+      for (const cat of categories) {
+        keyboard.push([{
+          text: cat.displayName,
+          callback_data: `select_${botMessageId}_category_${cat._id}`
+        }]);
+      }
+      break;
+    }
+
+    case "priority": {
+      keyboard.push([
+        { text: "🔴 High", callback_data: `select_${botMessageId}_priority_high` },
+        { text: "🟡 Medium", callback_data: `select_${botMessageId}_priority_medium` },
+        { text: "🟢 Low", callback_data: `select_${botMessageId}_priority_low` },
+      ]);
+      break;
+    }
+
+    case "subcategory": {
+      if (session.category) {
+        const subcats = await SubCategory.find({ categoryId: session.category, isActive: true }).sort({ name: 1 }).lean();
+        for (const sub of subcats) {
+          keyboard.push([{
+            text: sub.name,
+            callback_data: `select_${botMessageId}_subcategory_${sub._id}`
+          }]);
+        }
+      }
+      break;
+    }
+
+    case "location":
+    case "source_location":
+    case "target_location": {
+      // Get current parent from session
+      let parentId = null;
+      if (field.type === "location") {
+        const path = session.locationPath || [];
+        parentId = path.length > 0 ? path[path.length - 1].id : null;
+      } else if (field.type === "source_location") {
+        const path = session.sourceLocationPath || [];
+        parentId = path.length > 0 ? path[path.length - 1].id : null;
+      } else {
+        const path = session.targetLocationPath || [];
+        parentId = path.length > 0 ? path[path.length - 1].id : null;
+      }
+
+      const locations = await Location.find({
+        parentLocationId: parentId,
+        isActive: true
+      }).sort({ name: 1 }).lean();
+
+      for (const loc of locations) {
+        keyboard.push([{
+          text: loc.name,
+          callback_data: `select_${botMessageId}_${field.type}_${loc._id}`
+        }]);
+      }
+
+      // Back button if we're not at root
+      if (parentId) {
+        keyboard.push([{
+          text: "⬅️ Back",
+          callback_data: `back_${botMessageId}_${field.type}`
+        }]);
+      }
+      break;
+    }
+
+    case "agency": {
+      const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
+      const agencies = rule?.additionalFields?.find(f => f.key === "agency")?.options || [];
+      
+      for (const agency of agencies) {
+        keyboard.push([{
+          text: agency,
+          callback_data: `select_${botMessageId}_agency_${agency}`
+        }]);
+      }
+      
+      keyboard.push([{
+        text: "❌ No Agency",
+        callback_data: `select_${botMessageId}_agency_no`
+      }]);
+      break;
+    }
+
+    case "additional": {
+      if (field.additionalFieldKey) {
+        const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
+        const addField = rule?.additionalFields?.find(f => f.key === field.additionalFieldKey);
+        
+        if (addField?.type === "select" && addField.options) {
+          for (const option of addField.options) {
+            keyboard.push([{
+              text: option,
+              callback_data: `select_${botMessageId}_additional_${field.additionalFieldKey}_${option}`
+            }]);
+          }
+        } else {
+          // For text/number/date/photo, show manual entry button
+          keyboard.push([{
+            text: "✍️ Enter Value",
+            callback_data: `input_${botMessageId}_additional_${field.additionalFieldKey}`
+          }]);
+        }
+      }
+      break;
+    }
+  }
+
+  return keyboard;
+}
+
+/**
+ * Format the complete wizard message
+ */
+async function formatWizardMessage(session: any, fields: WizardField[], currentField: WizardField | null): Promise<string> {
+  let message = "🛠 <b>Ticket Wizard</b>\n";
+  message += `📝 ${session.description || "New Ticket"}\n\n`;
+
+  // Completed fields section
+  const completedFields = fields.filter(f => f.completed);
+  if (completedFields.length > 0) {
+    message += "✅ <b>Completed:</b>\n";
+    for (const field of completedFields) {
+      message += `  ${field.label}: ${field.value}\n`;
+    }
+    message += "\n";
+  }
+
+  // Current field section
+  if (currentField) {
+    message += `🔵 <b>Current: ${currentField.label}</b>\n`;
+    message += "👇 Select from options below\n\n";
+  }
+
+  // Remaining fields section
+  const remainingFields = fields.filter(f => f.required && !f.completed && f.key !== currentField?.key);
+  if (remainingFields.length > 0) {
+    message += "⏳ <b>Remaining:</b>\n";
+    for (const field of remainingFields) {
+      message += `  ${field.label}\n`;
+    }
+    message += "\n";
+  }
+
+  // Progress indicator
+  const totalRequired = fields.filter(f => f.required).length;
+  const completed = fields.filter(f => f.required && f.completed).length;
+  message += `📊 Progress: ${completed}/${totalRequired}\n`;
+
+  // Photos
+  if (session.photos && session.photos.length > 0) {
+    message += `📸 Photos: ${session.photos.length} attached\n`;
+  }
+
+  return message;
+}
+
+/**
+ * Build navigation keyboard (quick jump + submit)
+ */
+function buildNavigationKeyboard(fields: WizardField[], botMessageId: number): any[][] {
+  const keyboard: any[][] = [];
   
-  // 1. Header
-  let text = `🛠 <b>Ticket Wizard</b>\n📝 <b>Issue:</b> ${description || "No description"}`;
-
-  // 2. Completed Fields Section
-  const completed: string[] = [];
-
-  // -- Category
-  if (session.category) {
-    let catDisplay = session.category;
-    // Attempt to resolve name if it looks like a MongoDB ObjectId
-    if (typeof catDisplay === 'string' && catDisplay.match(/^[0-9a-fA-F]{24}$/)) {
-      try {
-        const c = await Category.findById(catDisplay).lean();
-        if (c) catDisplay = c.displayName || c.name;
-      } catch (e) {}
+  // Add jump buttons for completed fields (max 2 per row)
+  const completedFields = fields.filter(f => f.completed);
+  for (let i = 0; i < completedFields.length; i += 2) {
+    const row: any[] = [];
+    row.push({
+      text: `↩️ ${completedFields[i].label.substring(0, 15)}`,
+      callback_data: `jump_${botMessageId}_${completedFields[i].key}`
+    });
+    if (i + 1 < completedFields.length) {
+      row.push({
+        text: `↩️ ${completedFields[i + 1].label.substring(0, 15)}`,
+        callback_data: `jump_${botMessageId}_${completedFields[i + 1].key}`
+      });
     }
-    // Capitalize or format if needed
-    completed.push(`Category: <b>${catDisplay}</b>`);
+    keyboard.push(row);
   }
 
-  // -- Priority
-  if (session.priority) {
-    const pMap: Record<string, string> = { 
-      low: "🟢 LOW", 
-      medium: "🟡 MEDIUM", 
-      high: "🔴 HIGH" 
-    };
-    completed.push(`Priority: <b>${pMap[session.priority] || session.priority}</b>`);
+  // Submit button (only if all required fields completed)
+  const allComplete = fields.filter(f => f.required).every(f => f.completed);
+  if (allComplete) {
+    keyboard.push([{
+      text: "✅ Submit Ticket",
+      callback_data: `submit_${botMessageId}`
+    }]);
   }
 
-  // -- Subcategory
-  if (session.subCategoryId) {
-    try {
-      const s = await SubCategory.findById(session.subCategoryId).lean();
-      if (s) completed.push(`Subcategory: <b>${s.name}</b>`);
-    } catch (e) {}
-  }
+  // Cancel button
+  keyboard.push([{
+    text: "❌ Cancel",
+    callback_data: `cancel_${botMessageId}`
+  }]);
 
-  // -- Location
-  if (session.locationComplete || session.customLocation) {
-    if (session.customLocation) {
-      completed.push(`Location: <b>${session.customLocation}</b>`);
-    } else if (session.locationPath && session.locationPath.length > 0) {
-      const pathStr = session.locationPath.map((n: any) => n.name).join(" › ");
-      completed.push(`Location: <b>${pathStr}</b>`);
-    }
-  }
-
-  // -- Source/Target (if applicable)
-  if (session.sourceLocationComplete && session.sourceLocationPath?.length) {
-    const pathStr = session.sourceLocationPath.map((n: any) => n.name).join(" › ");
-    completed.push(`Source: <b>${pathStr}</b>`);
-  }
-  if (session.targetLocationComplete && session.targetLocationPath?.length) {
-    const pathStr = session.targetLocationPath.map((n: any) => n.name).join(" › ");
-    completed.push(`Target: <b>${pathStr}</b>`);
-  }
-
-  // -- Agency
-  if (session.agencyRequired === true) {
-    completed.push(`Agency: <b>Yes</b>`);
-    if (session.agencyDate) {
-      try {
-        const d = new Date(session.agencyDate);
-        completed.push(`Agency Date: <b>${d.toISOString().split('T')[0]}</b>`);
-      } catch (e) {}
-    }
-  } else if (session.agencyRequired === false) {
-    completed.push(`Agency: <b>No</b>`);
-  }
-
-  // -- Additional Fields
-  if (session.additionalFieldValues) {
-    for(const k in session.additionalFieldValues) {
-      completed.push(`${k}: <b>${session.additionalFieldValues[k]}</b>`);
-    }
-  }
-
-  // -- Render Completed Section
-  if (completed.length > 0) {
-    text += `\n\n━━━━━━━━━━━━━━━━\n✅ <b>COMPLETED FIELDS</b>\n`;
-    text += completed.map(line => `• ${line} ✅`).join("\n");
-  }
-
-  return text;
+  return keyboard;
 }
 
 /**
- * Helper: show a step UI based on the resolved step key
- * - session: the up-to-date session mongoose doc (not lean)
- * - chatId, messageId: where to edit the wizard message
+ * Refresh the wizard UI
  */
-async function showStepUI(session: any, chatId: number, messageId: number) {
-  const next = await resolveNextStep(session);
-  session.currentStep = next;
-  // Ensure session is saved with new step
-  await session.save?.() ?? await updateWizardSession(session.botMessageId, { currentStep: next });
+async function refreshWizardUI(session: any, chatId: number, botMessageId: number) {
+  const fields = await buildFieldsFromRule(session.category);
+  const updatedFields = updateFieldCompletion(fields, session);
+  const currentField = findCurrentField(updatedFields);
 
-  // Generate the base message with completed fields
-  const baseMessage = await formatEnhancedWizardMessage(session);
+  const message = await formatWizardMessage(session, updatedFields, currentField);
   
-  // Common Divider for the Active Section
-  const sectionDivider = `\n\n━━━━━━━━━━━━━━━━\n`;
-
-  if (next === "category") {
-    const keyboard = await buildCategoryKeyboard(session.botMessageId);
-    const prompt = `${sectionDivider}⬇️ <b>CATEGORY</b> (Select One)`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
+  let keyboard: any[][] = [];
+  
+  // If there's a current field, show its options
+  if (currentField) {
+    const fieldKeyboard = await buildFieldKeyboard(currentField, session, botMessageId);
+    keyboard = [...fieldKeyboard];
   }
+  
+  // Add navigation keyboard
+  const navKeyboard = buildNavigationKeyboard(updatedFields, botMessageId);
+  keyboard = [...keyboard, ...navKeyboard];
 
-  if (next === "priority") {
-    const keyboard = buildPriorityKeyboard(session.botMessageId);
-    const prompt = `${sectionDivider}⬇️ <b>PRIORITY</b> (Select One)`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  if (next === "subcategory") {
-    // session.category contains categoryId (string)
-    const keyboard = await buildSubCategoryKeyboard(session.botMessageId, session.category);
-    const prompt = `${sectionDivider}⬇️ <b>SUBCATEGORY</b> (Select One)`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  if (next === "location") {
-    const keyboard = await buildLocationChildrenKeyboard(session.botMessageId, null);
-    const prompt = `${sectionDivider}⬇️ <b>LOCATION</b> (Select One)`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  if (next === "source_location") {
-    const keyboard = await buildLocationChildrenKeyboard(session.botMessageId, null);
-    const prompt = `${sectionDivider}⬇️ <b>SOURCE LOCATION</b> (From)`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  if (next === "target_location") {
-    const keyboard = await buildLocationChildrenKeyboard(session.botMessageId, null);
-    const prompt = `${sectionDivider}⬇️ <b>TARGET LOCATION</b> (To)`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  if (next === "agency") {
-    const keyboard = buildAgencyKeyboard(session.botMessageId);
-    const prompt = `${sectionDivider}⬇️ <b>AGENCY REQUIRED?</b>`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  if (next === "agency_date") {
-    const prompt = `${sectionDivider}⬇️ <b>AGENCY DATE</b>\n📅 Please type the agency date (YYYY-MM-DD):`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, []);
-    await updateWizardSession(session.botMessageId, { waitingForInput: true, inputField: "agency_date" });
-    return;
-  }
-
-  if (next === "additional_fields") {
-    const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
-    const fields = rule?.additionalFields || [];
-    const keyboard = buildAdditionalFieldsKeyboard(session.botMessageId, fields);
-    const prompt = `${sectionDivider}⬇️ <b>ADDITIONAL DETAILS</b>`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  if (next === "complete") {
-    // Show final keyboard (create ticket)
-    const keyboard = await buildWizardKeyboard(session);
-    const prompt = `${sectionDivider}✅ <b>ALL SET!</b>\nReview details above and click Submit.`;
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    return;
-  }
-
-  // Fallback
-  const keyboard = await buildWizardKeyboard(session);
-  await editMessageText(chatId, messageId, baseMessage, keyboard);
+  await editMessageText(chatId, botMessageId, message, keyboard);
 }
 
 /**
- * Handle loc child click:
- * - append node to relevant path (location / source / target depending on session.currentStep)
- * - check if this location node has children; if yes show children of picked node
- * - if no children: mark pathComplete for that kind and move to next step
+ * Handle location selection with hierarchical navigation
  */
-async function handleLocationChildClick(session: any, chatId: number, messageId: number, pickedLocationId: string, callbackQueryId: string) {
-  const picked = await Location.findById(pickedLocationId).lean();
-  if (!picked) {
-    await answerCallbackQuery(callbackQueryId, "Location not found.");
-    return;
-  }
+async function handleLocationSelection(
+  session: any,
+  locationId: string,
+  fieldType: "location" | "source_location" | "target_location",
+  botMessageId: number
+) {
+  const location = await Location.findById(locationId).lean();
+  if (!location) return false;
 
-  const step = session.currentStep || (await resolveNextStep(session));
+  // Determine which path to update
   let pathField = "locationPath";
   let completeField = "locationComplete";
-  
-  if (step === "source_location") {
+  if (fieldType === "source_location") {
     pathField = "sourceLocationPath";
     completeField = "sourceLocationComplete";
-  } else if (step === "target_location") {
+  } else if (fieldType === "target_location") {
     pathField = "targetLocationPath";
     completeField = "targetLocationComplete";
   }
 
-  const node = { id: String(picked._id), name: picked.name };
-  const currentPath = (session as any)[pathField] || [];
-  const newPath = appendLocationNodeToPath(currentPath, node);
+  // Append to path
+  const currentPath = session[pathField] || [];
+  const newPath = [...currentPath, { id: String(location._id), name: location.name }];
 
-  const childrenCount = await Location.countDocuments({ parentLocationId: picked._id });
+  // Check if has children
+  const childCount = await Location.countDocuments({ parentLocationId: location._id, isActive: true });
 
-  if (childrenCount && childrenCount > 0) {
-    // update session: set path and selectedLocationId
-    await updateWizardSession(session.botMessageId, {
-      [pathField]: newPath,
-      selectedLocationId: String(picked._id),
-    });
-    const updatedSession = await getWizardSession(session.botMessageId);
-    
-    // Show children of this node
-    const keyboard = await buildLocationChildrenKeyboard(session.botMessageId, String(picked._id));
-    const baseMessage = await formatEnhancedWizardMessage(updatedSession as any);
-    const prompt = `\n\n━━━━━━━━━━━━━━━━\n⬇️ <b>LOCATION: ${picked.name}</b>\nSelect specific area:`;
-    
-    await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-    await answerCallbackQuery(callbackQueryId, "");
-    return;
+  if (childCount > 0) {
+    // Has children, update path but don't mark complete
+    await WizardSession.findOneAndUpdate(
+      { botMessageId },
+      { [pathField]: newPath }
+    );
   } else {
-    // leaf node: mark complete
-    await updateWizardSession(session.botMessageId, {
-      [pathField]: newPath,
-      [completeField]: true,
-    });
-    const updatedSession = await getWizardSession(session.botMessageId);
-    // Move to next step
-    await showStepUI(updatedSession, chatId, messageId);
-    await answerCallbackQuery(callbackQueryId, `Selected: ${picked.name}`);
-    return;
+    // Leaf node, mark complete
+    await WizardSession.findOneAndUpdate(
+      { botMessageId },
+      { 
+        [pathField]: newPath,
+        [completeField]: true
+      }
+    );
+  }
+
+  return true;
+}
+
+/**
+ * Handle location back navigation
+ */
+async function handleLocationBack(
+  session: any,
+  fieldType: "location" | "source_location" | "target_location",
+  botMessageId: number
+) {
+  let pathField = "locationPath";
+  let completeField = "locationComplete";
+  if (fieldType === "source_location") {
+    pathField = "sourceLocationPath";
+    completeField = "sourceLocationComplete";
+  } else if (fieldType === "target_location") {
+    pathField = "targetLocationPath";
+    completeField = "targetLocationComplete";
+  }
+
+  const currentPath = session[pathField] || [];
+  if (currentPath.length > 0) {
+    const newPath = currentPath.slice(0, -1);
+    await WizardSession.findOneAndUpdate(
+      { botMessageId },
+      { 
+        [pathField]: newPath,
+        [completeField]: false
+      }
+    );
   }
 }
 
 /**
- * Entry point
+ * Create ticket from completed wizard
+ */
+async function createTicketFromSession(session: any, createdBy: string) {
+  const category = await Category.findById(session.category).lean();
+  const subcategory = session.subCategoryId ? await SubCategory.findById(session.subCategoryId).lean() : null;
+
+  // Build location string
+  let locationStr = "Not specified";
+  if (session.locationPath && session.locationPath.length > 0) {
+    locationStr = session.locationPath.map((n: any) => n.name).join(" → ");
+  }
+
+  // Get next ticket ID
+  const lastTicket = await Ticket.findOne().sort({ ticketId: -1 }).lean();
+  const nextTicketId = lastTicket ? lastTicket.ticketId + 1 : 1;
+
+  const ticketData: any = {
+    ticketId: nextTicketId,
+    description: session.description || "No description",
+    category: category?.name || "unknown",
+    categoryDisplay: category?.displayName || "Unknown",
+    subCategory: subcategory?.name,
+    priority: session.priority || "medium",
+    location: locationStr,
+    status: "pending",
+    createdBy,
+    photos: session.photos || [],
+    additionalFields: session.additionalFieldValues || {},
+  };
+
+  // Add agency info if present
+  if (session.agencyRequired) {
+    ticketData.agencyName = session.agencyName || "Unknown Agency";
+    if (session.agencyDate) {
+      ticketData.agencyDate = session.agencyDate;
+    }
+  }
+
+  // Add source/target locations if transfer
+  if (session.sourceLocationPath) {
+    ticketData.sourceLocation = session.sourceLocationPath.map((n: any) => n.name).join(" → ");
+  }
+  if (session.targetLocationPath) {
+    ticketData.targetLocation = session.targetLocationPath.map((n: any) => n.name).join(" → ");
+  }
+
+  const ticket = await Ticket.create(ticketData);
+  return ticket;
+}
+
+/**
+ * MAIN WEBHOOK HANDLER
  */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as TelegramUpdate;
     await connectToDB();
 
-    // ---------- CALLBACK QUERY HANDLING ----------
+    // ========== CALLBACK QUERY HANDLING ==========
     if (body.callback_query) {
       const callback = body.callback_query;
       const data: string = callback.data;
-      const messageId: number | undefined = callback.message?.message_id;
-      const chatId: number | undefined = callback.message?.chat?.id;
+      const messageId = callback.message?.message_id;
+      const chatId = callback.message?.chat?.id;
 
       if (!data || !messageId || !chatId) {
         return NextResponse.json({ ok: true });
@@ -329,242 +614,226 @@ export async function POST(req: NextRequest) {
 
       const parts = data.split("_");
       const action = parts[0];
+      const botMessageId = parseInt(parts[1]);
 
-      const session = await getWizardSession(messageId);
+      // Get session
+      const session = await WizardSession.findOne({ botMessageId });
       if (!session) {
         await answerCallbackQuery(callback.id, "Session expired. Please create a new ticket.");
         return NextResponse.json({ ok: true });
       }
 
-      // === CATEGORY selection ===
-      if (action === "cat") {
-        const categoryId = parts.slice(2).join("_");
-        if (categoryId === "manual") {
-          await answerCallbackQuery(callback.id, "Manual entry is disabled. Please select from the list.");
-          return NextResponse.json({ ok: true });
-        } else {
-          await updateWizardSession(session.botMessageId, {
-            category: categoryId,
-            subCategoryId: null, // reset
-          });
-          const updated = await getWizardSession(session.botMessageId);
-          await showStepUI(updated, chatId, messageId);
-          await answerCallbackQuery(callback.id, "Category selected.");
-          return NextResponse.json({ ok: true });
-        }
-      }
+      // === SELECT ACTION: select_<botMsgId>_<field>_<value> ===
+      if (action === "select") {
+        const fieldType = parts[2];
+        const value = parts.slice(3).join("_");
 
-      // === SUBCATEGORY selection ===
-      if (action === "sub") {
-        const subId = parts.slice(2).join("_");
-        if (subId === "manual") {
-          await answerCallbackQuery(callback.id, "Manual entry is disabled.");
-          return NextResponse.json({ ok: true });
-        } else {
-          await updateWizardSession(session.botMessageId, { subCategoryId: subId });
-          const updated = await getWizardSession(session.botMessageId);
-          await showStepUI(updated, chatId, messageId);
-          await answerCallbackQuery(callback.id, "Subcategory selected.");
-          return NextResponse.json({ ok: true });
-        }
-      }
-
-      // === PRIORITY ===
-      if (action === "pri") {
-        const priority = parts[2] as "low" | "medium" | "high";
-        await updateWizardSession(session.botMessageId, { priority });
-        const updated = await getWizardSession(session.botMessageId);
-        await showStepUI(updated, chatId, messageId);
-        await answerCallbackQuery(callback.id, `Priority set to ${priority}`);
-        return NextResponse.json({ ok: true });
-      }
-
-      // === LOCATION tree actions ===
-      if (action === "loc") {
-        const subact = parts[2];
-        if (subact === "child") {
-          const pickedLocationId = parts.slice(3).join("_");
-          await handleLocationChildClick(session, chatId, messageId, pickedLocationId, callback.id);
-          return NextResponse.json({ ok: true });
-        } else if (subact === "back") {
-          const backId = parts.slice(3).join("_");
-          const parentId = backId === "root" ? null : backId;
-          const keyboard = await buildLocationChildrenKeyboard(session.botMessageId, parentId);
-          
-          // Re-render with new format
-          const updatedSession = await getWizardSession(session.botMessageId);
-          const baseMessage = await formatEnhancedWizardMessage(updatedSession as any);
-          const prompt = `\n\n━━━━━━━━━━━━━━━━\n⬇️ <b>LOCATION</b>\nSelect Location:`;
-          
-          await editMessageText(chatId, messageId, baseMessage + prompt, keyboard);
-          await answerCallbackQuery(callback.id);
-          return NextResponse.json({ ok: true });
-        } else if (subact === "manual") {
-          await answerCallbackQuery(callback.id, "Manual entry is disabled.");
-          return NextResponse.json({ ok: true });
-        }
-      }
-
-      // === AGENCY ===
-      if (action === "agency") {
-        const val = parts[2];
-        if (val === "yes") {
-          await updateWizardSession(session.botMessageId, { agencyRequired: true });
-          const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
-          if (rule && rule.requiresAgencyDate) {
-            // ask for date
-            await updateWizardSession(session.botMessageId, { waitingForInput: true, inputField: "agency_date" });
-            const updated = await getWizardSession(session.botMessageId);
-            const baseMessage = await formatEnhancedWizardMessage(updated as any);
-            const prompt = `\n\n━━━━━━━━━━━━━━━━\n⬇️ <b>AGENCY DATE</b>\n📅 Please type the agency date (YYYY-MM-DD):`;
-            
-            await editMessageText(chatId, messageId, baseMessage + prompt, []);
-            await answerCallbackQuery(callback.id, "Please provide agency date.");
-            return NextResponse.json({ ok: true });
-          } else {
-            const updated = await getWizardSession(session.botMessageId);
-            await showStepUI(updated, chatId, messageId);
-            await answerCallbackQuery(callback.id, "Agency: Yes");
-            return NextResponse.json({ ok: true });
+        switch (fieldType) {
+          case "category": {
+            const cat = await Category.findById(value).lean();
+            if (cat) {
+              session.category = String(cat._id);
+              await session.save();
+            }
+            break;
           }
-        } else {
-          await updateWizardSession(session.botMessageId, { agencyRequired: false, agencyDate: null });
-          const updated = await getWizardSession(session.botMessageId);
-          await showStepUI(updated, chatId, messageId);
-          await answerCallbackQuery(callback.id, "Agency: No");
-          return NextResponse.json({ ok: true });
-        }
-      }
 
-      // === ADDITIONAL FIELD BUTTON ===
-      if (action === "field") {
-        const fieldKey = parts.slice(2).join("_");
-        await updateWizardSession(session.botMessageId, { waitingForInput: true, inputField: `field:${fieldKey}` });
-        const updated = await getWizardSession(session.botMessageId);
-        const baseMessage = await formatEnhancedWizardMessage(updated as any);
-        const prompt = `\n\n━━━━━━━━━━━━━━━━\n⬇️ <b>${fieldKey.toUpperCase()}</b>\n✍️ Please type value:`;
-        
-        await editMessageText(chatId, messageId, baseMessage + prompt, []);
-        await answerCallbackQuery(callback.id, `Provide ${fieldKey}`);
+          case "priority": {
+            session.priority = value as "low" | "medium" | "high";
+            await session.save();
+            break;
+          }
+
+          case "subcategory": {
+            const sub = await SubCategory.findById(value).lean();
+            if (sub) {
+              session.subCategoryId = String(sub._id);
+              await session.save();
+            }
+            break;
+          }
+
+          case "location":
+          case "source_location":
+          case "target_location": {
+            await handleLocationSelection(session, value, fieldType as any, botMessageId);
+            break;
+          }
+
+          case "agency": {
+            if (value === "no") {
+              session.agencyRequired = false;
+              session.agencyName = null;
+              session.agencyDate = null;
+            } else {
+              session.agencyRequired = true;
+              session.agencyName = value;
+            }
+            await session.save();
+            break;
+          }
+
+          case "additional": {
+            const fieldKey = parts[3];
+            const fieldValue = parts.slice(4).join("_");
+            if (!session.additionalFieldValues) {
+              session.additionalFieldValues = {};
+            }
+            session.additionalFieldValues[fieldKey] = fieldValue;
+            await session.save();
+            break;
+          }
+        }
+
+        await refreshWizardUI(session, chatId, botMessageId);
+        await answerCallbackQuery(callback.id, "✓");
         return NextResponse.json({ ok: true });
       }
 
-      // === STEP navigation ===
-      if (action === "step") {
-        const stepName = parts.slice(2).join("_");
-        const baseMessage = await formatEnhancedWizardMessage(session);
-        const divider = `\n\n━━━━━━━━━━━━━━━━\n`;
-        
-        if (stepName === "category") {
-          const keyboard = await buildCategoryKeyboard(session.botMessageId);
-          await editMessageText(chatId, messageId, baseMessage + divider + "⬇️ <b>CATEGORY</b>", keyboard);
-        } else if (stepName === "priority") {
-          const keyboard = buildPriorityKeyboard(session.botMessageId);
-          await editMessageText(chatId, messageId, baseMessage + divider + "⬇️ <b>PRIORITY</b>", keyboard);
-        } else if (stepName === "location") {
-          const keyboard = await buildLocationChildrenKeyboard(session.botMessageId, null);
-          await editMessageText(chatId, messageId, baseMessage + divider + "⬇️ <b>LOCATION</b>", keyboard);
-        } else if (stepName === "subcategory") {
-          const keyboard = await buildSubCategoryKeyboard(session.botMessageId, session.category);
-          await editMessageText(chatId, messageId, baseMessage + divider + "⬇️ <b>SUBCATEGORY</b>", keyboard);
-        } else if (stepName === "agency") {
-          const keyboard = buildAgencyKeyboard(session.botMessageId);
-          await editMessageText(chatId, messageId, baseMessage + divider + "⬇️ <b>AGENCY</b>", keyboard);
-        } else if (stepName === "additional_fields") {
-          const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
-          const keyboard = buildAdditionalFieldsKeyboard(session.botMessageId, rule?.additionalFields || []);
-          await editMessageText(chatId, messageId, baseMessage + divider + "⬇️ <b>ADDITIONAL FIELDS</b>", keyboard);
-        }
+      // === BACK ACTION: back_<botMsgId>_<fieldType> ===
+      if (action === "back") {
+        const fieldType = parts[2] as "location" | "source_location" | "target_location";
+        await handleLocationBack(session, fieldType, botMessageId);
+        await refreshWizardUI(session, chatId, botMessageId);
         await answerCallbackQuery(callback.id);
         return NextResponse.json({ ok: true });
       }
 
-      // === SUBMIT ===
-      if (action === "submit") {
-        const fresh = await getWizardSession(session.botMessageId);
-        const complete = await isWizardComplete(fresh as any);
-        if (!complete) {
-          await answerCallbackQuery(callback.id, "Please complete all required fields first.", true);
-          return NextResponse.json({ ok: true });
+      // === JUMP ACTION: jump_<botMsgId>_<fieldKey> ===
+      if (action === "jump") {
+        const fieldKey = parts[2];
+        // Mark that field as incomplete to allow re-selection
+        switch (fieldKey) {
+          case "category":
+            session.category = null;
+            break;
+          case "priority":
+            session.priority = null;
+            break;
+          case "subcategory":
+            session.subCategoryId = null;
+            break;
+          case "location":
+            session.locationComplete = false;
+            break;
+          case "source_location":
+            session.sourceLocationComplete = false;
+            break;
+          case "target_location":
+            session.targetLocationComplete = false;
+            break;
+          case "agency":
+            session.agencyName = null;
+            break;
         }
-
-        const createdBy =
-          callback.from?.username ||
-          `${callback.from?.first_name || ""} ${callback.from?.last_name || ""}`.trim();
-
-        const ticket = await createTicketFromWizard(fresh as any, createdBy);
-
-        const categoryText = ticket.categoryDisplay || ticket.category || "—";
-        const ticketMsg = `🎫 <b>Ticket ${ticket.ticketId} Created</b>\n📝 ${ticket.description}\n\n<b>Category:</b> ${categoryText}\n<b>Priority:</b> ${ticket.priority}\n<b>Location:</b> ${ticket.location}\n<b>Created by:</b> ${createdBy}`;
-        try {
-          await telegramSendMessage(chatId, ticketMsg);
-        } catch (err) {
-          console.error("Failed to send ticket message:", err);
-        }
-
-        await deleteWizardSession(session.botMessageId);
-        await answerCallbackQuery(callback.id, "Ticket created successfully!");
+        await session.save();
+        await refreshWizardUI(session, chatId, botMessageId);
+        await answerCallbackQuery(callback.id, "Jump back to field");
         return NextResponse.json({ ok: true });
       }
 
-      await answerCallbackQuery(callback.id, "Action not recognized.");
+      // === INPUT ACTION: input_<botMsgId>_additional_<fieldKey> ===
+      if (action === "input") {
+        const fieldKey = parts.slice(3).join("_");
+        session.waitingForInput = true;
+        session.inputField = fieldKey;
+        await session.save();
+        await answerCallbackQuery(callback.id, "Please type your value");
+        const message = await formatWizardMessage(
+          session,
+          updateFieldCompletion(await buildFieldsFromRule(session.category), session),
+          null
+        );
+        await editMessageText(chatId, botMessageId, message + "\n\n✍️ Type your value below:", []);
+        return NextResponse.json({ ok: true });
+      }
+
+      // === SUBMIT ACTION: submit_<botMsgId> ===
+      if (action === "submit") {
+        const fields = await buildFieldsFromRule(session.category);
+        const updatedFields = updateFieldCompletion(fields, session);
+        const allComplete = updatedFields.filter(f => f.required).every(f => f.completed);
+
+        if (!allComplete) {
+          await answerCallbackQuery(callback.id, "Please complete all required fields", true);
+          return NextResponse.json({ ok: true });
+        }
+
+        const createdBy = callback.from?.username || 
+                         `${callback.from?.first_name || ""} ${callback.from?.last_name || ""}`.trim();
+
+        const ticket = await createTicketFromSession(session, createdBy);
+
+        const ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
+                         `📝 ${ticket.description}\n` +
+                         `📂 ${ticket.category}\n` +
+                         `⚡ ${ticket.priority}\n` +
+                         `📍 ${ticket.location}\n` +
+                         `👤 ${createdBy}`;
+
+        await telegramSendMessage(chatId, ticketMsg);
+        await WizardSession.deleteOne({ botMessageId });
+        await answerCallbackQuery(callback.id, "Ticket created!");
+        return NextResponse.json({ ok: true });
+      }
+
+      // === CANCEL ACTION: cancel_<botMsgId> ===
+      if (action === "cancel") {
+        await WizardSession.deleteOne({ botMessageId });
+        await editMessageText(chatId, botMessageId, "❌ Wizard cancelled", []);
+        await answerCallbackQuery(callback.id, "Cancelled");
+        return NextResponse.json({ ok: true });
+      }
+
+      await answerCallbackQuery(callback.id);
       return NextResponse.json({ ok: true });
     }
 
-    // ---------- NORMAL MESSAGES (non-callback) ----------
+    // ========== MESSAGE HANDLING ==========
     const msg = body.message || body.edited_message;
-    if (!msg) return NextResponse.json({ ok: true });
-    if (msg.from?.is_bot) return NextResponse.json({ ok: true });
+    if (!msg || msg.from?.is_bot) return NextResponse.json({ ok: true });
 
     const chat = msg.chat;
-    if (chat?.type !== "group" && chat?.type !== "supergroup") return NextResponse.json({ ok: true });
-
-    // User tracking
-    if (msg.from && !msg.from.is_bot) {
-      try {
-        const { upsertUser } = await import("@/services/syncService");
-        await upsertUser(
-          {
-            id: msg.from.id,
-            username: msg.from.username,
-            first_name: msg.from.first_name,
-            last_name: msg.from.last_name,
-            is_bot: msg.from.is_bot,
-            language_code: msg.from.language_code,
-          },
-          "webhook",
-          chat.id
-        );
-      } catch (err) {
-        console.error("Failed to track user from webhook:", err);
-      }
-    }
-
-    const incomingText = (msg.text || msg.caption || "").toString().trim();
-
-    // --- CANCEL ---
-    if (incomingText && (incomingText.toLowerCase() === "/cancel" || incomingText.toLowerCase() === "cancel")) {
-      const latest = await WizardSession.findOne({ userId: msg.from.id }).sort({ createdAt: -1 });
-      if (latest) {
-        await deleteWizardSession(latest.botMessageId);
-        try {
-          await telegramSendMessage(chat.id, `❌ Wizard cancelled (botMessageId=${latest.botMessageId})`);
-        } catch (err) {}
-      } else {
-        try {
-          await telegramSendMessage(chat.id, "No active wizard found to cancel.");
-        } catch (err) {}
-      }
+    if (chat.type !== "group" && chat.type !== "supergroup") {
       return NextResponse.json({ ok: true });
     }
 
-    // --- Handle waitingForInput ---
-    const activeSession = await WizardSession.findOne({ userId: msg.from.id, waitingForInput: true }).sort({ createdAt: -1 });
+    const incomingText = (msg.text || msg.caption || "").trim();
 
-    // Photo upload logic
+    // Check for active waiting-for-input session
+    const activeSession = await WizardSession.findOne({
+      userId: msg.from.id,
+      waitingForInput: true
+    }).sort({ createdAt: -1 });
+
+    if (activeSession && incomingText) {
+      // Handle input
+      const fieldKey = activeSession.inputField;
+      if (fieldKey && fieldKey.startsWith("additional_")) {
+        const key = fieldKey.replace("additional_", "");
+        if (!activeSession.additionalFieldValues) {
+          activeSession.additionalFieldValues = {};
+        }
+        activeSession.additionalFieldValues[key] = incomingText;
+      } else if (fieldKey === "agency_date") {
+        const parsed = new Date(incomingText);
+        if (!isNaN(parsed.getTime())) {
+          activeSession.agencyDate = parsed;
+        }
+      }
+
+      activeSession.waitingForInput = false;
+      activeSession.inputField = null;
+      await activeSession.save();
+
+      await refreshWizardUI(activeSession, chat.id, activeSession.botMessageId);
+      return NextResponse.json({ ok: true });
+    }
+
+    // Handle photo upload
     let uploadedPhotoUrl: string | null = null;
-    try {
-      if (msg.photo || msg.document) {
+    if (msg.photo || msg.document) {
+      try {
         const { downloadTelegramFileBuffer } = await import("@/lib/downloadTelegramFileBuffer");
         const { uploadBufferToCloudinary } = await import("@/lib/uploadBufferToCloudinary");
         const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
@@ -572,137 +841,57 @@ export async function POST(req: NextRequest) {
           const buffer = await downloadTelegramFileBuffer(fileId);
           uploadedPhotoUrl = await uploadBufferToCloudinary(buffer);
         }
-      }
-    } catch (err) {
-      console.error("Photo processing failed:", err);
-    }
-
-    if (activeSession) {
-      const inputText = incomingText;
-      if (uploadedPhotoUrl && (!inputText || inputText.length === 0)) {
-        if (activeSession.inputField && activeSession.inputField.startsWith("field:")) {
-          const fk = activeSession.inputField.split(":")[1];
-          const updateObj: any = {};
-          updateObj[`additionalFieldValues.${fk}`] = uploadedPhotoUrl;
-          updateObj.waitingForInput = false;
-          updateObj.inputField = null;
-          await updateWizardSession(activeSession.botMessageId, updateObj);
-        } else {
-          const newPhotos = [...(activeSession.photos || []), uploadedPhotoUrl];
-          await updateWizardSession(activeSession.botMessageId, { photos: newPhotos, waitingForInput: false, inputField: null });
-        }
-      } else {
-        const field = activeSession.inputField;
-        if (field === "category") {
-          const catName = inputText.toLowerCase();
-          await Category.findOneAndUpdate(
-            { name: catName },
-            { name: catName, displayName: inputText, isActive: true },
-            { upsert: true }
-          );
-          await updateWizardSession(activeSession.botMessageId, { category: catName, waitingForInput: false, inputField: null });
-          const updated = await getWizardSession(activeSession.botMessageId);
-          await showStepUI(updated, chat.id, activeSession.botMessageId);
-        } else if (field === "subcategory") {
-          const subUp = await SubCategory.findOneAndUpdate(
-            { name: inputText, categoryId: activeSession.category },
-            { name: inputText, categoryId: activeSession.category, isActive: true },
-            { upsert: true, new: true }
-          );
-          await updateWizardSession(activeSession.botMessageId, { subCategoryId: String(subUp._id), waitingForInput: false, inputField: null });
-          const updated = await getWizardSession(activeSession.botMessageId);
-          await showStepUI(updated, chat.id, activeSession.botMessageId);
-        } else if (field === "location") {
-          await Location.findOneAndUpdate({ name: inputText }, { name: inputText, type: "other", isActive: true }, { upsert: true });
-          await updateWizardSession(activeSession.botMessageId, { customLocation: inputText, waitingForInput: false, inputField: null, locationComplete: true });
-          const updated = await getWizardSession(activeSession.botMessageId);
-          await showStepUI(updated, chat.id, activeSession.botMessageId);
-        } else if (field === "agency_date") {
-          const parsed = new Date(inputText);
-          if (isNaN(parsed.getTime())) {
-            await telegramSendMessage(chat.id, "Invalid date format. Please use YYYY-MM-DD.");
-            return NextResponse.json({ ok: true });
-          }
-          await updateWizardSession(activeSession.botMessageId, { agencyDate: parsed, waitingForInput: false, inputField: null });
-          const updated = await getWizardSession(activeSession.botMessageId);
-          await showStepUI(updated, chat.id, activeSession.botMessageId);
-        } else if (field && field.startsWith("field:")) {
-          const fk = field.split(":")[1];
-          const updateObj: any = {};
-          updateObj[`additionalFieldValues.${fk}`] = inputText;
-          updateObj.waitingForInput = false;
-          updateObj.inputField = null;
-          await updateWizardSession(activeSession.botMessageId, updateObj);
-          const updated = await getWizardSession(activeSession.botMessageId);
-          await showStepUI(updated, chat.id, activeSession.botMessageId);
-        } else {
-          await updateWizardSession(activeSession.botMessageId, { waitingForInput: false, inputField: null });
-        }
-      }
-      return NextResponse.json({ ok: true });
-    }
-
-    // --- New Wizard Creation ---
-    const hasPhoto = !!msg.photo || !!msg.document;
-    const text = extractTextFromMessage(msg).trim();
-    const shouldCreate = hasPhoto || text.length > 5;
-    if (!shouldCreate) return NextResponse.json({ ok: true });
-
-    try {
-      let detectedCategoryId: string | null = null;
-      try {
-        const categories = await Category.find({ isActive: true }).lean();
-        const lower = (text || "").toLowerCase();
-        for (const cat of categories) {
-          if (cat.keywords && cat.keywords.length) {
-            for (const kw of cat.keywords) {
-              if (lower.includes(kw.toLowerCase())) {
-                detectedCategoryId = String(cat._id);
-                break;
-              }
-            }
-          }
-          if (detectedCategoryId) break;
-        }
       } catch (err) {
-        console.error("Auto-detect failed", err);
+        console.error("Photo upload failed:", err);
+      }
+    }
+
+    // Create new wizard if message qualifies
+    const hasPhoto = !!uploadedPhotoUrl;
+    const hasText = incomingText.length > 5;
+    
+    if (hasPhoto || hasText) {
+      const description = incomingText || "Photo attachment";
+      const initialPhotos = uploadedPhotoUrl ? [uploadedPhotoUrl] : [];
+
+      // Auto-detect category
+      let detectedCategoryId: string | null = null;
+      const categories = await Category.find({ isActive: true }).lean();
+      const lowerText = incomingText.toLowerCase();
+      for (const cat of categories) {
+        if (cat.keywords && cat.keywords.some(kw => lowerText.includes(kw.toLowerCase()))) {
+          detectedCategoryId = String(cat._id);
+          break;
+        }
       }
 
-      const initialPhotos = uploadedPhotoUrl ? [uploadedPhotoUrl] : [];
-      const description = text || (hasPhoto ? "Photo attachment" : "No description provided");
-
-      // Send initial temp message
-      const botRes = await telegramSendMessage(chat.id, "⏳ Initializing Wizard...", msg.message_id);
+      // Send initial wizard message
+      const initialMsg = "🛠 <b>Ticket Wizard</b>\n📝 Creating your ticket...\n\nPlease wait...";
+      const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
       const botMessageId = (botRes as any)?.result?.message_id;
-      if (!botMessageId) return NextResponse.json({ ok: true });
 
-      // Create session
-      await createWizardSession(chat.id, msg.from.id, botMessageId, description, detectedCategoryId, initialPhotos);
-      
-      // Get the fresh session to generate the enhanced UI
-      const freshSession = await getWizardSession(botMessageId);
-      const baseMessage = await formatEnhancedWizardMessage(freshSession as any);
-      
-      const divider = `\n\n━━━━━━━━━━━━━━━━\n`;
-      const header = detectedCategoryId 
-        ? `✅ <b>CATEGORY DETECTED</b>\nConfirm or Change:` 
-        : `⬇️ <b>CATEGORY</b> (Select One)`;
+      if (botMessageId) {
+        // Create session
+        const newSession = await WizardSession.create({
+          chatId: chat.id,
+          userId: msg.from.id,
+          botMessageId,
+          description,
+          photos: initialPhotos,
+          category: detectedCategoryId,
+          categoryDisplay: detectedCategoryId ? 
+            (await Category.findById(detectedCategoryId).lean())?.displayName : null,
+          createdAt: new Date(),
+        });
 
-      const updatedKeyboard = [
-        [{ text: detectedCategoryId ? "📂 Change Category" : "📂 Select Category", callback_data: `step_${botMessageId}_category` }],
-        [{ text: "⚡ Select Priority", callback_data: `step_${botMessageId}_priority` }],
-        [{ text: "📍 Select Location", callback_data: `step_${botMessageId}_location` }],
-      ];
-
-      await editMessageText(chat.id, botMessageId, baseMessage + divider + header, updatedKeyboard);
-
-    } catch (err) {
-      console.error("Failed to create wizard session:", err);
+        // Refresh UI with proper fields
+        await refreshWizardUI(newSession, chat.id, botMessageId);
+      }
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("webhook error", err);
+    console.error("Webhook error:", err);
     return NextResponse.json({
       ok: false,
       error: (err as any)?.message || String(err),
