@@ -454,51 +454,6 @@ async function refreshWizardUI(session: any, chatId: number, botMessageId: numbe
   keyboard = [...keyboard, ...navKeyboard];
 
   await editMessageText(chatId, botMessageId, message, keyboard);
-
-  // Check if all required fields are complete
-  const allComplete = updatedFields.filter(f => f.required).every(f => f.completed);
-  
-  if (allComplete) {
-    // Show countdown message with disabled buttons
-    const countdownMsg = message + "\n\n⏱️ Auto-submitting in 3 seconds...";
-    const disabledKeyboard = keyboard.map(row => 
-      row.map(btn => ({ ...btn, text: btn.text.startsWith("✅") ? "⏳ Submitting..." : btn.text }))
-    );
-    await editMessageText(chatId, botMessageId, countdownMsg, disabledKeyboard);
-    
-    // Wait 3 seconds then auto-submit
-    setTimeout(async () => {
-      try {
-        // Re-fetch session to ensure it still exists and wasn't already submitted
-        const freshSession = await WizardSession.findOne({ botMessageId });
-        if (!freshSession) {
-          console.log("Session already submitted or cancelled");
-          return; // Session was cancelled or already submitted
-        }
-        
-        // Get user info for createdBy
-        const createdBy = `User ${freshSession.userId}`;
-        
-        // Create ticket
-        const ticket = await createTicketFromSession(freshSession, createdBy);
-        
-        // Send confirmation message
-        const ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
-                         `📝 ${ticket.description}\n` +
-                         `📂 ${ticket.category}\n` +
-                         `⚡ ${ticket.priority}\n` +
-                         `📍 ${ticket.location}\n` +
-                         `👤 ${createdBy}`;
-        
-        await telegramSendMessage(chatId, ticketMsg);
-        
-        // Delete wizard session
-        await WizardSession.deleteOne({ botMessageId });
-      } catch (err) {
-        console.error("Auto-submit error:", err);
-      }
-    }, 3000);
-  }
 }
 
 /**
@@ -810,18 +765,28 @@ export async function POST(req: NextRequest) {
         const createdBy = callback.from?.username || 
                          `${callback.from?.first_name || ""} ${callback.from?.last_name || ""}`.trim();
 
-        const ticket = await createTicketFromSession(session, createdBy);
-
-        const ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
-                         `📝 ${ticket.description}\n` +
-                         `📂 ${ticket.category}\n` +
-                         `⚡ ${ticket.priority}\n` +
-                         `📍 ${ticket.location}\n` +
-                         `👤 ${createdBy}`;
-
-        await telegramSendMessage(chatId, ticketMsg);
+        // Delete session FIRST to prevent duplicate submissions
+        const sessionData = session.toObject();
         await WizardSession.deleteOne({ botMessageId });
-        await answerCallbackQuery(callback.id, "Ticket created!");
+
+        try {
+          // Create ticket using session data
+          const ticket = await createTicketFromSession(sessionData, createdBy);
+
+          const ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
+                           `📝 ${ticket.description}\n` +
+                           `📂 ${ticket.category}\n` +
+                           `⚡ ${ticket.priority}\n` +
+                           `📍 ${ticket.location}\n` +
+                           `👤 ${createdBy}`;
+
+          await telegramSendMessage(chatId, ticketMsg);
+          await answerCallbackQuery(callback.id, "Ticket created!");
+        } catch (err) {
+          console.error("Ticket creation error:", err);
+          await answerCallbackQuery(callback.id, "Error creating ticket", true);
+        }
+        
         return NextResponse.json({ ok: true });
       }
 
