@@ -484,21 +484,28 @@ async function handleLocationSelection(
     completeField = "targetLocationComplete";
   }
 
-  // Get current path
+  // Get current path - this should represent WHERE WE ARE, not where we're going
   const currentPath = session[pathField] || [];
-  
-  // ✅ FIX: Only add if this location is not already the last item in path
-  const lastItem = currentPath.length > 0 ? currentPath[currentPath.length - 1] : null;
   const locationIdStr = String(location._id);
   
-  let newPath;
-  if (lastItem && lastItem.id === locationIdStr) {
-    // Same location clicked again, don't duplicate
-    newPath = currentPath;
-  } else {
-    // New location, append to path
-    newPath = [...currentPath, { id: locationIdStr, name: location.name }];
+  // Build the complete hierarchy path for this location
+  const fullPath = [];
+  let currentLoc = location;
+  
+  // Build path from bottom to top
+  const pathIds = [currentLoc];
+  while (currentLoc.parentLocationId) {
+    const parent = await Location.findById(currentLoc.parentLocationId).lean();
+    if (!parent) break;
+    pathIds.unshift(parent);
+    currentLoc = parent;
   }
+  
+  // Convert to path format
+  const newPath = pathIds.map(loc => ({
+    id: String(loc._id),
+    name: loc.name
+  }));
 
   // Check if has children
   const childCount = await Location.countDocuments({ 
