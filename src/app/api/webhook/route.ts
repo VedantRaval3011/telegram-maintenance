@@ -411,9 +411,15 @@ async function formatWizardMessage(session: any, fields: WizardField[], currentF
  */
 function buildNavigationKeyboard(fields: WizardField[], botMessageId: number): any[][] {
   const keyboard: any[][] = [];
-  
-  // Add jump buttons for completed fields (max 2 per row)
-  const completedFields = fields.filter(f => f.completed);
+
+  // Determine current active field
+  const currentField = findCurrentField(fields);
+
+  // Add jump buttons ONLY for completed fields that are NOT the current field
+  const completedFields = fields.filter(
+    f => f.completed && f.key !== currentField?.key
+  );
+
   for (let i = 0; i < completedFields.length; i += 2) {
     const row: any[] = [];
     row.push({
@@ -429,20 +435,16 @@ function buildNavigationKeyboard(fields: WizardField[], botMessageId: number): a
     keyboard.push(row);
   }
 
-  // Submit button (only if all required fields completed)
+  // Submit button
   const allComplete = fields.filter(f => f.required).every(f => f.completed);
   if (allComplete) {
-    keyboard.push([{
-      text: "✅ Submit Ticket",
-      callback_data: `submit_${botMessageId}`
-    }]);
+    keyboard.push([
+      { text: "✅ Submit Ticket", callback_data: `submit_${botMessageId}` }
+    ]);
   }
 
   // Cancel button
-  keyboard.push([{
-    text: "❌ Cancel",
-    callback_data: `cancel_${botMessageId}`
-  }]);
+  keyboard.push([{ text: "❌ Cancel", callback_data: `cancel_${botMessageId}` }]);
 
   return keyboard;
 }
