@@ -34,7 +34,7 @@ export interface WizardFieldDefinition {
 /**
  * Get the WorkflowRule for a category
  */
-async function getWorkflowRule(categoryId: string | null): Promise<IWorkflowRule | null> {
+async function getWorkflowRule(categoryId: string | null): Promise<any> {
   if (!categoryId) return null;
   try {
     return await WorkflowRule.findOne({ categoryId }).lean();
