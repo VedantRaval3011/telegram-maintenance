@@ -792,7 +792,7 @@ export async function POST(req: NextRequest) {
               telegramChatId: chatId
             });
           }
-
+          await telegramDeleteMessage(chatId, botMessageId);
           await answerCallbackQuery(callback.id, "Ticket created!");
         } catch (err) {
           console.error("Ticket creation error:", err);
