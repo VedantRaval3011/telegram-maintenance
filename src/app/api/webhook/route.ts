@@ -459,16 +459,22 @@ async function refreshWizardUI(session: any, chatId: number, botMessageId: numbe
   const allComplete = updatedFields.filter(f => f.required).every(f => f.completed);
   
   if (allComplete) {
-    // Show countdown message
+    // Show countdown message with disabled buttons
     const countdownMsg = message + "\n\n⏱️ Auto-submitting in 3 seconds...";
-    await editMessageText(chatId, botMessageId, countdownMsg, keyboard);
+    const disabledKeyboard = keyboard.map(row => 
+      row.map(btn => ({ ...btn, text: btn.text.startsWith("✅") ? "⏳ Submitting..." : btn.text }))
+    );
+    await editMessageText(chatId, botMessageId, countdownMsg, disabledKeyboard);
     
     // Wait 3 seconds then auto-submit
     setTimeout(async () => {
       try {
-        // Re-fetch session to ensure it still exists
+        // Re-fetch session to ensure it still exists and wasn't already submitted
         const freshSession = await WizardSession.findOne({ botMessageId });
-        if (!freshSession) return; // Session was cancelled or already submitted
+        if (!freshSession) {
+          console.log("Session already submitted or cancelled");
+          return; // Session was cancelled or already submitted
+        }
         
         // Get user info for createdBy
         const createdBy = `User ${freshSession.userId}`;
@@ -590,8 +596,15 @@ async function createTicketFromSession(session: any, createdBy: string) {
   }
 
   // Get next ticket ID
-  const lastTicket = await Ticket.findOne().sort({ ticketId: -1 }).lean();
-  const nextTicketId = lastTicket ? lastTicket.ticketId + 1 : 1;
+  const lastTicket = await Ticket.findOne().sort({ createdAt: -1 }).lean();
+  let nextTicketNumber = 1;
+  if (lastTicket && lastTicket.ticketId) {
+    const match = lastTicket.ticketId.match(/TCK-(\d+)/);
+    if (match) {
+      nextTicketNumber = parseInt(match[1]) + 1;
+    }
+  }
+  const nextTicketId = `TCK-${String(nextTicketNumber).padStart(3, '0')}`;
 
   const ticketData: any = {
     ticketId: nextTicketId,
