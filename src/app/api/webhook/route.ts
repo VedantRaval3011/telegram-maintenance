@@ -368,7 +368,14 @@ async function formatWizardMessage(session: any, fields: WizardField[], currentF
   message += `📝 ${session.originalText || "New Ticket"}\n\n`;
 
   // Completed fields section
-  const completedFields = fields.filter(f => f.completed);
+const completedFields = fields.filter(f =>
+  f.completed &&
+  f.key !== currentField?.key &&
+  !(f.type === "location" && session.locationComplete !== true) &&
+  !(f.type === "source_location" && session.sourceLocationComplete !== true) &&
+  !(f.type === "target_location" && session.targetLocationComplete !== true)
+);
+
   if (completedFields.length > 0) {
     message += "✅ <b>Completed:</b>\n";
     for (const field of completedFields) {
