@@ -601,7 +601,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
     subCategory: subcategory?.name,
     priority: session.priority || "medium",
     location: locationStr,
-    status: "pending",
+    status: "PENDING",
     createdBy,
     photos: session.photos || [],
     additionalFields: session.additionalFieldValues || {},
