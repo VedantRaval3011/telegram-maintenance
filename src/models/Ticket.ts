@@ -29,7 +29,10 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   },
   location: { type: String, default: null },
   photos: { type: [String], default: [] },
-  completionPhotos: { type: [String], default: [] },
+completionPhotos: {
+    type: [String],
+    default: []  // Default to empty array
+  },
   createdBy: { type: String, default: "Unknown" },
   createdAt: { type: Date, default: Date.now },
   status: { type: String, enum: ["PENDING", "COMPLETED"], default: "PENDING" },

@@ -828,62 +828,65 @@ export async function POST(req: NextRequest) {
 
     const incomingText = (msg.text || msg.caption || "").trim();
 
-    // Check for reply to ticket message (Completion)
-    // Check for reply to ticket message (Completion)
-    if (msg.reply_to_message && incomingText) {
-      const replyId = msg.reply_to_message.message_id;
-      const lowerText = incomingText.toLowerCase();
-      const completionKeywords = ["done", "ok", "completed", "fixed", "resolved"];
+// Check for reply to ticket message (Completion)
+if (msg.reply_to_message) {
+  const replyId = msg.reply_to_message.message_id;
+  const lowerText = incomingText.toLowerCase();
+  const completionKeywords = ["done", "ok", "completed", "fixed", "resolved"];
 
-      if (completionKeywords.some(k => lowerText.includes(k))) {
-        // Find ticket linked to this message
-        const ticket = await Ticket.findOne({ telegramMessageId: replyId });
-        
-        if (ticket && ticket.status !== "COMPLETED") {
-          const completedBy = msg.from.username || 
-                             `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
-          
-          // Handle photo if present
-          if (msg.photo && msg.photo.length > 0) {
-            try {
-              // Get highest res photo
-              const photo = msg.photo[msg.photo.length - 1];
-              const localPath = await downloadTelegramFile(photo.file_id);
-              
-              // Read file buffer
-              const absolutePath = path.join(process.cwd(), "public", localPath);
-              const fileBuffer = fs.readFileSync(absolutePath);
-              
-              // Upload to Cloudinary
-              const cloudUrl = await uploadBufferToCloudinary(fileBuffer, "maintenance/completion");
-              
-              // Add to ticket
-              if (!ticket.completionPhotos) ticket.completionPhotos = [];
-              ticket.completionPhotos.push(cloudUrl);
-              
-              // Cleanup local file
-              fs.unlinkSync(absolutePath);
-            } catch (err) {
-              console.error("Error processing completion photo:", err);
-            }
+  if (completionKeywords.some(k => lowerText.includes(k))) {
+    const ticket = await Ticket.findOne({ telegramMessageId: replyId });
+    
+    if (ticket && ticket.status !== "COMPLETED") {
+      const completedBy = msg.from.username || 
+                         `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
+      
+      // Handle completion photo if present
+      let completionPhotoUrl: string | null = null;
+      if (msg.photo || msg.document) {
+        try {
+          const { downloadTelegramFileBuffer } = await import("@/lib/downloadTelegramFileBuffer");
+          const { uploadBufferToCloudinary } = await import("@/lib/uploadBufferToCloudinary");
+          const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
+          if (fileId) {
+            const buffer = await downloadTelegramFileBuffer(fileId);
+            completionPhotoUrl = await uploadBufferToCloudinary(buffer);
           }
-
-          ticket.status = "COMPLETED";
-          ticket.completedBy = completedBy;
-          ticket.completedAt = new Date();
-          await ticket.save();
-
-          await telegramSendMessage(
-            chat.id,
-            `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
-            `👤 Completed by: ${completedBy}` +
-            (ticket.completionPhotos?.length ? `\n📸 Photo attached` : ""),
-            msg.message_id
-          );
-          return NextResponse.json({ ok: true });
+        } catch (err) {
+          console.error("Completion photo upload failed:", err);
         }
       }
+
+      ticket.status = "COMPLETED";
+      ticket.completedBy = completedBy;
+      ticket.completedAt = new Date();
+      
+      // ✅ Add completion photo with proper null check
+      if (completionPhotoUrl) {
+        if (!ticket.completionPhotos || !Array.isArray(ticket.completionPhotos)) {
+          ticket.completionPhotos = [];
+        }
+        ticket.completionPhotos.push(completionPhotoUrl);
+      }
+      
+      await ticket.save();
+
+      let completionMsg = `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
+                         `👤 Completed by: ${completedBy}`;
+      
+      if (completionPhotoUrl) {
+        completionMsg += `\n📸 After-fix photo attached`;
+      }
+
+      await telegramSendMessage(
+        chat.id,
+        completionMsg,
+        msg.message_id
+      );
+      return NextResponse.json({ ok: true });
     }
+  }
+}
 
     // Check for active waiting-for-input session
     const activeSession = await WizardSession.findOne({
