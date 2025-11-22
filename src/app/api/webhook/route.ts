@@ -484,18 +484,42 @@ async function handleLocationSelection(
     completeField = "targetLocationComplete";
   }
 
-  // Append to path
-  const currentPath = session[pathField] || [];
-  const newPath = [...currentPath, { id: String(location._id), name: location.name }];
+  // ✅ Build complete path from root to this location
+  const newPath: Array<{ id: string; name: string }> = [];
+  
+  // Traverse up the tree to build path
+  let currentLoc: any = location;
+  const pathIds: string[] = [];
+  
+  while (currentLoc) {
+    pathIds.unshift(String(currentLoc._id));
+    currentLoc = currentLoc.parentLocationId 
+      ? await Location.findById(currentLoc.parentLocationId).lean()
+      : null;
+  }
+  
+  // Build path array with names
+  for (const id of pathIds) {
+    const loc = await Location.findById(id).lean();
+    if (loc) {
+      newPath.push({ id: String(loc._id), name: loc.name });
+    }
+  }
 
   // Check if has children
-  const childCount = await Location.countDocuments({ parentLocationId: location._id, isActive: true });
+  const childCount = await Location.countDocuments({ 
+    parentLocationId: location._id, 
+    isActive: true 
+  });
 
   if (childCount > 0) {
     // Has children, update path but don't mark complete
     await WizardSession.findOneAndUpdate(
       { botMessageId },
-      { [pathField]: newPath }
+      { 
+        [pathField]: newPath,
+        [completeField]: false
+      }
     );
   } else {
     // Leaf node, mark complete
