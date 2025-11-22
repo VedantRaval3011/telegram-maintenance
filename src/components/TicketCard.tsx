@@ -75,6 +75,33 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any, on
               </div>
             </div>
           )}
+
+          {/* Completion Photos Section */}
+          {ticket.completionPhotos?.length > 0 && (
+            <div className="mt-4 border-t pt-4 bg-green-50 rounded-lg p-3">
+              <div className="text-sm font-medium text-green-800 mb-3">
+                ✅ After Fix Photos <span className="text-xs text-green-600">({ticket.completionPhotos.length})</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {ticket.completionPhotos.map((photo: string, index: number) => (
+                  <button
+                    key={photo}
+                    className="relative aspect-square rounded overflow-hidden group border border-green-200"
+                    onClick={() => setSelectedPhoto(photo)}
+                    aria-label={`Open completion photo ${index + 1}`}
+                  >
+                    <img
+                      src={photo}
+                      alt={`Completion Photo ${index + 1}`}
+                      className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-150"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="w-full md:w-44 flex md:flex-col items-center md:items-end gap-3">

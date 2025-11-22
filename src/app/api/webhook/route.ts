@@ -15,6 +15,9 @@ import {
   downloadTelegramFile,
   telegramDeleteMessage,
 } from "@/lib/telegram";
+import { uploadBufferToCloudinary } from "@/lib/uploadBufferToCloudinary";
+import fs from "fs";
+import path from "path";
 
 /**
  * DYNAMIC WORKFLOW-CONTROLLED TELEGRAM WEBHOOK
@@ -826,6 +829,7 @@ export async function POST(req: NextRequest) {
     const incomingText = (msg.text || msg.caption || "").trim();
 
     // Check for reply to ticket message (Completion)
+    // Check for reply to ticket message (Completion)
     if (msg.reply_to_message && incomingText) {
       const replyId = msg.reply_to_message.message_id;
       const lowerText = incomingText.toLowerCase();
@@ -839,6 +843,31 @@ export async function POST(req: NextRequest) {
           const completedBy = msg.from.username || 
                              `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
           
+          // Handle photo if present
+          if (msg.photo && msg.photo.length > 0) {
+            try {
+              // Get highest res photo
+              const photo = msg.photo[msg.photo.length - 1];
+              const localPath = await downloadTelegramFile(photo.file_id);
+              
+              // Read file buffer
+              const absolutePath = path.join(process.cwd(), "public", localPath);
+              const fileBuffer = fs.readFileSync(absolutePath);
+              
+              // Upload to Cloudinary
+              const cloudUrl = await uploadBufferToCloudinary(fileBuffer, "maintenance/completion");
+              
+              // Add to ticket
+              if (!ticket.completionPhotos) ticket.completionPhotos = [];
+              ticket.completionPhotos.push(cloudUrl);
+              
+              // Cleanup local file
+              fs.unlinkSync(absolutePath);
+            } catch (err) {
+              console.error("Error processing completion photo:", err);
+            }
+          }
+
           ticket.status = "COMPLETED";
           ticket.completedBy = completedBy;
           ticket.completedAt = new Date();
@@ -847,7 +876,8 @@ export async function POST(req: NextRequest) {
           await telegramSendMessage(
             chat.id,
             `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
-            `👤 Completed by: ${completedBy}`,
+            `👤 Completed by: ${completedBy}` +
+            (ticket.completionPhotos?.length ? `\n📸 Photo attached` : ""),
             msg.message_id
           );
           return NextResponse.json({ ok: true });

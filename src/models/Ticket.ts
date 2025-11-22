@@ -8,6 +8,7 @@ export interface ITicket extends Document {
   priority: "low" | "medium" | "high";
   location?: string | null;
   photos: string[]; // saved file URLs or file paths
+  completionPhotos?: string[]; // Photos uploaded when completed
   createdBy?: string | null; // Telegram username or name
   createdAt: Date;
   status: "PENDING" | "COMPLETED";
@@ -28,8 +29,9 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   },
   location: { type: String, default: null },
   photos: { type: [String], default: [] },
-  createdBy: { type: String, default: null },
-  createdAt: { type: Date, default: () => new Date() },
+  completionPhotos: { type: [String], default: [] },
+  createdBy: { type: String, default: "Unknown" },
+  createdAt: { type: Date, default: Date.now },
   status: { type: String, enum: ["PENDING", "COMPLETED"], default: "PENDING" },
   completedBy: { type: String, default: null },
   completedAt: { type: Date, default: null },
