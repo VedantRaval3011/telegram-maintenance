@@ -1,10 +1,13 @@
 @import "tailwindcss";
-/* in globals.css or tailwind layer */
-.input-base {
-  @apply w-full border rounded px-3 py-2 text-sm bg-white;
+
+@theme {
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-playfair);
 }
 
-/* styles/globals.css (append) */
+h1, h2 {
+  font-family: var(--font-serif);
+}
 
 /* page background & container */
 :root {

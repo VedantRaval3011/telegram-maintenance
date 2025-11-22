@@ -202,14 +202,14 @@ export default function WorkflowRulesPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#e8d5c4] pb-20 font-sans">
+    <div className="min-h-screen bg-[#e8d5c4] pb-20">
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-extrabold text-[#2c2420] tracking-tight">
+            <h1 className="text-4xl font-extrabold text-[#2c2420]">
               Workflow Rules
             </h1>
             <p className="text-[#5c4a3d] mt-2 text-sm font-medium">
