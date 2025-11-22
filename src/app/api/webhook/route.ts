@@ -12,6 +12,8 @@ import {
   telegramSendMessage,
   editMessageText,
   answerCallbackQuery,
+  downloadTelegramFile,
+  telegramDeleteMessage,
 } from "@/lib/telegram";
 
 /**
@@ -621,7 +623,9 @@ export async function POST(req: NextRequest) {
       // Get session
       const session = await WizardSession.findOne({ botMessageId });
       if (!session) {
-        await answerCallbackQuery(callback.id, "Session expired. Please create a new ticket.");
+        // Session expired or deleted - remove the message
+        await telegramDeleteMessage(chatId, messageId);
+        await answerCallbackQuery(callback.id, "Session expired");
         return NextResponse.json({ ok: true });
       }
 
@@ -780,7 +784,15 @@ export async function POST(req: NextRequest) {
                            `📍 ${ticket.location}\n` +
                            `👤 ${createdBy}`;
 
-          await telegramSendMessage(chatId, ticketMsg);
+          const sentMsg = await telegramSendMessage(chatId, ticketMsg);
+          
+          if (sentMsg.ok && sentMsg.result) {
+            await Ticket.findByIdAndUpdate(ticket._id, {
+              telegramMessageId: sentMsg.result.message_id,
+              telegramChatId: chatId
+            });
+          }
+
           await answerCallbackQuery(callback.id, "Ticket created!");
         } catch (err) {
           console.error("Ticket creation error:", err);
@@ -812,6 +824,36 @@ export async function POST(req: NextRequest) {
     }
 
     const incomingText = (msg.text || msg.caption || "").trim();
+
+    // Check for reply to ticket message (Completion)
+    if (msg.reply_to_message && incomingText) {
+      const replyId = msg.reply_to_message.message_id;
+      const lowerText = incomingText.toLowerCase();
+      const completionKeywords = ["done", "ok", "completed", "fixed", "resolved"];
+
+      if (completionKeywords.some(k => lowerText.includes(k))) {
+        // Find ticket linked to this message
+        const ticket = await Ticket.findOne({ telegramMessageId: replyId });
+        
+        if (ticket && ticket.status !== "COMPLETED") {
+          const completedBy = msg.from.username || 
+                             `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
+          
+          ticket.status = "COMPLETED";
+          ticket.completedBy = completedBy;
+          ticket.completedAt = new Date();
+          await ticket.save();
+
+          await telegramSendMessage(
+            chat.id,
+            `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
+            `👤 Completed by: ${completedBy}`,
+            msg.message_id
+          );
+          return NextResponse.json({ ok: true });
+        }
+      }
+    }
 
     // Check for active waiting-for-input session
     const activeSession = await WizardSession.findOne({

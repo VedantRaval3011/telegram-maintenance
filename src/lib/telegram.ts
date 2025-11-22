@@ -248,3 +248,22 @@ export async function answerCallbackQuery(
   if (!json.ok) console.error("answerCallbackQuery error:", json);
   return json;
 }
+
+/** Delete a message */
+export async function telegramDeleteMessage(
+  chatId: number | string,
+  messageId: number
+): Promise<TelegramApiResponse> {
+  const url = `${TELEGRAM_API}/deleteMessage`;
+  const body = { chat_id: chatId, message_id: messageId };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = (await res.json()) as TelegramApiResponse;
+  if (!json.ok) console.error("telegramDeleteMessage error:", json);
+  return json;
+}

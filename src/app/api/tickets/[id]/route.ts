@@ -21,7 +21,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
     await ticket.save();
 
     if (ticket.telegramChatId) {
-      await telegramSendMessage(ticket.telegramChatId, `✔ Ticket ${ticket.ticketId} Completed by ${ticket.completedBy}`);
+      const msgText = `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
+                     `👤 Completed by: ${ticket.completedBy}`;
+      
+      await telegramSendMessage(
+        ticket.telegramChatId, 
+        msgText,
+        ticket.telegramMessageId || undefined
+      );
     }
   } else {
     Object.assign(ticket, payload);

@@ -39,6 +39,13 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any, on
             <div className="flex flex-col items-end gap-2">
               <div className={statusClass()}>{ticket.status}</div>
               <div className="text-xs text-gray-400">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : ""}</div>
+              {ticket.status === "COMPLETED" && ticket.completedBy && (
+                <div className="text-xs text-green-600 font-medium text-right">
+                  Completed by {ticket.completedBy}
+                  {ticket.completedAt && <br />}
+                  {ticket.completedAt && new Date(ticket.completedAt).toLocaleString()}
+                </div>
+              )}
             </div>
           </div>
 
