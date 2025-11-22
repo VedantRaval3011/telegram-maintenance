@@ -354,7 +354,7 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
  */
 async function formatWizardMessage(session: any, fields: WizardField[], currentField: WizardField | null): Promise<string> {
   let message = "🛠 <b>Ticket Wizard</b>\n";
-  message += `📝 ${session.description || "New Ticket"}\n\n`;
+  message += `📝 ${session.originalText || "New Ticket"}\n\n`;
 
   // Completed fields section
   const completedFields = fields.filter(f => f.completed);
@@ -561,7 +561,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
 
   const ticketData: any = {
     ticketId: nextTicketId,
-    description: session.description || "No description",
+    description: session.originalText || "No description",
     category: category?.name || "unknown",
     categoryDisplay: category?.displayName || "Unknown",
     subCategory: subcategory?.name,
@@ -876,7 +876,7 @@ export async function POST(req: NextRequest) {
           chatId: chat.id,
           userId: msg.from.id,
           botMessageId,
-          description,
+          originalText: description,
           photos: initialPhotos,
           category: detectedCategoryId,
           categoryDisplay: detectedCategoryId ? 
