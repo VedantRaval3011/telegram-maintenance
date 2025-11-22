@@ -12,6 +12,7 @@ export interface IWizardSession extends Document {
   originalText: string;
 
   category: string | null;
+  categoryDisplay: string | null;
   subCategoryId: string | null; 
 
   priority: "low" | "medium" | "high" | null;
@@ -70,6 +71,7 @@ const WizardSessionSchema = new Schema<IWizardSession>(
     originalText: { type: String, required: true },
 
     category: { type: String, default: null },
+    categoryDisplay: { type: String, default: null },
     subCategoryId: { type: String, default: null },
 
     priority: { type: String, enum: ["low", "medium", "high", null], default: null },

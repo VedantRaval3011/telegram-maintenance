@@ -334,13 +334,8 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
               callback_data: `select_${botMessageId}_additional_${field.additionalFieldKey}_${option}`
             }]);
           }
-        } else {
-          // For text/number/date/photo, show manual entry button
-          keyboard.push([{
-            text: "✍️ Enter Value",
-            callback_data: `input_${botMessageId}_additional_${field.additionalFieldKey}`
-          }]);
         }
+        // Note: For non-select fields (text/number/date), users should type directly in chat
       }
       break;
     }
@@ -459,6 +454,45 @@ async function refreshWizardUI(session: any, chatId: number, botMessageId: numbe
   keyboard = [...keyboard, ...navKeyboard];
 
   await editMessageText(chatId, botMessageId, message, keyboard);
+
+  // Check if all required fields are complete
+  const allComplete = updatedFields.filter(f => f.required).every(f => f.completed);
+  
+  if (allComplete) {
+    // Show countdown message
+    const countdownMsg = message + "\n\n⏱️ Auto-submitting in 3 seconds...";
+    await editMessageText(chatId, botMessageId, countdownMsg, keyboard);
+    
+    // Wait 3 seconds then auto-submit
+    setTimeout(async () => {
+      try {
+        // Re-fetch session to ensure it still exists
+        const freshSession = await WizardSession.findOne({ botMessageId });
+        if (!freshSession) return; // Session was cancelled or already submitted
+        
+        // Get user info for createdBy
+        const createdBy = `User ${freshSession.userId}`;
+        
+        // Create ticket
+        const ticket = await createTicketFromSession(freshSession, createdBy);
+        
+        // Send confirmation message
+        const ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
+                         `📝 ${ticket.description}\n` +
+                         `📂 ${ticket.category}\n` +
+                         `⚡ ${ticket.priority}\n` +
+                         `📍 ${ticket.location}\n` +
+                         `👤 ${createdBy}`;
+        
+        await telegramSendMessage(chatId, ticketMsg);
+        
+        // Delete wizard session
+        await WizardSession.deleteOne({ botMessageId });
+      } catch (err) {
+        console.error("Auto-submit error:", err);
+      }
+    }, 3000);
+  }
 }
 
 /**
@@ -633,6 +667,7 @@ export async function POST(req: NextRequest) {
             const cat = await Category.findById(value).lean();
             if (cat) {
               session.category = String(cat._id);
+              session.categoryDisplay = cat.displayName;
               await session.save();
             }
             break;
