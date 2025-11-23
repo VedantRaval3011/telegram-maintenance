@@ -504,28 +504,14 @@ async function handleLocationSelection(
     completeField = "targetLocationComplete";
   }
 
-  // Get current path - this should represent WHERE WE ARE, not where we're going
+  // Get current path - this represents our navigation history
   const currentPath = session[pathField] || [];
-  const locationIdStr = String(location._id);
   
-  // Build the complete hierarchy path for this location
-  const fullPath = [];
-  let currentLoc = location;
-  
-  // Build path from bottom to top
-  const pathIds = [currentLoc];
-  while (currentLoc.parentLocationId) {
-    const parent = await Location.findById(currentLoc.parentLocationId).lean();
-    if (!parent) break;
-    pathIds.unshift(parent);
-    currentLoc = parent;
-  }
-  
-  // Convert to path format
-  const newPath = pathIds.map(loc => ({
-    id: String(loc._id),
-    name: loc.name
-  }));
+  // Append selected location to current path (incremental navigation)
+  const newPath = [...currentPath, {
+    id: String(location._id),
+    name: location.name
+  }];
 
   // Check if has children
   const childCount = await Location.countDocuments({ 
