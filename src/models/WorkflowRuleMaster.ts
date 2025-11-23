@@ -1,4 +1,6 @@
-import mongoose, { Document, Model, Schema } from "mongoose";
+import "@/models/Category";
+import mongoose, { Model, Schema } from "mongoose";
+
 
 export interface IWorkflowRule extends Document {
   categoryId: mongoose.Types.ObjectId;
