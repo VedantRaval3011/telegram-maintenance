@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { WorkflowRule } from "@/models/WorkflowRuleMaster";
-import { Category } from "@/models/Category";
 import { connectToDB } from "@/lib/mongodb";
 import { z } from "zod";
 
