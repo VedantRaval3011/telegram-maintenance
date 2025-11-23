@@ -695,6 +695,11 @@ export async function POST(req: NextRequest) {
           case "source_location":
           case "target_location": {
             await handleLocationSelection(session, value, fieldType as any, botMessageId);
+            // Reload session to get updated path and completion status
+            const updatedSession = await WizardSession.findOne({ botMessageId });
+            if (updatedSession) {
+              Object.assign(session, updatedSession.toObject());
+            }
             break;
           }
 
