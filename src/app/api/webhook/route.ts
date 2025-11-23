@@ -606,6 +606,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
     createdBy,
     photos: session.photos || [],
     additionalFields: session.additionalFieldValues || {},
+    originalMessageId: session.originalMessageId, // Store original message ID
   };
 
   // Add agency info if present
@@ -686,6 +687,7 @@ export async function POST(req: NextRequest) {
             const sub = await SubCategory.findById(value).lean();
             if (sub) {
               session.subCategoryId = String(sub._id);
+              session.subCategoryDisplay = sub.name;
               await session.save();
             }
             break;
@@ -755,6 +757,7 @@ export async function POST(req: NextRequest) {
             break;
           case "subcategory":
             session.subCategoryId = null;
+            session.subCategoryDisplay = null;
             break;
           case "location":
             session.locationComplete = false;
@@ -868,7 +871,13 @@ if (msg.reply_to_message) {
   const completionKeywords = ["done", "ok", "completed", "fixed", "resolved"];
 
   if (completionKeywords.some(k => lowerText.includes(k))) {
-    const ticket = await Ticket.findOne({ telegramMessageId: replyId });
+    // Check both ticket confirmation message and original user message
+    const ticket = await Ticket.findOne({
+      $or: [
+        { telegramMessageId: replyId },
+        { originalMessageId: replyId }
+      ]
+    });
     
     if (ticket && ticket.status !== "COMPLETED") {
       const completedBy = msg.from.username || 
@@ -997,6 +1006,7 @@ if (msg.reply_to_message) {
           chatId: chat.id,
           userId: msg.from.id,
           botMessageId,
+          originalMessageId: msg.message_id, // Store original message ID
           originalText: description,
           photos: initialPhotos,
           category: detectedCategoryId,

@@ -5,6 +5,7 @@ export interface ITicket extends Document {
   ticketId: string; // TCK-001
   description: string;
   category: string | null;
+  subCategory?: string | null;
   priority: "low" | "medium" | "high";
   location?: string | null;
   photos: string[]; // saved file URLs or file paths
@@ -14,7 +15,8 @@ export interface ITicket extends Document {
   status: "PENDING" | "COMPLETED";
   completedBy?: string | null;
   completedAt?: Date | null;
-  telegramMessageId?: number | null;
+  telegramMessageId?: number | null; // Ticket confirmation message
+  originalMessageId?: number | null; // Original user message that created the ticket
   telegramChatId?: number | null;
 }
 
@@ -22,6 +24,7 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   ticketId: { type: String, required: true, unique: true },
   description: { type: String, required: true },
   category: { type: String, default: null },
+  subCategory: { type: String, default: null },
   priority: {
     type: String,
     enum: ["low", "medium", "high"],
@@ -39,6 +42,7 @@ completionPhotos: {
   completedBy: { type: String, default: null },
   completedAt: { type: Date, default: null },
   telegramMessageId: { type: Number, default: null },
+  originalMessageId: { type: Number, default: null },
   telegramChatId: { type: Number, default: null },
 });
 

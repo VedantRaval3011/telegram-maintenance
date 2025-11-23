@@ -27,4 +27,4 @@ export async function uploadToCloudinary(
     console.error("Cloudinary upload error:", error);
     throw error;
   }
-}
+} 

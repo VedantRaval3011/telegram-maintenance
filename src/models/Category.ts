@@ -7,6 +7,7 @@ export interface ICategory extends Document {
   description?: string | null;
   color?: string | null;
   icon?: string | null;
+  agency?: string | null;
   isActive: boolean;
   priority: number;
   createdAt: Date;
@@ -20,7 +21,8 @@ const CategorySchema = new Schema<ICategory>(
     keywords: { type: [String], default: [] },
     description: { type: String, default: null },
     color: { type: String, default: null },  
-    icon: { type: String, default: "📋" },   
+    icon: { type: String, default: "📋" },
+    agency: { type: String, default: null },   
 
     isActive: { type: Boolean, default: true },
     priority: { type: Number, default: 0 },

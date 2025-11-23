@@ -9,11 +9,13 @@ export interface IWizardSession extends Document {
   chatId: number;
   userId: number;
   botMessageId: number;
+  originalMessageId: number; // The user's original message that created the ticket
   originalText: string;
 
   category: string | null;
   categoryDisplay: string | null;
-  subCategoryId: string | null; 
+  subCategoryId: string | null;
+  subCategoryDisplay: string | null; 
 
   priority: "low" | "medium" | "high" | null;
 
@@ -68,11 +70,13 @@ const WizardSessionSchema = new Schema<IWizardSession>(
     chatId: { type: Number, required: true },
     userId: { type: Number, required: true },
     botMessageId: { type: Number, required: true, unique: true },
+    originalMessageId: { type: Number, required: true },
     originalText: { type: String, required: true },
 
     category: { type: String, default: null },
     categoryDisplay: { type: String, default: null },
     subCategoryId: { type: String, default: null },
+    subCategoryDisplay: { type: String, default: null },
 
     priority: { type: String, enum: ["low", "medium", "high", null], default: null },
 

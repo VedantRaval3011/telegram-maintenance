@@ -93,6 +93,7 @@ const CreateCategorySchema = z.object({
   description: z.string().optional(),
   color: z.string().optional(),
   icon: z.string().optional(),
+  agency: z.string().optional(),
   isActive: z.boolean().optional().default(true),
   priority: z.number().optional().default(0),
 });
