@@ -141,8 +141,10 @@ const WizardSessionSchema = new Schema<IWizardSession>(
   { timestamps: false }
 );
 
-
-WizardSessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3600 });
+// Performance indexes
+WizardSessionSchema.index({ botMessageId: 1 }); // Fast lookup during callbacks
+WizardSessionSchema.index({ userId: 1, waitingForInput: 1 }); // Fast lookup for active input sessions
+WizardSessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3600 }); // Auto-cleanup after 1 hour
 
 export const WizardSession: Model<IWizardSession> =
   mongoose.models.WizardSession ||

@@ -33,6 +33,30 @@ import path from "path";
  * - Submit only when all required fields complete
  */
 
+// ========== PERFORMANCE OPTIMIZATION: IN-MEMORY CACHE ==========
+// Cache for master data with 5-minute TTL to reduce database queries
+interface CacheEntry<T> {
+  data: T;
+  expiry: number;
+}
+
+const masterDataCache = new Map<string, CacheEntry<any>>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Generic cache wrapper for database queries
+ */
+async function getCached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const cached = masterDataCache.get(key);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.data as T;
+  }
+  
+  const data = await fetcher();
+  masterDataCache.set(key, { data, expiry: Date.now() + CACHE_TTL });
+  return data;
+}
+
 interface TelegramUpdate {
   update_id?: number;
   message?: any;
@@ -75,7 +99,11 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
 
   // If category selected, load workflow rule
   if (categoryId) {
-    const rule = await WorkflowRule.findOne({ categoryId }).lean();
+    // ✅ OPTIMIZED: Cache workflow rule query
+    const rule = await getCached(
+      `workflow:${categoryId}`,
+      () => WorkflowRule.findOne({ categoryId }).lean()
+    );
     
     if (rule) {
       // Subcategory
@@ -239,7 +267,11 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
 
   switch (field.type) {
     case "category": {
-      const categories = await Category.find({ isActive: true }).sort({ displayName: 1 }).lean();
+      // ✅ OPTIMIZED: Cache categories query
+      const categories = await getCached(
+        'categories:active',
+        () => Category.find({ isActive: true }).sort({ displayName: 1 }).lean()
+      );
       for (const cat of categories) {
         keyboard.push([{
           text: cat.displayName,
@@ -260,7 +292,11 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
 
     case "subcategory": {
       if (session.category) {
-        const subcats = await SubCategory.find({ categoryId: session.category, isActive: true }).sort({ name: 1 }).lean();
+        // ✅ OPTIMIZED: Cache subcategories by categoryId
+        const subcats = await getCached(
+          `subcategories:${session.category}`,
+          () => SubCategory.find({ categoryId: session.category, isActive: true }).sort({ name: 1 }).lean()
+        );
         for (const sub of subcats) {
           keyboard.push([{
             text: sub.name,
@@ -298,10 +334,15 @@ case "target_location": {
     parentId = currentPath[currentPath.length - 1].id;
   }
 
-  const locations = await Location.find({
-    parentLocationId: parentId,
-    isActive: true
-  }).sort({ name: 1 }).lean();
+  // ✅ OPTIMIZED: Cache locations by parentId
+  const cacheKey = `locations:${parentId || 'root'}`;
+  const locations = await getCached(
+    cacheKey,
+    () => Location.find({
+      parentLocationId: parentId,
+      isActive: true
+    }).sort({ name: 1 }).lean()
+  );
 
   for (const loc of locations) {
     keyboard.push([{
@@ -321,7 +362,11 @@ case "target_location": {
 }
 
     case "agency": {
-      const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
+      // ✅ OPTIMIZED: Cache workflow rule
+      const rule = await getCached(
+        `workflow:${session.category}`,
+        () => WorkflowRule.findOne({ categoryId: session.category }).lean()
+      );
       const agencies = rule?.additionalFields?.find(f => f.key === "agency")?.options || [];
       
       for (const agency of agencies) {
@@ -340,7 +385,11 @@ case "target_location": {
 
     case "additional": {
       if (field.additionalFieldKey) {
-        const rule = await WorkflowRule.findOne({ categoryId: session.category }).lean();
+        // ✅ OPTIMIZED: Cache workflow rule
+        const rule = await getCached(
+          `workflow:${session.category}`,
+          () => WorkflowRule.findOne({ categoryId: session.category }).lean()
+        );
         const addField = rule?.additionalFields?.find(f => f.key === field.additionalFieldKey);
         
         if (addField?.type === "select" && addField.options) {
@@ -490,7 +539,15 @@ async function handleLocationSelection(
   fieldType: "location" | "source_location" | "target_location",
   botMessageId: number
 ) {
-  const location = await Location.findById(locationId).lean();
+  // ✅ OPTIMIZED: Combine location lookup and child count into single Promise.all
+  const [location, childCount] = await Promise.all([
+    Location.findById(locationId).lean(),
+    Location.countDocuments({ 
+      parentLocationId: locationId, 
+      isActive: true 
+    })
+  ]);
+  
   if (!location) return false;
 
   // Determine which path to update
@@ -512,12 +569,6 @@ async function handleLocationSelection(
     id: String(location._id),
     name: location.name
   }];
-
-  // Check if has children
-  const childCount = await Location.countDocuments({ 
-    parentLocationId: location._id, 
-    isActive: true 
-  });
 
   if (childCount > 0) {
     // Has children, update path but don't mark complete
@@ -697,11 +748,7 @@ export async function POST(req: NextRequest) {
           case "source_location":
           case "target_location": {
             await handleLocationSelection(session, value, fieldType as any, botMessageId);
-            // Reload session to get updated path and completion status
-            const updatedSession = await WizardSession.findOne({ botMessageId });
-            if (updatedSession) {
-              Object.assign(session, updatedSession.toObject());
-            }
+            // ✅ OPTIMIZED: Removed redundant session reload - handleLocationSelection already updates the session
             break;
           }
 
