@@ -337,11 +337,24 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
         'categories:active',
         () => Category.find({ isActive: true }).sort({ displayName: 1 }).lean()
       );
-      for (const cat of categories) {
-        keyboard.push([{
-          text: cat.displayName,
-          callback_data: `select_${botMessageId}_category_${cat._id}`
-        }]);
+      
+      // 2-column layout
+      for (let i = 0; i < categories.length; i += 2) {
+        const row: any[] = [];
+        const cat1 = categories[i];
+        row.push({
+          text: cat1.displayName,
+          callback_data: `select_${botMessageId}_category_${cat1._id}`
+        });
+        
+        if (i + 1 < categories.length) {
+          const cat2 = categories[i + 1];
+          row.push({
+            text: cat2.displayName,
+            callback_data: `select_${botMessageId}_category_${cat2._id}`
+          });
+        }
+        keyboard.push(row);
       }
       break;
     }
