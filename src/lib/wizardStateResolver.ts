@@ -32,6 +32,25 @@ export interface WizardFieldDefinition {
 }
 
 /**
+ * Helper function to deduplicate location path by removing consecutive duplicates
+ */
+function deduplicateLocationPath(path: { id: string; name: string }[] | null | undefined): { id: string; name: string }[] {
+  if (!path || path.length === 0) return [];
+  
+  const deduped: { id: string; name: string }[] = [];
+  let lastId: string | null = null;
+  
+  for (const node of path) {
+    if (node.id !== lastId) {
+      deduped.push(node);
+      lastId = node.id;
+    }
+  }
+  
+  return deduped;
+}
+
+/**
  * Get the WorkflowRule for a category
  */
 async function getWorkflowRule(categoryId: string | null): Promise<any> {
@@ -242,17 +261,17 @@ export function getFieldDisplayValue(session: IWizardSession, field: WizardField
     case "location":
       if (session.customLocation) return session.customLocation;
       if (session.locationPath && session.locationPath.length > 0) {
-        return session.locationPath.map(n => n.name).join(" > ");
+        return deduplicateLocationPath(session.locationPath).map(n => n.name).join(" > ");
       }
       return "—";
     case "source_location":
       if (session.sourceLocationPath && session.sourceLocationPath.length > 0) {
-        return session.sourceLocationPath.map(n => n.name).join(" > ");
+        return deduplicateLocationPath(session.sourceLocationPath).map(n => n.name).join(" > ");
       }
       return "—";
     case "target_location":
       if (session.targetLocationPath && session.targetLocationPath.length > 0) {
-        return session.targetLocationPath.map(n => n.name).join(" > ");
+        return deduplicateLocationPath(session.targetLocationPath).map(n => n.name).join(" > ");
       }
       return "—";
     case "agency":

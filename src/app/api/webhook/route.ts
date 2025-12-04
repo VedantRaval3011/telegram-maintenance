@@ -64,6 +64,27 @@ interface TelegramUpdate {
   callback_query?: any;
 }
 
+/**
+ * Helper function to deduplicate location path by removing consecutive duplicates
+ * This handles cases where the same location was added multiple times
+ */
+function deduplicateLocationPath(path: { id: string; name: string }[] | null | undefined): { id: string; name: string }[] {
+  if (!path || path.length === 0) return [];
+  
+  // Remove consecutive duplicates (preserve order, remove repeated entries)
+  const deduped: { id: string; name: string }[] = [];
+  let lastId: string | null = null;
+  
+  for (const node of path) {
+    if (node.id !== lastId) {
+      deduped.push(node);
+      lastId = node.id;
+    }
+  }
+  
+  return deduped;
+}
+
 interface WizardField {
   key: string;
   label: string;
@@ -216,17 +237,17 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
       
       case "location":
         completed = session.locationComplete === true;
-        value = session.locationPath?.map((n: any) => n.name).join(" → ") || "Selected";
+        value = deduplicateLocationPath(session.locationPath).map((n: any) => n.name).join(" → ") || "Selected";
         break;
       
       case "source_location":
         completed = session.sourceLocationComplete === true;
-        value = session.sourceLocationPath?.map((n: any) => n.name).join(" → ") || "Selected";
+        value = deduplicateLocationPath(session.sourceLocationPath).map((n: any) => n.name).join(" → ") || "Selected";
         break;
       
       case "target_location":
         completed = session.targetLocationComplete === true;
-        value = session.targetLocationPath?.map((n: any) => n.name).join(" → ") || "Selected";
+        value = deduplicateLocationPath(session.targetLocationPath).map((n: any) => n.name).join(" → ") || "Selected";
         break;
       
       case "agency":
@@ -564,9 +585,18 @@ async function handleLocationSelection(
   // Get current path - this represents our navigation history
   const currentPath = session[pathField] || [];
   
+  // ✅ FIX: Check if this location is already in the path to prevent duplicates
+  const locationIdStr = String(location._id);
+  const alreadyInPath = currentPath.some((node: any) => node.id === locationIdStr);
+  
+  if (alreadyInPath) {
+    // Location already exists in path, skip adding it again
+    return true;
+  }
+  
   // Append selected location to current path (incremental navigation)
   const newPath = [...currentPath, {
-    id: String(location._id),
+    id: locationIdStr,
     name: location.name
   }];
 
@@ -628,10 +658,11 @@ async function createTicketFromSession(session: any, createdBy: string) {
   const category = await Category.findById(session.category).lean();
   const subcategory = session.subCategoryId ? await SubCategory.findById(session.subCategoryId).lean() : null;
 
-  // Build location string
+  // Build location string (deduplicate to handle any existing duplicates)
   let locationStr = "Not specified";
-  if (session.locationPath && session.locationPath.length > 0) {
-    locationStr = session.locationPath.map((n: any) => n.name).join(" → ");
+  const dedupedPath = deduplicateLocationPath(session.locationPath);
+  if (dedupedPath.length > 0) {
+    locationStr = dedupedPath.map((n: any) => n.name).join(" → ");
   }
 
   // Get next ticket ID
@@ -668,12 +699,12 @@ async function createTicketFromSession(session: any, createdBy: string) {
     }
   }
 
-  // Add source/target locations if transfer
+  // Add source/target locations if transfer (deduplicate to handle any existing duplicates)
   if (session.sourceLocationPath) {
-    ticketData.sourceLocation = session.sourceLocationPath.map((n: any) => n.name).join(" → ");
+    ticketData.sourceLocation = deduplicateLocationPath(session.sourceLocationPath).map((n: any) => n.name).join(" → ");
   }
   if (session.targetLocationPath) {
-    ticketData.targetLocation = session.targetLocationPath.map((n: any) => n.name).join(" → ");
+    ticketData.targetLocation = deduplicateLocationPath(session.targetLocationPath).map((n: any) => n.name).join(" → ");
   }
 
   const ticket = await Ticket.create(ticketData);

@@ -23,7 +23,19 @@ function toDisplayName(s?: string | null): string {
 
 function locationPathToString(path?: { id: string; name: string }[]): string {
   if (!path || path.length === 0) return "—";
-  return path.map((n) => n.name).join(" > ");
+  
+  // Deduplicate consecutive entries to handle any existing duplicates
+  const deduped: { id: string; name: string }[] = [];
+  let lastId: string | null = null;
+  
+  for (const node of path) {
+    if (node.id !== lastId) {
+      deduped.push(node);
+      lastId = node.id;
+    }
+  }
+  
+  return deduped.map((n) => n.name).join(" > ");
 }
 
 /** --- Session CRUD --- */

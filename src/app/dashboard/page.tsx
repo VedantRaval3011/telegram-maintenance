@@ -323,21 +323,21 @@ export default function DashboardPage() {
   }, [fullyFiltered, baseFiltered, categories, users, subCategories, selectedCategory, calculateStats]);
 
   if (error)
-    return <div className="p-10 text-center text-rose-500">Failed to load</div>;
+    return <div className="p-10 text-center text-red-500">Failed to load</div>;
   if (!data)
-    return <div className="p-10 text-center text-[#7d6856] animate-pulse">Loading…</div>;
+    return <div className="p-10 text-center text-gray-500 animate-pulse">Loading…</div>;
 
   return (
-    <div className="min-h-screen bg-[#e8d5c4] pb-20 font-sans">
+    <div className="min-h-screen bg-[#E8DDD0] pb-20">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
         {/* Top Filters: Advanced Toggle */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-end gap-4 mb-2">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-end gap-4 mb-6">
           {/* Advanced Filters Toggle */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button 
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#ede0d1] text-[#2c2420] rounded-xl font-medium hover:bg-[#d4c0ae] transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all border border-gray-200 shadow-sm"
             >
               <svg
                 className={`w-4 h-4 transition-transform ${showAdvancedFilters ? "rotate-180" : ""}`}
@@ -352,7 +352,7 @@ export default function DashboardPage() {
             {(filters.category || filters.location || filters.priority || filters.user || filters.name || filters.dateFrom || filters.dateTo) && (
               <button
                 onClick={resetFilters}
-                className="px-4 py-2 bg-[#e8d5c4] text-[#2c2420] rounded-xl font-medium hover:bg-[#d4c0ae] transition-all"
+                className="px-4 py-2.5 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-all shadow-sm"
               >
                 Reset
               </button>
@@ -362,21 +362,21 @@ export default function DashboardPage() {
 
         {/* Advanced Filters Panel */}
         {showAdvancedFilters && (
-          <div className="mb-2">
+          <div className="mb-8">
             <FilterBar tickets={tickets} filters={filters} setFilters={setFilters} reset={resetFilters} />
           </div>
         )}
+        
         {/* Summary Stats */}
-        {/* Global Stats Capsules */}
-        <div className="mb-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+        <div className="mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Capsule 
               title="Total Tickets" 
               {...stats.totalStats} 
               onClick={() => setFilters({ status: "" })}
               onPriorityClick={(p) => setFilters({ priority: p })}
               selectedPriority={filters.priority}
-              className={filters.status === "" ? "ring-4 ring-[#2c2420]/20" : ""}
+              className={filters.status === "" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
             />
             <Capsule 
               title="Pending" 
@@ -384,7 +384,7 @@ export default function DashboardPage() {
               onClick={() => setFilters({ status: "PENDING" })}
               onPriorityClick={(p) => setFilters({ priority: p })}
               selectedPriority={filters.priority}
-              className={filters.status === "PENDING" ? "ring-4 ring-[#2c2420]/20" : ""}
+              className={filters.status === "PENDING" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
             />
             <Capsule 
               title="Completed" 
@@ -392,16 +392,16 @@ export default function DashboardPage() {
               onClick={() => setFilters({ status: "COMPLETED" })}
               onPriorityClick={(p) => setFilters({ priority: p })}
               selectedPriority={filters.priority}
-              className={filters.status === "COMPLETED" ? "ring-4 ring-[#2c2420]/20" : ""}
+              className={filters.status === "COMPLETED" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
             />
           </div>
         </div>
 
         {/* Category Stats Capsules */}
         {stats.categoryStats.length > 0 && (
-          <div className="mb-10">
-            <h2 className="text-xl font-bold text-[#7d6856] mb-4">By Category</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+          <div className="mb-12">
+            <h2 className="text-lg font-semibold text-gray-900 mb-6">By Category</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {stats.categoryStats.map((cat: any) => (
                 <div key={cat.id} className="relative">
                   <Capsule 
@@ -415,11 +415,8 @@ export default function DashboardPage() {
                     onPriorityClick={(p) => setFilters({ priority: p })}
                     selectedPriority={filters.priority}
                     color={cat.color}
-                    className={(selectedCategory === cat.id || (cat.id === "all" ? filters.category === "" : filters.category === cat.name)) ? "ring-4 ring-[#2c2420]/20" : ""}
+                    className={(selectedCategory === cat.id || (cat.id === "all" ? filters.category === "" : filters.category === cat.name)) ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                   />
-                  {selectedCategory === cat.id && (
-                    <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-[#f5ebe0] rotate-45 border-r border-b border-[#c9b6a5]"></div>
-                  )}
                 </div>
               ))}
             </div>
@@ -428,21 +425,21 @@ export default function DashboardPage() {
 
         {/* Subcategories Section */}
         {selectedCategory && (
-          <div className="mb-10">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-[#7d6856]">
+          <div className="mb-12">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">
                 Subcategories for {categories.find((c: any) => c._id === selectedCategory)?.displayName}
               </h2>
               <button 
                 onClick={() => setSelectedCategory(null)}
-                className="text-sm text-[#7d6856] hover:text-[#2c2420] underline"
+                className="text-sm text-gray-600 hover:text-gray-900 underline font-medium"
               >
                 Close
               </button>
             </div>
             
             {stats.subCategoryStats.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {stats.subCategoryStats.map((sub: any) => (
                   <Capsule 
                     key={sub.id} 
@@ -456,7 +453,7 @@ export default function DashboardPage() {
                         subCategory: sub.name 
                       });
                     }}
-                    className={filters.subCategory === sub.name ? "ring-4 ring-[#2c2420]/20" : ""}
+                    className={filters.subCategory === sub.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                     onPriorityClick={(p) => setFilters({ priority: p })}
                     selectedPriority={filters.priority}
                     color={categories.find((c: any) => c._id === selectedCategory)?.color}
@@ -464,7 +461,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="text-[#7d6856] italic px-4">No tickets found for subcategories in this category.</div>
+              <div className="text-gray-500 italic px-4">No tickets found for subcategories in this category.</div>
             )}
           </div>
         )}
@@ -473,9 +470,9 @@ export default function DashboardPage() {
 
         {/* User Stats Capsules */}
         {stats.userStats.length > 0 && (
-          <div className="mb-10">
-            <h2 className="text-xl font-bold text-[#7d6856] mb-4">By User</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+          <div className="mb-12">
+            <h2 className="text-lg font-semibold text-gray-900 mb-6">By User</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {stats.userStats.map((u: any) => (
                 <Capsule 
                   key={u.id} 
@@ -484,7 +481,7 @@ export default function DashboardPage() {
                   onClick={() => setFilters({ user: u.name })}
                   onPriorityClick={(p) => setFilters({ priority: p })}
                   selectedPriority={filters.priority}
-                  className={filters.user === u.name ? "ring-4 ring-[#2c2420]/20" : ""}
+                  className={filters.user === u.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                 />
               ))}
             </div>
@@ -501,7 +498,7 @@ export default function DashboardPage() {
         </div>
 
         {fullyFiltered.length === 0 && (
-          <div className="mt-6 text-center text-[#7d6856]">No tickets match the current filters.</div>
+          <div className="mt-6 text-center text-gray-500">No tickets match the current filters.</div>
         )}
       </div>
     </div>

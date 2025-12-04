@@ -9,17 +9,17 @@ export default function Navbar() {
   const isActive = (path: string) => pathname === path;
 
   return (
-    <nav className="sticky top-0 z-40 bg-gradient-to-r from-[#d4c0ae] via-[#e8d5c4] to-[#d4c0ae] backdrop-blur-md border-b border-[#b8a293] mb-6 shadow-lg shadow-[#b8a293]/20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className="sticky top-0 z-50 bg-[#E8DDD0] border-b border-[#D4C4B0] mb-8 shadow-sm">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-10">
             <Link href="/dashboard" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-[#7d6856] to-[#5c4a3d] text-[#f5ebe0] font-bold shadow-lg shadow-[#7d6856]/50 group-hover:shadow-[#5c4a3d]/50 transition-all">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-600 text-white font-bold text-sm shadow-sm group-hover:shadow-md transition-all">
                 M
               </div>
               <div>
-                <div className="text-lg font-bold text-[#2c2420] group-hover:text-[#3d332c] transition-colors">Maintenance</div>
-                <div className="text-[11px] font-medium text-[#5c4a3d] uppercase tracking-wider">Operations</div>
+                <div className="text-base font-semibold text-gray-900 group-hover:text-gray-700 transition-colors">Maintenance</div>
+                <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Operations</div>
               </div>
             </Link>
 
@@ -37,8 +37,8 @@ export default function Navbar() {
                   href={link.path}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     isActive(link.path)
-                      ? "bg-[#7d6856] text-[#f5ebe0] border border-[#5c4a3d]"
-                      : "text-[#3d332c] hover:bg-[#e8d5c4] hover:text-[#2c2420]"
+                      ? "bg-[#8B7355] text-white shadow-sm"
+                      : "text-gray-700 hover:bg-[#D4C4B0] hover:text-gray-900"
                   }`}
                 >
                   {link.name}
@@ -52,8 +52,8 @@ export default function Navbar() {
               href="/settings" 
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 isActive("/settings")
-                  ? "bg-[#7d6856] text-[#f5ebe0] border border-[#5c4a3d]"
-                  : "text-[#3d332c] hover:bg-[#e8d5c4] hover:text-[#2c2420]"
+                  ? "bg-[#8B7355] text-white shadow-sm"
+                  : "text-gray-700 hover:bg-[#D4C4B0] hover:text-gray-900"
               }`}
             >
               Settings
