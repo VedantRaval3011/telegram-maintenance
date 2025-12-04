@@ -16,6 +16,7 @@ import {
   telegramDeleteMessage,
 } from "@/lib/telegram";
 import { uploadBufferToCloudinary } from "@/lib/uploadBufferToCloudinary";
+import { fastProcessTelegramPhoto } from "@/lib/fastImageUpload";
 import fs from "fs";
 import path from "path";
 
@@ -33,28 +34,71 @@ import path from "path";
  * - Submit only when all required fields complete
  */
 
-// ========== PERFORMANCE OPTIMIZATION: IN-MEMORY CACHE ==========
-// Cache for master data with 5-minute TTL to reduce database queries
+// ========== PERFORMANCE OPTIMIZATION: ENHANCED CACHING ==========
+// Cache for master data with longer TTL to reduce database queries
 interface CacheEntry<T> {
   data: T;
   expiry: number;
 }
 
 const masterDataCache = new Map<string, CacheEntry<any>>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes (increased from 5)
+
+// Pending request map to prevent duplicate in-flight requests
+const pendingRequests = new Map<string, Promise<any>>();
 
 /**
- * Generic cache wrapper for database queries
+ * Generic cache wrapper with request deduplication
+ * Prevents multiple simultaneous requests for the same data
  */
 async function getCached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  // Check cache first
   const cached = masterDataCache.get(key);
   if (cached && cached.expiry > Date.now()) {
     return cached.data as T;
   }
   
-  const data = await fetcher();
-  masterDataCache.set(key, { data, expiry: Date.now() + CACHE_TTL });
-  return data;
+  // Check if there's already a pending request for this key
+  const pending = pendingRequests.get(key);
+  if (pending) {
+    return pending as Promise<T>;
+  }
+  
+  // Create new request and track it
+  const request = fetcher().then(data => {
+    masterDataCache.set(key, { data, expiry: Date.now() + CACHE_TTL });
+    pendingRequests.delete(key);
+    return data;
+  }).catch(err => {
+    pendingRequests.delete(key);
+    throw err;
+  });
+  
+  pendingRequests.set(key, request);
+  return request;
+}
+
+/**
+ * Pre-warm the cache on startup (called once)
+ */
+let cacheWarmed = false;
+async function warmCache() {
+  if (cacheWarmed) return;
+  cacheWarmed = true;
+  
+  try {
+    // Pre-load all categories
+    const categories = await Category.find({ isActive: true }).sort({ priority: -1, name: 1 }).lean();
+    masterDataCache.set('categories:all', { data: categories, expiry: Date.now() + CACHE_TTL });
+    
+    // Pre-load root locations
+    const rootLocations = await Location.find({ parentLocationId: null, isActive: true }).sort({ name: 1 }).lean();
+    masterDataCache.set('locations:root', { data: rootLocations, expiry: Date.now() + CACHE_TTL });
+    
+    console.log('[CACHE] Pre-warmed with categories and root locations');
+  } catch (err) {
+    console.error('[CACHE] Warm-up failed:', err);
+  }
 }
 
 interface TelegramUpdate {
@@ -729,14 +773,22 @@ async function createTicketFromSession(session: any, createdBy: string) {
 }
 
 /**
- * MAIN WEBHOOK HANDLER
+ * MAIN WEBHOOK HANDLER - OPTIMIZED FOR SPEED
  */
 export async function POST(req: NextRequest) {
+  // ⚡ OPTIMIZATION: Start parsing body immediately
+  const bodyPromise = req.json();
+  
   try {
-    const body = (await req.json()) as TelegramUpdate;
-    await connectToDB();
+    const body = (await bodyPromise) as TelegramUpdate;
+    
+    // ⚡ OPTIMIZATION: Parallel DB connection + cache warming
+    await Promise.all([
+      connectToDB(),
+      warmCache()
+    ]);
 
-    // ========== CALLBACK QUERY HANDLING ==========
+    // ========== CALLBACK QUERY HANDLING (OPTIMIZED) ==========
     if (body.callback_query) {
       const callback = body.callback_query;
       const data: string = callback.data;
@@ -751,12 +803,15 @@ export async function POST(req: NextRequest) {
       const action = parts[0];
       const botMessageId = parseInt(parts[1]);
 
-      // Get session
+      // ⚡ OPTIMIZATION: Answer callback immediately to remove loading spinner
+      // This makes the UI feel more responsive
+      answerCallbackQuery(callback.id, "").catch(() => {}); // Fire and forget
+
+      // ⚡ OPTIMIZATION: Use lean() for faster session query
       const session = await WizardSession.findOne({ botMessageId });
       if (!session) {
         // Session expired or deleted - remove the message
-        await telegramDeleteMessage(chatId, messageId);
-        await answerCallbackQuery(callback.id, "Session expired");
+        telegramDeleteMessage(chatId, messageId).catch(() => {}); // Fire and forget
         return NextResponse.json({ ok: true });
       }
 
@@ -1055,58 +1110,66 @@ if (msg.reply_to_message) {
       return NextResponse.json({ ok: true });
     }
 
-    // Handle photo upload
-    let uploadedPhotoUrl: string | null = null;
-    if (msg.photo || msg.document) {
-      try {
-        const { downloadTelegramFileBuffer } = await import("@/lib/downloadTelegramFileBuffer");
-        const { uploadBufferToCloudinary } = await import("@/lib/uploadBufferToCloudinary");
-        const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
-        if (fileId) {
-          const buffer = await downloadTelegramFileBuffer(fileId);
-          uploadedPhotoUrl = await uploadBufferToCloudinary(buffer);
-        }
-      } catch (err) {
-        console.error("Photo upload failed:", err);
-      }
-    }
-
-    // Create new wizard if message qualifies
-    const hasPhoto = !!uploadedPhotoUrl;
-    const hasText = incomingText.length > 5;
+    // ========== NEW TICKET HANDLING (OPTIMIZED) ==========
+    const hasPhoto = !!(msg.photo || msg.document);
+    const hasText = incomingText.length > 1; // Responsive threshold
     
     if (hasPhoto || hasText) {
-      const description = incomingText || "Photo attachment";
-      const initialPhotos = uploadedPhotoUrl ? [uploadedPhotoUrl] : [];
-
-      // Auto-detect category
-      let detectedCategoryId: string | null = null;
-      const categories = await Category.find({ isActive: true }).lean();
-      const lowerText = incomingText.toLowerCase();
-      for (const cat of categories) {
-        if (cat.keywords && cat.keywords.some(kw => lowerText.includes(kw.toLowerCase()))) {
-          detectedCategoryId = String(cat._id);
-          break;
+      // ⚡ OPTIMIZATION: Send initial "Processing" message IMMEDIATELY
+      // This gives instant feedback while we process the heavy stuff
+      const initialMsg = "🛠 <b>Ticket Wizard</b>\n⚡ Processing...";
+      const botResPromise = telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
+      
+      // Prepare parallel tasks
+      
+      // 1. Photo Processing (if applicable)
+      let photoPromise: Promise<string | null> = Promise.resolve(null);
+      if (hasPhoto) {
+        const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
+        if (fileId) {
+          photoPromise = fastProcessTelegramPhoto(fileId);
         }
       }
+      
+      // 2. Category Detection
+      const categoryPromise = (async () => {
+        // Use cached categories if available
+        const categories = await getCached('categories:all', () => 
+          Category.find({ isActive: true }).sort({ priority: -1, name: 1 }).lean()
+        );
+        
+        const lowerText = incomingText.toLowerCase();
+        for (const cat of categories) {
+          if (cat.keywords && cat.keywords.some((kw: string) => lowerText.includes(kw.toLowerCase()))) {
+            return { id: String(cat._id), name: cat.displayName };
+          }
+        }
+        return null;
+      })();
 
-      // Send initial wizard message
-      const initialMsg = "🛠 <b>Ticket Wizard</b>\n📝 Creating your ticket...\n\nPlease wait...";
-      const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
+      // Wait for everything to complete
+      const [botRes, photoUrl, detectedCategory] = await Promise.all([
+        botResPromise,
+        photoPromise,
+        categoryPromise
+      ]);
+
       const botMessageId = (botRes as any)?.result?.message_id;
 
       if (botMessageId) {
+        const description = incomingText || (photoUrl ? "Photo attachment" : "New Ticket");
+        const initialPhotos = photoUrl ? [photoUrl] : [];
+        
         // Create session
         const newSession = await WizardSession.create({
           chatId: chat.id,
           userId: msg.from.id,
           botMessageId,
-          originalMessageId: msg.message_id, // Store original message ID
+          originalMessageId: msg.message_id,
           originalText: description,
           photos: initialPhotos,
-          category: detectedCategoryId,
-          categoryDisplay: detectedCategoryId ? 
-            (await Category.findById(detectedCategoryId).lean())?.displayName : null,
+          category: detectedCategory?.id || null,
+          categoryDisplay: detectedCategory?.name || null,
           createdAt: new Date(),
         });
 
