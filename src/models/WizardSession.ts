@@ -38,6 +38,10 @@ export interface IWizardSession extends Document {
   agencyRequired: boolean | null;
   agencyName: string | null;
   agencyDate: Date | null;
+  agencyTime: string | null;       // Final time string (e.g., "10:30 AM")
+  agencyTimeHour: number | null;   // Selected hour (1-12)
+  agencyTimeMinute: number | null; // Selected minute (0, 15, 30, 45)
+  agencyTimePeriod: string | null; // "AM" or "PM"
 
   /** Dynamic Additional Fields */
   additionalFieldValues: Record<string, any>;
@@ -124,6 +128,10 @@ const WizardSessionSchema = new Schema<IWizardSession>(
     agencyRequired: { type: Boolean, default: null },
     agencyName: { type: String, default: null },
     agencyDate: { type: Date, default: null },
+    agencyTime: { type: String, default: null },
+    agencyTimeHour: { type: Number, default: null },
+    agencyTimeMinute: { type: Number, default: null },
+    agencyTimePeriod: { type: String, default: null },
 
     /** Additional dynamic fields */
     additionalFieldValues: { type: Object, default: {} },

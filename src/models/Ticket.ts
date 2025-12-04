@@ -18,6 +18,8 @@ export interface ITicket extends Document {
   telegramMessageId?: number | null; // Ticket confirmation message
   originalMessageId?: number | null; // Original user message that created the ticket
   telegramChatId?: number | null;
+  agencyName?: string | null; // Selected agency name
+  agencyTime?: string | null; // Agency arrival time (e.g., "10:30 AM")
 }
 
 const TicketSchema = new mongoose.Schema<ITicket>({
@@ -44,6 +46,8 @@ completionPhotos: {
   telegramMessageId: { type: Number, default: null },
   originalMessageId: { type: Number, default: null },
   telegramChatId: { type: Number, default: null },
+  agencyName: { type: String, default: null },
+  agencyTime: { type: String, default: null },
 });
 
 export const Ticket: Model<ITicket> =

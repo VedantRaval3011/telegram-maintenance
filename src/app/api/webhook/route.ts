@@ -8,6 +8,7 @@ import { SubCategory } from "@/models/SubCategoryMaster";
 import { Location } from "@/models/Location";
 import { WorkflowRule } from "@/models/WorkflowRuleMaster";
 import { WizardSession } from "@/models/WizardSession";
+import { Agency } from "@/models/AgencyMaster";
 import {
   telegramSendMessage,
   editMessageText,
@@ -132,7 +133,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "additional";
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "agency_time_hour" | "agency_time_minute" | "agency_time_period" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -223,6 +224,31 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
           completed: false,
         });
 
+        // Time picker steps - only add if agency might be selected
+        fields.push({
+          key: "agency_time_hour",
+          label: "⏰ Arrival Hour",
+          type: "agency_time_hour",
+          required: false, // Will be required dynamically when agency is selected
+          completed: false,
+        });
+
+        fields.push({
+          key: "agency_time_minute",
+          label: "⏰ Arrival Minutes",
+          type: "agency_time_minute",
+          required: false,
+          completed: false,
+        });
+
+        fields.push({
+          key: "agency_time_period",
+          label: "⏰ AM/PM",
+          type: "agency_time_period",
+          required: false,
+          completed: false,
+        });
+
         if (rule.requiresAgencyDate) {
           fields.push({
             key: "agency_date",
@@ -257,9 +283,13 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
  * Mark fields as completed based on session data
  */
 function updateFieldCompletion(fields: WizardField[], session: any): WizardField[] {
+  // Check if agency was selected (not "No Agency")
+  const agencySelected = session.agencyRequired === true && session.agencyName;
+  
   return fields.map(field => {
     let completed = false;
     let value: any = undefined;
+    let required = field.required;
 
     switch (field.type) {
       case "category":
@@ -299,6 +329,29 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         value = session.agencyRequired ? (session.agencyName || "Yes") : "No";
         break;
       
+      case "agency_time_hour":
+        // Only required if an agency was selected
+        required = agencySelected;
+        completed = session.agencyTimeHour !== null && session.agencyTimeHour !== undefined;
+        value = completed ? `${session.agencyTimeHour}` : undefined;
+        break;
+      
+      case "agency_time_minute":
+        required = agencySelected;
+        completed = session.agencyTimeMinute !== null && session.agencyTimeMinute !== undefined;
+        value = completed ? `:${String(session.agencyTimeMinute).padStart(2, '0')}` : undefined;
+        break;
+      
+      case "agency_time_period":
+        required = agencySelected;
+        completed = !!session.agencyTimePeriod;
+        value = session.agencyTimePeriod;
+        // When period is completed, show the full time
+        if (completed && session.agencyTimeHour && session.agencyTimeMinute !== undefined) {
+          value = `${session.agencyTimeHour}:${String(session.agencyTimeMinute).padStart(2, '0')} ${session.agencyTimePeriod}`;
+        }
+        break;
+      
       case "agency_date":
         completed = !!session.agencyDate;
         value = session.agencyDate ? new Date(session.agencyDate).toLocaleDateString() : undefined;
@@ -313,7 +366,7 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         break;
     }
 
-    return { ...field, completed, value };
+    return { ...field, completed, value, required };
   });
 }
 
@@ -440,17 +493,16 @@ case "target_location": {
 }
 
     case "agency": {
-      // ✅ OPTIMIZED: Cache workflow rule
-      const rule = await getCached(
-        `workflow:${session.category}`,
-        () => WorkflowRule.findOne({ categoryId: session.category }).lean()
+      // ✅ Fetch agencies from AgencyMaster instead of workflow rule's inline list
+      const agencies = await getCached(
+        'agencies:active',
+        () => Agency.find({ isActive: true }).sort({ name: 1 }).lean()
       );
-      const agencies = rule?.additionalFields?.find(f => f.key === "agency")?.options || [];
       
       for (const agency of agencies) {
         keyboard.push([{
-          text: agency,
-          callback_data: `select_${botMessageId}_agency_${agency}`
+          text: `👷 ${agency.name}`,
+          callback_data: `select_${botMessageId}_agency_${agency._id}`
         }]);
       }
       
@@ -458,6 +510,49 @@ case "target_location": {
         text: "❌ No Agency",
         callback_data: `select_${botMessageId}_agency_no`
       }]);
+      break;
+    }
+
+    case "agency_time_hour": {
+      // Hour selection: 6-12, 1-5 in a 4-column grid
+      keyboard.push([
+        { text: "6", callback_data: `select_${botMessageId}_agency_time_hour_6` },
+        { text: "7", callback_data: `select_${botMessageId}_agency_time_hour_7` },
+        { text: "8", callback_data: `select_${botMessageId}_agency_time_hour_8` },
+        { text: "9", callback_data: `select_${botMessageId}_agency_time_hour_9` },
+      ]);
+      keyboard.push([
+        { text: "10", callback_data: `select_${botMessageId}_agency_time_hour_10` },
+        { text: "11", callback_data: `select_${botMessageId}_agency_time_hour_11` },
+        { text: "12", callback_data: `select_${botMessageId}_agency_time_hour_12` },
+        { text: "1", callback_data: `select_${botMessageId}_agency_time_hour_1` },
+      ]);
+      keyboard.push([
+        { text: "2", callback_data: `select_${botMessageId}_agency_time_hour_2` },
+        { text: "3", callback_data: `select_${botMessageId}_agency_time_hour_3` },
+        { text: "4", callback_data: `select_${botMessageId}_agency_time_hour_4` },
+        { text: "5", callback_data: `select_${botMessageId}_agency_time_hour_5` },
+      ]);
+      break;
+    }
+
+    case "agency_time_minute": {
+      // Minute selection: 00, 15, 30, 45
+      keyboard.push([
+        { text: ":00", callback_data: `select_${botMessageId}_agency_time_minute_0` },
+        { text: ":15", callback_data: `select_${botMessageId}_agency_time_minute_15` },
+        { text: ":30", callback_data: `select_${botMessageId}_agency_time_minute_30` },
+        { text: ":45", callback_data: `select_${botMessageId}_agency_time_minute_45` },
+      ]);
+      break;
+    }
+
+    case "agency_time_period": {
+      // AM/PM selection
+      keyboard.push([
+        { text: "🌅 AM", callback_data: `select_${botMessageId}_agency_time_period_AM` },
+        { text: "🌆 PM", callback_data: `select_${botMessageId}_agency_time_period_PM` },
+      ]);
       break;
     }
 
@@ -768,6 +863,9 @@ async function createTicketFromSession(session: any, createdBy: string) {
   // Add agency info if present
   if (session.agencyRequired) {
     ticketData.agencyName = session.agencyName || "Unknown Agency";
+    if (session.agencyTime) {
+      ticketData.agencyTime = session.agencyTime;
+    }
     if (session.agencyDate) {
       ticketData.agencyDate = session.agencyDate;
     }
@@ -873,9 +971,37 @@ export async function POST(req: NextRequest) {
               session.agencyRequired = false;
               session.agencyName = null;
               session.agencyDate = null;
+              session.agencyTime = null;
+              session.agencyTimeHour = null;
+              session.agencyTimeMinute = null;
+              session.agencyTimePeriod = null;
             } else {
+              // Lookup agency by ID from AgencyMaster
+              const agency = await Agency.findById(value).lean();
               session.agencyRequired = true;
-              session.agencyName = value;
+              session.agencyName = agency?.name || value;
+            }
+            await session.save();
+            break;
+          }
+
+          case "agency_time_hour": {
+            session.agencyTimeHour = parseInt(value, 10);
+            await session.save();
+            break;
+          }
+
+          case "agency_time_minute": {
+            session.agencyTimeMinute = parseInt(value, 10);
+            await session.save();
+            break;
+          }
+
+          case "agency_time_period": {
+            session.agencyTimePeriod = value; // "AM" or "PM"
+            // When period is selected, build the full time string
+            if (session.agencyTimeHour && session.agencyTimeMinute !== null) {
+              session.agencyTime = `${session.agencyTimeHour}:${String(session.agencyTimeMinute).padStart(2, '0')} ${value}`;
             }
             await session.save();
             break;
