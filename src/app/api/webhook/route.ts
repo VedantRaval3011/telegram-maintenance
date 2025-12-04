@@ -43,10 +43,21 @@ interface CacheEntry<T> {
 }
 
 const masterDataCache = new Map<string, CacheEntry<any>>();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes (increased from 5)
+const CACHE_TTL = 1 * 60 * 1000; // 1 minute (reduced for faster updates)
 
 // Pending request map to prevent duplicate in-flight requests
 const pendingRequests = new Map<string, Promise<any>>();
+
+/**
+ * Clear cache for a specific key pattern (e.g., 'workflow:' clears all workflow caches)
+ */
+function clearCacheByPattern(pattern: string) {
+  for (const key of masterDataCache.keys()) {
+    if (key.startsWith(pattern)) {
+      masterDataCache.delete(key);
+    }
+  }
+}
 
 /**
  * Generic cache wrapper with request deduplication
