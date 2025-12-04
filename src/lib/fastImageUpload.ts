@@ -6,10 +6,13 @@
  * - Direct buffer streaming (no temp files)
  * - Efficient FormData handling
  * - Request timeout for reliability
+ * 
+ * Updated to use BunnyCDN instead of Cloudinary
  */
 
+import { uploadToBunny } from "./bunnyStorage";
+
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
-const UPLOAD_TIMEOUT = 15000; // 15 seconds max for upload
 
 /**
  * Fast download of Telegram file to buffer
@@ -49,63 +52,26 @@ export async function fastDownloadTelegramFile(fileId: string): Promise<Buffer> 
 }
 
 /**
- * Fast upload to Cloudinary with optimizations
- * - Smaller image size (width limit)
- * - Quality optimization
- * - Async upload with timeout
+ * Fast upload to BunnyCDN with optimizations
+ * (Replaces fastUploadToCloudinary)
+ */
+export async function fastUploadToBunny(
+  buffer: Buffer,
+  folder: string = "telegram-maintenance"
+): Promise<string> {
+  return uploadToBunny(buffer, folder);
+}
+
+/**
+ * @deprecated Use fastUploadToBunny instead
+ * Kept for backward compatibility during migration
  */
 export async function fastUploadToCloudinary(
   buffer: Buffer,
   folder: string = "telegram-maintenance"
 ): Promise<string> {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME!;
-  const apiKey = process.env.CLOUDINARY_API_KEY!;
-  const apiSecret = process.env.CLOUDINARY_API_SECRET!;
-
-  if (!cloudName || !apiKey || !apiSecret) {
-    throw new Error("Cloudinary environment variables are missing");
-  }
-
-  const timestamp = Math.floor(Date.now() / 1000);
-
-  // ⚡ OPTIMIZATION: Add transformation params for smaller, faster uploads
-  // - w_1200: Max width 1200px (maintains aspect ratio)
-  // - q_auto: Automatic quality optimization
-  // - f_auto: Automatic format selection
-  const uploadParams = `folder=${folder}&timestamp=${timestamp}&transformation=w_1200,q_auto,f_auto`;
-  const signatureString = `${uploadParams}${apiSecret}`;
-  const signature = await sha1(signatureString);
-
-  const form = new FormData();
-  form.append("file", new Blob([new Uint8Array(buffer)]));
-  form.append("api_key", apiKey);
-  form.append("timestamp", timestamp.toString());
-  form.append("folder", folder);
-  form.append("signature", signature);
-  form.append("transformation", "w_1200,q_auto,f_auto");
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT);
-
-  try {
-    const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-    const res = await fetch(uploadUrl, {
-      method: "POST",
-      body: form,
-      signal: controller.signal,
-    });
-    
-    const result = await res.json();
-
-    if (!result.secure_url) {
-      console.error("[CLOUDINARY ERROR]", result);
-      throw new Error("Cloudinary upload failed");
-    }
-
-    return result.secure_url;
-  } finally {
-    clearTimeout(timeout);
-  }
+  console.warn("[DEPRECATED] fastUploadToCloudinary is deprecated. Use fastUploadToBunny instead.");
+  return uploadToBunny(buffer, folder);
 }
 
 /**
@@ -115,19 +81,10 @@ export async function fastUploadToCloudinary(
 export async function fastProcessTelegramPhoto(fileId: string): Promise<string | null> {
   try {
     const buffer = await fastDownloadTelegramFile(fileId);
-    const url = await fastUploadToCloudinary(buffer);
+    const url = await uploadToBunny(buffer);
     return url;
   } catch (err) {
     console.error("[FAST PHOTO] Processing failed:", err);
     return null;
   }
-}
-
-// Helper: SHA-1 hashing for Cloudinary signature
-async function sha1(data: string): Promise<string> {
-  const buffer = new TextEncoder().encode(data);
-  const hash = await crypto.subtle.digest("SHA-1", buffer);
-  return [...new Uint8Array(hash)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
