@@ -20,9 +20,11 @@ export async function uploadToBunny(
   const storageZone = process.env.BUNNY_STORAGE_ZONE!;
   const apiKey = process.env.BUNNY_STORAGE_API_KEY!;
   const storageHost = process.env.BUNNY_STORAGE_HOST!;
+  // CDN hostname for public URLs (e.g., "myzone.b-cdn.net" or custom hostname)
+  const cdnHostname = process.env.BUNNY_CDN_HOSTNAME!;
 
-  if (!storageZone || !apiKey || !storageHost) {
-    throw new Error("BunnyCDN environment variables are missing");
+  if (!storageZone || !apiKey || !storageHost || !cdnHostname) {
+    throw new Error("BunnyCDN environment variables are missing (BUNNY_STORAGE_ZONE, BUNNY_STORAGE_API_KEY, BUNNY_STORAGE_HOST, BUNNY_CDN_HOSTNAME)");
   }
 
   // Generate unique filename with timestamp and random string
@@ -56,10 +58,8 @@ export async function uploadToBunny(
       throw new Error(`BunnyCDN upload failed: ${response.status}`);
     }
 
-    // Construct the public CDN URL
-    // BunnyCDN CDN URL format: https://{pullzone}.b-cdn.net/{path}
-    // The pull zone name is typically the same as storage zone or configured separately
-    const cdnUrl = `https://${storageZone}.b-cdn.net/${filePath}`;
+    // Construct the public CDN URL using the configured CDN hostname
+    const cdnUrl = `https://${cdnHostname}/${filePath}`;
     
     return cdnUrl;
   } finally {
