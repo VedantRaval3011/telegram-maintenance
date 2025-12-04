@@ -530,17 +530,25 @@ function buildNavigationKeyboard(fields: WizardField[], botMessageId: number): a
  * Refresh the wizard UI
  */
 async function refreshWizardUI(session: any, chatId: number, botMessageId: number) {
-  const fields = await buildFieldsFromRule(session.category);
-  const updatedFields = updateFieldCompletion(fields, session);
+  // ✅ FIX: Always reload session from database to get the latest data
+  // This is crucial because handleLocationSelection updates the DB directly
+  const freshSession = await WizardSession.findOne({ botMessageId }).lean();
+  if (!freshSession) {
+    console.error("Session not found for botMessageId:", botMessageId);
+    return;
+  }
+  
+  const fields = await buildFieldsFromRule(freshSession.category);
+  const updatedFields = updateFieldCompletion(fields, freshSession);
   const currentField = findCurrentField(updatedFields);
 
-  const message = await formatWizardMessage(session, updatedFields, currentField);
+  const message = await formatWizardMessage(freshSession, updatedFields, currentField);
   
   let keyboard: any[][] = [];
   
   // If there's a current field, show its options
   if (currentField) {
-    const fieldKeyboard = await buildFieldKeyboard(currentField, session, botMessageId);
+    const fieldKeyboard = await buildFieldKeyboard(currentField, freshSession, botMessageId);
     keyboard = [...fieldKeyboard];
   }
   
@@ -560,6 +568,10 @@ async function handleLocationSelection(
   fieldType: "location" | "source_location" | "target_location",
   botMessageId: number
 ) {
+  // ✅ FIX: Fetch fresh session from DB to prevent race conditions with duplicate callbacks
+  const freshSession = await WizardSession.findOne({ botMessageId }).lean();
+  if (!freshSession) return false;
+  
   // ✅ OPTIMIZED: Combine location lookup and child count into single Promise.all
   const [location, childCount] = await Promise.all([
     Location.findById(locationId).lean(),
@@ -572,8 +584,8 @@ async function handleLocationSelection(
   if (!location) return false;
 
   // Determine which path to update
-  let pathField = "locationPath";
-  let completeField = "locationComplete";
+  let pathField: "locationPath" | "sourceLocationPath" | "targetLocationPath" = "locationPath";
+  let completeField: "locationComplete" | "sourceLocationComplete" | "targetLocationComplete" = "locationComplete";
   if (fieldType === "source_location") {
     pathField = "sourceLocationPath";
     completeField = "sourceLocationComplete";
@@ -582,8 +594,8 @@ async function handleLocationSelection(
     completeField = "targetLocationComplete";
   }
 
-  // Get current path - this represents our navigation history
-  const currentPath = session[pathField] || [];
+  // ✅ CRITICAL: Get current path from FRESH session, not the stale one passed in
+  const currentPath = freshSession[pathField] || [];
   
   // ✅ FIX: Check if this location is already in the path to prevent duplicates
   const locationIdStr = String(location._id);
@@ -591,6 +603,7 @@ async function handleLocationSelection(
   
   if (alreadyInPath) {
     // Location already exists in path, skip adding it again
+    console.log(`Location ${locationIdStr} already in path, skipping duplicate addition`);
     return true;
   }
   
@@ -628,7 +641,11 @@ async function handleLocationBack(
   fieldType: "location" | "source_location" | "target_location",
   botMessageId: number
 ) {
-  let pathField = "locationPath";
+  // ✅ FIX: Fetch fresh session from DB to prevent stale data issues
+  const freshSession = await WizardSession.findOne({ botMessageId }).lean();
+  if (!freshSession) return;
+  
+  let pathField: "locationPath" | "sourceLocationPath" | "targetLocationPath" = "locationPath";
   let completeField = "locationComplete";
   if (fieldType === "source_location") {
     pathField = "sourceLocationPath";
@@ -638,7 +655,7 @@ async function handleLocationBack(
     completeField = "targetLocationComplete";
   }
 
-  const currentPath = session[pathField] || [];
+  const currentPath = freshSession[pathField] || [];
   if (currentPath.length > 0) {
     const newPath = currentPath.slice(0, -1);
     await WizardSession.findOneAndUpdate(
