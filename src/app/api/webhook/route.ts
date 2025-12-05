@@ -574,11 +574,14 @@ case "target_location": {
     case "agency_date": {
       // Date picker - show today, tomorrow, and next 5 days
       const today = new Date();
-      const dateOptions: { text: string; date: Date }[] = [];
+      const dateOptions: { text: string; dateStr: string }[] = [];
       
       for (let i = 0; i < 7; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
+        
+        // Use short date format: YYYY-MM-DD
+        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         
         let label = "";
         if (i === 0) label = "📅 Today";
@@ -588,7 +591,7 @@ case "target_location": {
           label = `📅 ${dayNames[date.getDay()]} ${date.getDate()}/${date.getMonth() + 1}`;
         }
         
-        dateOptions.push({ text: label, date });
+        dateOptions.push({ text: label, dateStr });
       }
       
       // 2 columns for date buttons
@@ -597,14 +600,14 @@ case "target_location": {
         const opt1 = dateOptions[i];
         row.push({
           text: opt1.text,
-          callback_data: `select_${botMessageId}_agency_date_${opt1.date.toISOString()}`
+          callback_data: `select_${botMessageId}_agency_date_${opt1.dateStr}`
         });
         
         if (i + 1 < dateOptions.length) {
           const opt2 = dateOptions[i + 1];
           row.push({
             text: opt2.text,
-            callback_data: `select_${botMessageId}_agency_date_${opt2.date.toISOString()}`
+            callback_data: `select_${botMessageId}_agency_date_${opt2.dateStr}`
           });
         }
         keyboard.push(row);
@@ -984,8 +987,36 @@ export async function POST(req: NextRequest) {
 
       // === SELECT ACTION: select_<botMsgId>_<field>_<value> ===
       if (action === "select") {
-        const fieldType = parts[2];
-        const value = parts.slice(3).join("_");
+        // Handle field types with underscores (e.g., agency_time_hour, agency_date)
+        // Format: select_<botMsgId>_<fieldType>_<value>
+        // For simple fields: select_123_category_67890 -> fieldType=category, value=67890
+        // For multi-part: select_123_agency_time_hour_6 -> fieldType=agency_time_hour, value=6
+        
+        let fieldType = parts[2];
+        let value = parts.slice(3).join("_");
+        
+        // Check for known multi-part field types
+        if (fieldType === "agency") {
+          if (value.startsWith("time_hour_")) {
+            fieldType = "agency_time_hour";
+            value = value.replace("time_hour_", "");
+          } else if (value.startsWith("time_minute_")) {
+            fieldType = "agency_time_minute";
+            value = value.replace("time_minute_", "");
+          } else if (value.startsWith("time_period_")) {
+            fieldType = "agency_time_period";
+            value = value.replace("time_period_", "");
+          } else if (value.startsWith("date_")) {
+            fieldType = "agency_date";
+            value = value.replace("date_", "");
+          }
+        } else if (fieldType === "source") {
+          fieldType = "source_location";
+          value = parts.slice(4).join("_");
+        } else if (fieldType === "target") {
+          fieldType = "target_location";
+          value = parts.slice(4).join("_");
+        }
 
         switch (fieldType) {
           case "category": {
