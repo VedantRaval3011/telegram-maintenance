@@ -21,6 +21,8 @@ export interface ITicket extends Document {
   agencyName?: string | null; // Selected agency name
   agencyTime?: string | null; // Agency arrival time (e.g., "10:30 AM")
   agencyDate?: Date | null; // Agency arrival date
+  sourceLocation?: string | null; // For transfer category - from location
+  targetLocation?: string | null; // For transfer category - to location
 }
 
 const TicketSchema = new mongoose.Schema<ITicket>({
@@ -50,6 +52,8 @@ completionPhotos: {
   agencyName: { type: String, default: null },
   agencyTime: { type: String, default: null },
   agencyDate: { type: Date, default: null },
+  sourceLocation: { type: String, default: null },
+  targetLocation: { type: String, default: null },
 });
 
 export const Ticket: Model<ITicket> =

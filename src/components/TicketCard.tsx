@@ -199,9 +199,21 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
               </span>
             )}
 
-            <span className="text-[#5c4a3d]">
-              📍 <span className="font-medium">{ticket.location || "-"}</span>
-            </span>
+            {/* Location - show source/target for transfer category */}
+            {ticket.sourceLocation && ticket.targetLocation ? (
+              <>
+                <span className="text-[#5c4a3d]">
+                  📤 <span className="font-medium">From: {ticket.sourceLocation}</span>
+                </span>
+                <span className="text-[#5c4a3d]">
+                  📥 <span className="font-medium">To: {ticket.targetLocation}</span>
+                </span>
+              </>
+            ) : (
+              <span className="text-[#5c4a3d]">
+                📍 <span className="font-medium">{ticket.location || "-"}</span>
+              </span>
+            )}
 
             {/* Agency Info */}
             {ticket.agencyName && (

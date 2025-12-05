@@ -1419,8 +1419,15 @@ export async function POST(req: NextRequest) {
           let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
                            `📝 ${ticket.description}\n` +
                            `📂 ${ticket.category}\n` +
-                           `⚡ ${ticket.priority}\n` +
-                           `📍 ${ticket.location}\n`;
+                           `⚡ ${ticket.priority}\n`;
+          
+          // Show source/target locations for transfer, otherwise show regular location
+          if (ticket.sourceLocation && ticket.targetLocation) {
+            ticketMsg += `📤 From: ${ticket.sourceLocation}\n`;
+            ticketMsg += `📥 To: ${ticket.targetLocation}\n`;
+          } else {
+            ticketMsg += `📍 ${ticket.location}\n`;
+          }
           
           // Add agency info if present
           if (ticket.agencyName) {
