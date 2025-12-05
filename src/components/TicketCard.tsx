@@ -14,7 +14,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [notes, setNotes] = useState<Note[]>(ticket.notes || []);
   const [newNote, setNewNote] = useState("");
-  
+
   const [editForm, setEditForm] = useState({
     description: ticket.description || "",
     category: ticket.category || "",
@@ -54,7 +54,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editForm),
     });
-    
+
     if (response.ok) {
       setShowEditModal(false);
       onStatusChange?.();
@@ -65,7 +65,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
     const response = await fetch(`/api/tickets/${ticket._id}`, {
       method: "DELETE",
     });
-    
+
     if (response.ok) {
       setShowDeleteConfirm(false);
       onStatusChange?.();
@@ -74,7 +74,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
-    
+
     const response = await fetch(`/api/tickets/${ticket._id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -83,7 +83,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
         createdBy: "Dashboard User",
       }),
     });
-    
+
     if (response.ok) {
       const data = await response.json();
       setNotes([...notes, data.data]);
@@ -95,7 +95,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
     const response = await fetch(`/api/tickets/${ticket._id}/notes?index=${index}`, {
       method: "DELETE",
     });
-    
+
     if (response.ok) {
       setNotes(notes.filter((_, i) => i !== index));
     }
@@ -125,12 +125,12 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
 
   return (
     <>
-      <div 
+      <div
         className="bg-[#f5ebe0] border border-[#c9b6a5] rounded-xl shadow-lg overflow-hidden"
         style={{ borderLeftWidth: '4px', borderLeftColor: priorityColor }}
       >
         {/* Header Section */}
-        <div 
+        <div
           className="px-4 py-2.5 border-b border-[#c9b6a5]"
           style={{ backgroundColor: `${priorityColor}08` }}
         >
@@ -140,7 +140,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
               <span className="text-base font-black text-[#2c2420]">
                 {ticket.ticketId}
               </span>
-              
+
               {/* Priority Badge */}
               <span className={getPriorityBadgeClass(ticket.priority)}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: priorityColor }}></span>
@@ -183,7 +183,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
           <h3 className="text-base font-semibold text-[#2c2420] mb-2 line-clamp-2">
             {ticket.description}
           </h3>
-          
+
           {/* Metadata Row */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-3">
             <span className="inline-flex items-center gap-1 text-[#5c4a3d]">
@@ -192,16 +192,31 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
                 {ticket.category || "unknown"}
               </span>
             </span>
-            
+
             {ticket.subCategory && (
               <span className="text-[#5c4a3d]">
                 • <span className="font-medium">{ticket.subCategory}</span>
               </span>
             )}
-            
+
             <span className="text-[#5c4a3d]">
               📍 <span className="font-medium">{ticket.location || "-"}</span>
             </span>
+
+            {/* Agency Info */}
+            {ticket.agencyName && (
+              <span className="text-[#5c4a3d]">
+                👷 <span className="font-medium">{ticket.agencyName}</span>
+                {ticket.agencyDate && (
+                  <span className="ml-1">
+                    📅 {new Date(ticket.agencyDate).toLocaleDateString()}
+                  </span>
+                )}
+                {ticket.agencyTime && (
+                  <span className="ml-1">⏰ {ticket.agencyTime}</span>
+                )}
+              </span>
+            )}
           </div>
 
           {/* Time and People Info */}
@@ -225,13 +240,13 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
                 🕐 Time
               </div>
               <div className="font-bold text-[#2c2420]">
-                {ticket.createdAt 
+                {ticket.createdAt
                   ? `${Math.floor((Date.now() - new Date(ticket.createdAt).getTime()) / (1000 * 60 * 60))}h ago`
                   : "-"
                 }
               </div>
               <div className="text-[10px] text-[#7d6856]">
-                {ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
+                {ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
               </div>
             </div>
 
@@ -306,7 +321,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
                 + Add
               </button>
             </div>
-            
+
             {notes.length > 0 ? (
               <div className="space-y-1.5">
                 {notes.map((note, idx) => (
@@ -341,7 +356,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
           <div className="absolute inset-0 bg-[#2c2420]/80" />
           <div className="relative max-w-2xl w-full bg-[#f5ebe0] border border-[#c9b6a5] rounded-2xl p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold text-[#2c2420] mb-6">Edit Ticket</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#5c4a3d] mb-2">Description</label>
@@ -426,7 +441,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
           <div className="absolute inset-0 bg-[#2c2420]/80" />
           <div className="relative max-w-lg w-full bg-[#f5ebe0] border border-[#c9b6a5] rounded-2xl p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold text-[#2c2420] mb-6">Add Note</h2>
-            
+
             <textarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}

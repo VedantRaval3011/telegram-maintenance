@@ -20,6 +20,7 @@ export interface ITicket extends Document {
   telegramChatId?: number | null;
   agencyName?: string | null; // Selected agency name
   agencyTime?: string | null; // Agency arrival time (e.g., "10:30 AM")
+  agencyDate?: Date | null; // Agency arrival date
 }
 
 const TicketSchema = new mongoose.Schema<ITicket>({
@@ -48,6 +49,7 @@ completionPhotos: {
   telegramChatId: { type: Number, default: null },
   agencyName: { type: String, default: null },
   agencyTime: { type: String, default: null },
+  agencyDate: { type: Date, default: null },
 });
 
 export const Ticket: Model<ITicket> =

@@ -1129,11 +1129,17 @@ export async function POST(req: NextRequest) {
 
       // === JUMP ACTION: jump_<botMsgId>_<fieldKey> ===
       if (action === "jump") {
-        const fieldKey = parts[2];
+        // Handle multi-part field keys (e.g., agency_date, agency_time_hour)
+        let fieldKey = parts.slice(2).join("_");
+        
         // Mark that field as incomplete to allow re-selection
         switch (fieldKey) {
           case "category":
             session.category = null;
+            session.categoryDisplay = null;
+            // Also clear dependent fields
+            session.subCategoryId = null;
+            session.subCategoryDisplay = null;
             break;
           case "priority":
             session.priority = null;
@@ -1152,7 +1158,38 @@ export async function POST(req: NextRequest) {
             session.targetLocationComplete = false;
             break;
           case "agency":
+            // Clear agency and all dependent fields
+            session.agencyRequired = null;
             session.agencyName = null;
+            session.agencyDate = null;
+            session.agencyTime = null;
+            session.agencyTimeHour = null;
+            session.agencyTimeMinute = null;
+            session.agencyTimePeriod = null;
+            break;
+          case "agency_date":
+            // Clear date and time fields
+            session.agencyDate = null;
+            session.agencyTime = null;
+            session.agencyTimeHour = null;
+            session.agencyTimeMinute = null;
+            session.agencyTimePeriod = null;
+            break;
+          case "agency_time_hour":
+            // Clear time fields
+            session.agencyTime = null;
+            session.agencyTimeHour = null;
+            session.agencyTimeMinute = null;
+            session.agencyTimePeriod = null;
+            break;
+          case "agency_time_minute":
+            session.agencyTime = null;
+            session.agencyTimeMinute = null;
+            session.agencyTimePeriod = null;
+            break;
+          case "agency_time_period":
+            session.agencyTime = null;
+            session.agencyTimePeriod = null;
             break;
         }
         await session.save();
