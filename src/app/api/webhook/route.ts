@@ -9,6 +9,7 @@ import { Location } from "@/models/Location";
 import { WorkflowRule } from "@/models/WorkflowRuleMaster";
 import { WizardSession } from "@/models/WizardSession";
 import { Agency } from "@/models/AgencyMaster";
+import { AgencyAssignmentSession } from "@/models/AgencyAssignmentSession";
 import {
   telegramSendMessage,
   editMessageText,
@@ -977,6 +978,185 @@ export async function POST(req: NextRequest) {
       // This makes the UI feel more responsive
       answerCallbackQuery(callback.id, "").catch(() => {}); // Fire and forget
 
+      // === AGENCY ASSIGNMENT CALLBACK HANDLING ===
+      if (action === "asgn") {
+        const originalMsgId = parseInt(parts[1]);
+        const subAction = parts[2];
+        const value = parts.slice(3).join("_");
+        
+        // Find the assignment session by botMessageId
+        const assignSession = await AgencyAssignmentSession.findOne({ botMessageId: messageId });
+        
+        if (!assignSession) {
+          await telegramDeleteMessage(chatId, messageId).catch(() => {});
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (subAction === "cancel") {
+          await AgencyAssignmentSession.deleteOne({ botMessageId: messageId });
+          await editMessageText(chatId, messageId, "❌ Agency assignment cancelled", []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (subAction === "agency") {
+          // Agency selected
+          const agency = await Agency.findById(value).lean();
+          if (agency) {
+            assignSession.agencyName = agency.name;
+            assignSession.currentStep = "date";
+            await assignSession.save();
+            
+            // Show date picker
+            const today = new Date();
+            const keyboard: any[][] = [];
+            
+            for (let i = 0; i < 7; i += 2) {
+              const row: any[] = [];
+              for (let j = i; j < Math.min(i + 2, 7); j++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + j);
+                const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                
+                let label = "";
+                if (j === 0) label = "📅 Today";
+                else if (j === 1) label = "📅 Tomorrow";
+                else {
+                  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+                  label = `📅 ${dayNames[date.getDay()]} ${date.getDate()}/${date.getMonth() + 1}`;
+                }
+                
+                row.push({
+                  text: label,
+                  callback_data: `asgn_${originalMsgId}_date_${dateStr}`
+                });
+              }
+              keyboard.push(row);
+            }
+            keyboard.push([{ text: "❌ Cancel", callback_data: `asgn_${originalMsgId}_cancel` }]);
+            
+            const msg = `🔧 <b>Assign Agency to ${assignSession.ticketId}</b>\n\n` +
+                       `👷 Agency: ${agency.name}\n\n` +
+                       `📅 Select arrival date:`;
+            
+            await editMessageText(chatId, messageId, msg, keyboard);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (subAction === "date") {
+          assignSession.agencyDate = new Date(value);
+          assignSession.currentStep = "hour";
+          await assignSession.save();
+          
+          // Show hour picker
+          const keyboard = [
+            [
+              { text: "6", callback_data: `asgn_${originalMsgId}_hour_6` },
+              { text: "7", callback_data: `asgn_${originalMsgId}_hour_7` },
+              { text: "8", callback_data: `asgn_${originalMsgId}_hour_8` },
+              { text: "9", callback_data: `asgn_${originalMsgId}_hour_9` },
+            ],
+            [
+              { text: "10", callback_data: `asgn_${originalMsgId}_hour_10` },
+              { text: "11", callback_data: `asgn_${originalMsgId}_hour_11` },
+              { text: "12", callback_data: `asgn_${originalMsgId}_hour_12` },
+              { text: "1", callback_data: `asgn_${originalMsgId}_hour_1` },
+            ],
+            [
+              { text: "2", callback_data: `asgn_${originalMsgId}_hour_2` },
+              { text: "3", callback_data: `asgn_${originalMsgId}_hour_3` },
+              { text: "4", callback_data: `asgn_${originalMsgId}_hour_4` },
+              { text: "5", callback_data: `asgn_${originalMsgId}_hour_5` },
+            ],
+            [{ text: "❌ Cancel", callback_data: `asgn_${originalMsgId}_cancel` }]
+          ];
+          
+          const msg = `🔧 <b>Assign Agency to ${assignSession.ticketId}</b>\n\n` +
+                     `👷 Agency: ${assignSession.agencyName}\n` +
+                     `📅 Date: ${new Date(assignSession.agencyDate!).toLocaleDateString()}\n\n` +
+                     `⏰ Select arrival hour:`;
+          
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (subAction === "hour") {
+          assignSession.agencyTimeHour = parseInt(value);
+          assignSession.currentStep = "minute";
+          await assignSession.save();
+          
+          // Show minute picker
+          const keyboard = [
+            [
+              { text: ":00", callback_data: `asgn_${originalMsgId}_minute_0` },
+              { text: ":15", callback_data: `asgn_${originalMsgId}_minute_15` },
+              { text: ":30", callback_data: `asgn_${originalMsgId}_minute_30` },
+              { text: ":45", callback_data: `asgn_${originalMsgId}_minute_45` },
+            ],
+            [{ text: "❌ Cancel", callback_data: `asgn_${originalMsgId}_cancel` }]
+          ];
+          
+          const msg = `🔧 <b>Assign Agency to ${assignSession.ticketId}</b>\n\n` +
+                     `👷 Agency: ${assignSession.agencyName}\n` +
+                     `📅 Date: ${new Date(assignSession.agencyDate!).toLocaleDateString()}\n` +
+                     `⏰ Hour: ${assignSession.agencyTimeHour}\n\n` +
+                     `⏰ Select minutes:`;
+          
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (subAction === "minute") {
+          assignSession.agencyTimeMinute = parseInt(value);
+          assignSession.currentStep = "period";
+          await assignSession.save();
+          
+          // Show AM/PM picker
+          const keyboard = [
+            [
+              { text: "🌅 AM", callback_data: `asgn_${originalMsgId}_period_AM` },
+              { text: "🌆 PM", callback_data: `asgn_${originalMsgId}_period_PM` },
+            ],
+            [{ text: "❌ Cancel", callback_data: `asgn_${originalMsgId}_cancel` }]
+          ];
+          
+          const msg = `🔧 <b>Assign Agency to ${assignSession.ticketId}</b>\n\n` +
+                     `👷 Agency: ${assignSession.agencyName}\n` +
+                     `📅 Date: ${new Date(assignSession.agencyDate!).toLocaleDateString()}\n` +
+                     `⏰ Time: ${assignSession.agencyTimeHour}:${String(assignSession.agencyTimeMinute).padStart(2, '0')}\n\n` +
+                     `🌅 Select AM or PM:`;
+          
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (subAction === "period") {
+          assignSession.agencyTimePeriod = value;
+          const agencyTime = `${assignSession.agencyTimeHour}:${String(assignSession.agencyTimeMinute).padStart(2, '0')} ${value}`;
+          
+          // Update the ticket
+          await Ticket.findByIdAndUpdate(assignSession.ticketObjectId, {
+            agencyName: assignSession.agencyName,
+            agencyDate: assignSession.agencyDate,
+            agencyTime: agencyTime
+          });
+          
+          // Delete session
+          await AgencyAssignmentSession.deleteOne({ botMessageId: messageId });
+          
+          // Show confirmation
+          const msg = `✅ <b>Agency Assigned to ${assignSession.ticketId}</b>\n\n` +
+                     `👷 Agency: ${assignSession.agencyName}\n` +
+                     `📅 Date: ${new Date(assignSession.agencyDate!).toLocaleDateString()}\n` +
+                     `⏰ Time: ${agencyTime}`;
+          
+          await editMessageText(chatId, messageId, msg, []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        return NextResponse.json({ ok: true });
+      }
+
       // ⚡ OPTIMIZATION: Use lean() for faster session query
       const session = await WizardSession.findOne({ botMessageId });
       if (!session) {
@@ -1236,12 +1416,24 @@ export async function POST(req: NextRequest) {
           // Create ticket using session data
           const ticket = await createTicketFromSession(sessionData, createdBy);
 
-          const ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
+          let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
                            `📝 ${ticket.description}\n` +
                            `📂 ${ticket.category}\n` +
                            `⚡ ${ticket.priority}\n` +
-                           `📍 ${ticket.location}\n` +
-                           `👤 ${createdBy}`;
+                           `📍 ${ticket.location}\n`;
+          
+          // Add agency info if present
+          if (ticket.agencyName) {
+            ticketMsg += `👷 ${ticket.agencyName}\n`;
+            if (ticket.agencyDate) {
+              ticketMsg += `📅 ${new Date(ticket.agencyDate).toLocaleDateString()}\n`;
+            }
+            if (ticket.agencyTime) {
+              ticketMsg += `⏰ ${ticket.agencyTime}\n`;
+            }
+          }
+          
+          ticketMsg += `👤 ${createdBy}`;
 
           const sentMsg = await telegramSendMessage(chatId, ticketMsg);
           
@@ -1283,6 +1475,83 @@ export async function POST(req: NextRequest) {
     }
 
     const incomingText = (msg.text || msg.caption || "").trim();
+
+// ========== ASSIGN AGENCY COMMAND HANDLING ==========
+// Supports: "assign agency TCK-123" or "/agency TCK-123"
+const assignAgencyMatch = incomingText.match(/^(?:assign\s*agency|\/agency)\s*(tck-?\d+)?/i);
+if (assignAgencyMatch) {
+  // Extract ticket number from message
+  const ticketMatch = incomingText.match(/TCK-?(\d+)/i);
+  
+  if (!ticketMatch) {
+    // Ask for ticket number
+    await telegramSendMessage(
+      chat.id,
+      "📝 Please provide the ticket number.\n\nExample: <code>assign agency TCK-123</code>",
+      msg.message_id
+    );
+    return NextResponse.json({ ok: true });
+  }
+  
+  const ticketId = `TCK-${ticketMatch[1]}`;
+  const ticket = await Ticket.findOne({ ticketId });
+  
+  if (!ticket) {
+    await telegramSendMessage(
+      chat.id,
+      `❌ Ticket <b>${ticketId}</b> not found.`,
+      msg.message_id
+    );
+    return NextResponse.json({ ok: true });
+  }
+  
+  // Get agencies from AgencyMaster
+  const agencies = await Agency.find({ isActive: true }).sort({ name: 1 }).lean();
+  
+  if (agencies.length === 0) {
+    await telegramSendMessage(
+      chat.id,
+      "❌ No agencies available. Please add agencies in the admin panel first.",
+      msg.message_id
+    );
+    return NextResponse.json({ ok: true });
+  }
+  
+  // Create agency assignment message
+  const assignMsg = `🔧 <b>Assign Agency to ${ticketId}</b>\n\n` +
+                    `📝 ${ticket.description}\n` +
+                    `📍 ${ticket.location || "No location"}\n\n` +
+                    `👇 Select an agency:`;
+  
+  // Build agency keyboard
+  const keyboard: any[][] = [];
+  for (const agency of agencies) {
+    keyboard.push([{
+      text: `👷 ${agency.name}`,
+      callback_data: `asgn_${msg.message_id}_agency_${agency._id}`
+    }]);
+  }
+  keyboard.push([{
+    text: "❌ Cancel",
+    callback_data: `asgn_${msg.message_id}_cancel`
+  }]);
+  
+  const sentMsg = await telegramSendMessage(chat.id, assignMsg, undefined, keyboard);
+  
+  if (sentMsg.ok && sentMsg.result) {
+    // Create assignment session
+    await AgencyAssignmentSession.create({
+      chatId: chat.id,
+      userId: msg.from.id,
+      botMessageId: sentMsg.result.message_id,
+      ticketId: ticketId,
+      ticketObjectId: ticket._id,
+      currentStep: "agency"
+    });
+  }
+  
+  return NextResponse.json({ ok: true });
+}
 
 // Check for reply to ticket message (Completion)
 if (msg.reply_to_message) {
