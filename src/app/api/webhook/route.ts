@@ -1485,8 +1485,9 @@ export async function POST(req: NextRequest) {
 
 // ========== ASSIGN AGENCY COMMAND HANDLING ==========
 // Supports: "assign agency TCK-123" or "/agency TCK-123"
+// Skip if this is a reply to a message (will be handled by reply handler below)
 const assignAgencyMatch = incomingText.match(/^(?:assign\s*agency|\/agency)\s*(tck-?\d+)?/i);
-if (assignAgencyMatch) {
+if (assignAgencyMatch && !msg.reply_to_message) {
   // Extract ticket number from message
   const ticketMatch = incomingText.match(/TCK-?(\d+)/i);
   
@@ -1566,7 +1567,7 @@ if (msg.reply_to_message) {
   const lowerText = incomingText.toLowerCase();
   
   // Check for agency assignment reply
-  const agencyKeywords = ["agency", "assign agency", "contractor"];
+  const agencyKeywords = ["agency", "/agency", "assign agency", "contractor"];
   if (agencyKeywords.some(k => lowerText === k || lowerText.startsWith(k))) {
     // Find ticket by message ID
     const ticket = await Ticket.findOne({
