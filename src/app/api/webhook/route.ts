@@ -338,7 +338,8 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         break;
       
       case "agency":
-        completed = session.agencyRequired !== undefined;
+        // Only complete when explicitly set to true or false (not null/undefined)
+        completed = session.agencyRequired === true || session.agencyRequired === false;
         value = session.agencyRequired ? (session.agencyName || "Yes") : "No";
         break;
       
