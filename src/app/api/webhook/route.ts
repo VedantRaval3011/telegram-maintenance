@@ -235,37 +235,39 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
           completed: false,
         });
 
-        // Time picker steps - only add if agency might be selected
-        fields.push({
-          key: "agency_time_hour",
-          label: "⏰ Arrival Hour",
-          type: "agency_time_hour",
-          required: false, // Will be required dynamically when agency is selected
-          completed: false,
-        });
-
-        fields.push({
-          key: "agency_time_minute",
-          label: "⏰ Arrival Minutes",
-          type: "agency_time_minute",
-          required: false,
-          completed: false,
-        });
-
-        fields.push({
-          key: "agency_time_period",
-          label: "⏰ AM/PM",
-          type: "agency_time_period",
-          required: false,
-          completed: false,
-        });
-
+        // Date and Time picker - only add if requiresAgencyDate is true
         if (rule.requiresAgencyDate) {
+          // Date picker first
           fields.push({
             key: "agency_date",
             label: "📅 Agency Date",
             type: "agency_date",
-            required: true,
+            required: false, // Will be required dynamically when agency is selected
+            completed: false,
+          });
+
+          // Then time picker steps
+          fields.push({
+            key: "agency_time_hour",
+            label: "⏰ Arrival Hour",
+            type: "agency_time_hour",
+            required: false, // Will be required dynamically when agency is selected
+            completed: false,
+          });
+
+          fields.push({
+            key: "agency_time_minute",
+            label: "⏰ Arrival Minutes",
+            type: "agency_time_minute",
+            required: false,
+            completed: false,
+          });
+
+          fields.push({
+            key: "agency_time_period",
+            label: "⏰ AM/PM",
+            type: "agency_time_period",
+            required: false,
             completed: false,
           });
         }
@@ -364,6 +366,7 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         break;
       
       case "agency_date":
+        required = agencySelected;
         completed = !!session.agencyDate;
         value = session.agencyDate ? new Date(session.agencyDate).toLocaleDateString() : undefined;
         break;
