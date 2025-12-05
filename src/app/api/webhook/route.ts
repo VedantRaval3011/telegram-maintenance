@@ -571,6 +571,47 @@ case "target_location": {
       break;
     }
 
+    case "agency_date": {
+      // Date picker - show today, tomorrow, and next 5 days
+      const today = new Date();
+      const dateOptions: { text: string; date: Date }[] = [];
+      
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        
+        let label = "";
+        if (i === 0) label = "📅 Today";
+        else if (i === 1) label = "📅 Tomorrow";
+        else {
+          const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          label = `📅 ${dayNames[date.getDay()]} ${date.getDate()}/${date.getMonth() + 1}`;
+        }
+        
+        dateOptions.push({ text: label, date });
+      }
+      
+      // 2 columns for date buttons
+      for (let i = 0; i < dateOptions.length; i += 2) {
+        const row: any[] = [];
+        const opt1 = dateOptions[i];
+        row.push({
+          text: opt1.text,
+          callback_data: `select_${botMessageId}_agency_date_${opt1.date.toISOString()}`
+        });
+        
+        if (i + 1 < dateOptions.length) {
+          const opt2 = dateOptions[i + 1];
+          row.push({
+            text: opt2.text,
+            callback_data: `select_${botMessageId}_agency_date_${opt2.date.toISOString()}`
+          });
+        }
+        keyboard.push(row);
+      }
+      break;
+    }
+
     case "additional": {
       if (field.additionalFieldKey) {
         // ✅ OPTIMIZED: Cache workflow rule
@@ -1018,6 +1059,13 @@ export async function POST(req: NextRequest) {
             if (session.agencyTimeHour && session.agencyTimeMinute !== null) {
               session.agencyTime = `${session.agencyTimeHour}:${String(session.agencyTimeMinute).padStart(2, '0')} ${value}`;
             }
+            await session.save();
+            break;
+          }
+
+          case "agency_date": {
+            // Value is an ISO date string
+            session.agencyDate = new Date(value);
             await session.save();
             break;
           }
