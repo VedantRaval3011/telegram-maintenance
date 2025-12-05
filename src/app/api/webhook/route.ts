@@ -1560,12 +1560,74 @@ if (assignAgencyMatch) {
   return NextResponse.json({ ok: true });
 }
 
-// Check for reply to ticket message (Completion)
+// Check for reply to ticket message (Completion or Agency Assignment)
 if (msg.reply_to_message) {
   const replyId = msg.reply_to_message.message_id;
   const lowerText = incomingText.toLowerCase();
+  
+  // Check for agency assignment reply
+  const agencyKeywords = ["agency", "assign agency", "contractor"];
+  if (agencyKeywords.some(k => lowerText === k || lowerText.startsWith(k))) {
+    // Find ticket by message ID
+    const ticket = await Ticket.findOne({
+      $or: [
+        { telegramMessageId: replyId },
+        { originalMessageId: replyId }
+      ]
+    });
+    
+    if (ticket) {
+      // Get agencies from AgencyMaster
+      const agencies = await Agency.find({ isActive: true }).sort({ name: 1 }).lean();
+      
+      if (agencies.length === 0) {
+        await telegramSendMessage(
+          chat.id,
+          "❌ No agencies available. Please add agencies in the admin panel first.",
+          msg.message_id
+        );
+        return NextResponse.json({ ok: true });
+      }
+      
+      // Create agency assignment message
+      const assignMsg = `🔧 <b>Assign Agency to ${ticket.ticketId}</b>\n\n` +
+                        `📝 ${ticket.description}\n` +
+                        `📍 ${ticket.location || "No location"}\n\n` +
+                        `👇 Select an agency:`;
+      
+      // Build agency keyboard
+      const keyboard: any[][] = [];
+      for (const agency of agencies) {
+        keyboard.push([{
+          text: `👷 ${agency.name}`,
+          callback_data: `asgn_${msg.message_id}_agency_${agency._id}`
+        }]);
+      }
+      keyboard.push([{
+        text: "❌ Cancel",
+        callback_data: `asgn_${msg.message_id}_cancel`
+      }]);
+      
+      const sentMsg = await telegramSendMessage(chat.id, assignMsg, undefined, keyboard);
+      
+      if (sentMsg.ok && sentMsg.result) {
+        // Create assignment session
+        await AgencyAssignmentSession.create({
+          chatId: chat.id,
+          userId: msg.from.id,
+          botMessageId: sentMsg.result.message_id,
+          ticketId: ticket.ticketId,
+          ticketObjectId: ticket._id,
+          currentStep: "agency"
+        });
+      }
+      
+      return NextResponse.json({ ok: true });
+    }
+  }
+  
+  // Check for completion keywords
   const completionKeywords = ["done", "ok", "completed", "fixed", "resolved"];
-
   if (completionKeywords.some(k => lowerText.includes(k))) {
     // Check both ticket confirmation message and original user message
     const ticket = await Ticket.findOne({
