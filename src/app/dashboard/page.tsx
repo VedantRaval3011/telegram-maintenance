@@ -68,7 +68,7 @@ export default function DashboardPage() {
       medium: subset.filter((t: any) => (t.priority || "").toLowerCase() === "medium").length,
       low: subset.filter((t: any) => (t.priority || "").toLowerCase() === "low").length,
     };
-    
+
     // Source calculation based on category agency
     let inHouse = 0;
     let outsource = 0;
@@ -98,14 +98,14 @@ export default function DashboardPage() {
     if (location) out = out.filter((t: any) => (t.location || "").toString().toLowerCase() === location.toLowerCase());
     if (status) out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === status.toLowerCase());
     if (priority) out = out.filter((t: any) => (t.priority || "").toString().toLowerCase() === priority.toLowerCase());
-    
+
     if (user) {
       out = out.filter((t: any) => {
         const createdBy = (t.createdBy || "").toString().toLowerCase();
         return createdBy.includes(user.toLowerCase());
       });
     }
-    
+
     if (name) {
       const q = name.toLowerCase();
       out = out.filter((t: any) => {
@@ -167,14 +167,14 @@ export default function DashboardPage() {
     if (location) out = out.filter((t: any) => (t.location || "").toString().toLowerCase() === location.toLowerCase());
     // Note: Status is NOT filtered here because we calculate Pending/Completed stats from this base.
     if (priority) out = out.filter((t: any) => (t.priority || "").toString().toLowerCase() === priority.toLowerCase());
-    
+
     if (user) {
       out = out.filter((t: any) => {
         const createdBy = (t.createdBy || "").toString().toLowerCase();
         return createdBy.includes(user.toLowerCase());
       });
     }
-    
+
     if (name) {
       const q = name.toLowerCase();
       out = out.filter((t: any) => {
@@ -287,8 +287,8 @@ export default function DashboardPage() {
     const userStats = users.map((u: any) => {
       const displayName = u.username || `${u.firstName || ""} ${u.lastName || ""}`.trim() || `User ${u.telegramId}`;
       const uTickets = fullyFiltered.filter((t: any) => {
-         const createdBy = (t.createdBy || "").toString().toLowerCase();
-         return createdBy.includes(displayName.toLowerCase()) || createdBy === u.telegramId?.toString();
+        const createdBy = (t.createdBy || "").toString().toLowerCase();
+        return createdBy.includes(displayName.toLowerCase()) || createdBy === u.telegramId?.toString();
       });
       return {
         id: u._id,
@@ -305,9 +305,9 @@ export default function DashboardPage() {
         // Filter tickets by this category only (ignore subCategory filter for the list stats)
         const catTickets = baseFiltered.filter((t: any) => (t.category || "").toLowerCase() === cat.name.toLowerCase());
         const relevantSubs = subCategories.filter((s: any) => s.categoryId === selectedCategory);
-        
+
         subCategoryStats = relevantSubs.map((sub: any) => {
-          const subTickets = catTickets.filter((t: any) => 
+          const subTickets = catTickets.filter((t: any) =>
             (t.subCategory || "").toLowerCase() === sub.name.toLowerCase()
           );
           return {
@@ -328,14 +328,14 @@ export default function DashboardPage() {
     return <div className="p-10 text-center text-gray-500 animate-pulse">Loading…</div>;
 
   return (
-    <div className="min-h-screen bg-[#E8DDD0] pb-20">
+    <div className="min-h-screen bg-white pb-20">
       <Navbar />
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         {/* Top Filters: Advanced Toggle */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-end gap-4 mb-6">
           {/* Advanced Filters Toggle */}
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
               className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all border border-gray-200 shadow-sm"
             >
@@ -366,32 +366,35 @@ export default function DashboardPage() {
             <FilterBar tickets={tickets} filters={filters} setFilters={setFilters} reset={resetFilters} />
           </div>
         )}
-        
+
         {/* Summary Stats */}
         <div className="mb-12">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Capsule 
-              title="Total Tickets" 
-              {...stats.totalStats} 
+            <Capsule
+              title="Total Tickets"
+              {...stats.totalStats}
               onClick={() => setFilters({ status: "" })}
               onPriorityClick={(p) => setFilters({ priority: p })}
               selectedPriority={filters.priority}
+              color="#ec4899"
               className={filters.status === "" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
             />
-            <Capsule 
-              title="Pending" 
-              {...stats.pendingStats} 
+            <Capsule
+              title="Pending"
+              {...stats.pendingStats}
               onClick={() => setFilters({ status: "PENDING" })}
               onPriorityClick={(p) => setFilters({ priority: p })}
               selectedPriority={filters.priority}
+              color="#3b82f6"
               className={filters.status === "PENDING" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
             />
-            <Capsule 
-              title="Completed" 
-              {...stats.completedStats} 
+            <Capsule
+              title="Completed"
+              {...stats.completedStats}
               onClick={() => setFilters({ status: "COMPLETED" })}
               onPriorityClick={(p) => setFilters({ priority: p })}
               selectedPriority={filters.priority}
+              color="#14b8a6"
               className={filters.status === "COMPLETED" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
             />
           </div>
@@ -404,9 +407,9 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {stats.categoryStats.map((cat: any) => (
                 <div key={cat.id} className="relative">
-                  <Capsule 
-                    title={cat.name} 
-                    {...cat.stats} 
+                  <Capsule
+                    title={cat.name}
+                    {...cat.stats}
                     onClick={() => {
                       const isAll = cat.id === "all";
                       setFilters({ category: isAll ? "" : cat.name });
@@ -414,7 +417,7 @@ export default function DashboardPage() {
                     }}
                     onPriorityClick={(p) => setFilters({ priority: p })}
                     selectedPriority={filters.priority}
-                    color={cat.color}
+                    color={cat.color || "#6b7280"}
                     className={(selectedCategory === cat.id || (cat.id === "all" ? filters.category === "" : filters.category === cat.name)) ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                   />
                 </div>
@@ -430,33 +433,33 @@ export default function DashboardPage() {
               <h2 className="text-lg font-semibold text-gray-900">
                 Subcategories for {categories.find((c: any) => c._id === selectedCategory)?.displayName}
               </h2>
-              <button 
+              <button
                 onClick={() => setSelectedCategory(null)}
                 className="text-sm text-gray-600 hover:text-gray-900 underline font-medium"
               >
                 Close
               </button>
             </div>
-            
+
             {stats.subCategoryStats.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {stats.subCategoryStats.map((sub: any) => (
-                  <Capsule 
-                    key={sub.id} 
-                    title={sub.name} 
-                    {...sub.stats} 
+                  <Capsule
+                    key={sub.id}
+                    title={sub.name}
+                    {...sub.stats}
                     onClick={() => {
                       // Filter by this subcategory
                       const cat = categories.find((c: any) => c._id === selectedCategory);
-                      setFilters({ 
+                      setFilters({
                         category: cat ? cat.name : "",
-                        subCategory: sub.name 
+                        subCategory: sub.name
                       });
                     }}
                     className={filters.subCategory === sub.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                     onPriorityClick={(p) => setFilters({ priority: p })}
                     selectedPriority={filters.priority}
-                    color={categories.find((c: any) => c._id === selectedCategory)?.color}
+                    color={categories.find((c: any) => c._id === selectedCategory)?.color || "#6b7280"}
                   />
                 ))}
               </div>
@@ -466,7 +469,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        
+
 
         {/* User Stats Capsules */}
         {stats.userStats.length > 0 && (
@@ -474,13 +477,14 @@ export default function DashboardPage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-6">By User</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {stats.userStats.map((u: any) => (
-                <Capsule 
-                  key={u.id} 
-                  title={u.name} 
-                  {...u.stats} 
+                <Capsule
+                  key={u.id}
+                  title={u.name}
+                  {...u.stats}
                   onClick={() => setFilters({ user: u.name })}
                   onPriorityClick={(p) => setFilters({ priority: p })}
                   selectedPriority={filters.priority}
+                  color="#06b6d4"
                   className={filters.user === u.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                 />
               ))}
@@ -492,9 +496,17 @@ export default function DashboardPage() {
 
         {/* Tickets grid */}
         <div className="grid grid-cols-1 gap-6">
-          {fullyFiltered.map((t: any) => (
-            <TicketCard key={t.ticketId} ticket={t} onStatusChange={() => mutate()} />
-          ))}
+          {fullyFiltered.map((t: any) => {
+            const cat = categories.find((c: any) => c.name.toLowerCase() === (t.category || "").toLowerCase());
+            return (
+              <TicketCard
+                key={t.ticketId}
+                ticket={t}
+                onStatusChange={() => mutate()}
+                categoryColor={cat?.color}
+              />
+            );
+          })}
         </div>
 
         {fullyFiltered.length === 0 && (

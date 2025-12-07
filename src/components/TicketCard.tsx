@@ -7,7 +7,43 @@ interface Note {
   createdAt: Date | string;
 }
 
-export default function TicketCard({ ticket, onStatusChange }: { ticket: any; onStatusChange?: () => void }) {
+// Helper function to convert hex to RGB
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16),
+    }
+    : null;
+}
+
+// Helper function to create a lighter version of a color
+function lightenColor(hex: string, percent: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  const r = Math.min(255, Math.floor(rgb.r + (255 - rgb.r) * percent));
+  const g = Math.min(255, Math.floor(rgb.g + (255 - rgb.g) * percent));
+  const b = Math.min(255, Math.floor(rgb.b + (255 - rgb.b) * percent));
+
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Helper function to create a darker version of a color
+function darkenColor(hex: string, percent: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  const r = Math.max(0, Math.floor(rgb.r * (1 - percent)));
+  const g = Math.max(0, Math.floor(rgb.g * (1 - percent)));
+  const b = Math.max(0, Math.floor(rgb.b * (1 - percent)));
+
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+export default function TicketCard({ ticket, onStatusChange, categoryColor }: { ticket: any; onStatusChange?: () => void; categoryColor?: string }) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
@@ -22,6 +58,23 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
     location: ticket.location || "",
     status: ticket.status || "PENDING",
   });
+
+  // Use category color or default to gray
+  const baseColor = categoryColor || "#6b7280";
+
+  // Generate color palette from the base color
+  const colors = {
+    bg: lightenColor(baseColor, 0.92),
+    bgLight: lightenColor(baseColor, 0.95),
+    border: lightenColor(baseColor, 0.7),
+    borderDark: lightenColor(baseColor, 0.5),
+    accent: baseColor,
+    accentLight: lightenColor(baseColor, 0.85),
+    accentMedium: lightenColor(baseColor, 0.75),
+    text: darkenColor(baseColor, 0.7),
+    textLight: darkenColor(baseColor, 0.4),
+    textDark: darkenColor(baseColor, 0.85),
+  };
 
   // Priority color mapping
   const getPriorityColor = (priority: string) => {
@@ -103,10 +156,10 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
 
   const statusClass = () => {
     const base = "px-2 py-1 rounded-md text-xs font-semibold border";
-    if (!ticket.status) return `${base} bg-[#b8a293] text-[#2c2420] border-[#c9b6a5]`;
-    if (ticket.status === "PENDING") return `${base} bg-[#c9b6a5] text-[#2c2420] border-[#7d6856]`;
-    if (ticket.status === "COMPLETED") return `${base} bg-[#7d6856] text-[#f5ebe0] border-[#5c4a3d]`;
-    return `${base} bg-[#d4c0ae] text-[#2c2420] border-[#b8a293]`;
+    if (!ticket.status) return `${base} bg-gray-100 text-gray-700 border-gray-300`;
+    if (ticket.status === "PENDING") return `${base} text-white`;
+    if (ticket.status === "COMPLETED") return `${base} bg-emerald-100 text-emerald-700 border-emerald-300`;
+    return `${base} bg-gray-100 text-gray-700 border-gray-300`;
   };
 
   const getPriorityBadgeClass = (priority: string) => {
@@ -126,18 +179,28 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
   return (
     <>
       <div
-        className="bg-[#f5ebe0] border border-[#c9b6a5] rounded-xl shadow-lg overflow-hidden"
-        style={{ borderLeftWidth: '4px', borderLeftColor: priorityColor }}
+        className="rounded-xl shadow-lg overflow-hidden"
+        style={{
+          backgroundColor: colors.bg,
+          borderWidth: '1px',
+          borderColor: colors.border,
+          borderLeftWidth: '4px',
+          borderLeftColor: priorityColor
+        }}
       >
         {/* Header Section */}
         <div
-          className="px-4 py-2.5 border-b border-[#c9b6a5]"
-          style={{ backgroundColor: `${priorityColor}08` }}
+          className="px-4 py-2.5"
+          style={{
+            backgroundColor: colors.accentLight,
+            borderBottomWidth: '1px',
+            borderBottomColor: colors.border
+          }}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {/* Ticket ID */}
-              <span className="text-base font-black text-[#2c2420]">
+              <span className="text-base font-black" style={{ color: colors.textDark }}>
                 {ticket.ticketId}
               </span>
 
@@ -148,27 +211,35 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
               </span>
 
               {/* Status */}
-              <span className={statusClass()}>{ticket.status}</span>
+              <span
+                className={statusClass()}
+                style={ticket.status === "PENDING" ? { backgroundColor: colors.accent, borderColor: colors.borderDark } : {}}
+              >
+                {ticket.status}
+              </span>
             </div>
 
             {/* Action Buttons */}
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setShowEditModal(true)}
-                className="px-2 py-1 bg-[#ede0d1] text-[#2c2420] rounded hover:bg-[#d4c0ae] transition-all text-xs"
+                className="px-2 py-1 rounded hover:opacity-80 transition-all text-xs"
+                style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
               >
                 ✏️
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-2 py-1 bg-[#b8a293] text-[#2c2420] rounded hover:bg-[#7d6856] hover:text-[#f5ebe0] transition-all text-xs"
+                className="px-2 py-1 rounded hover:opacity-80 transition-all text-xs"
+                style={{ backgroundColor: colors.borderDark, color: colors.bgLight }}
               >
                 🗑️
               </button>
               {ticket.status !== "COMPLETED" && (
                 <button
                   onClick={markCompleted}
-                  className="px-2 py-1 bg-[#2c2420] text-[#f5ebe0] rounded hover:opacity-95 transition-all text-xs"
+                  className="px-2 py-1 rounded hover:opacity-95 transition-all text-xs text-white"
+                  style={{ backgroundColor: colors.textDark }}
                 >
                   ✓
                 </button>
@@ -180,21 +251,24 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
         {/* Main Content */}
         <div className="p-4">
           {/* Description */}
-          <h3 className="text-base font-semibold text-[#2c2420] mb-2 line-clamp-2">
+          <h3 className="text-base font-semibold mb-2 line-clamp-2" style={{ color: colors.textDark }}>
             {ticket.description}
           </h3>
 
           {/* Metadata Row */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-3">
-            <span className="inline-flex items-center gap-1 text-[#5c4a3d]">
+            <span className="inline-flex items-center gap-1" style={{ color: colors.text }}>
               <span className="font-semibold">Category:</span>
-              <span className="px-1.5 py-0.5 bg-[#d4c0ae] rounded text-[#2c2420] font-medium">
+              <span
+                className="px-1.5 py-0.5 rounded font-medium"
+                style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
+              >
                 {ticket.category || "unknown"}
               </span>
             </span>
 
             {ticket.subCategory && (
-              <span className="text-[#5c4a3d]">
+              <span style={{ color: colors.text }}>
                 • <span className="font-medium">{ticket.subCategory}</span>
               </span>
             )}
@@ -202,22 +276,22 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
             {/* Location - show source/target for transfer category */}
             {ticket.sourceLocation && ticket.targetLocation ? (
               <>
-                <span className="text-[#5c4a3d]">
+                <span style={{ color: colors.text }}>
                   📤 <span className="font-medium">From: {ticket.sourceLocation}</span>
                 </span>
-                <span className="text-[#5c4a3d]">
+                <span style={{ color: colors.text }}>
                   📥 <span className="font-medium">To: {ticket.targetLocation}</span>
                 </span>
               </>
             ) : (
-              <span className="text-[#5c4a3d]">
+              <span style={{ color: colors.text }}>
                 📍 <span className="font-medium">{ticket.location || "-"}</span>
               </span>
             )}
 
             {/* Agency Info */}
             {ticket.agencyName && (
-              <span className="text-[#5c4a3d]">
+              <span style={{ color: colors.text }}>
                 👷 <span className="font-medium">{ticket.agencyName}</span>
                 {ticket.agencyDate && (
                   <span className="ml-1">
@@ -232,52 +306,55 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
           </div>
 
           {/* Time and People Info */}
-          <div className="bg-[#ede0d1] rounded-lg p-3 mb-3 grid grid-cols-3 gap-3 text-sm">
+          <div
+            className="rounded-lg p-3 mb-3 grid grid-cols-3 gap-3 text-sm"
+            style={{ backgroundColor: colors.accentMedium }}
+          >
             {/* Created By */}
             <div>
-              <div className="text-[10px] font-semibold text-[#7d6856] uppercase mb-0.5">
+              <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: colors.text }}>
                 👤 Created By
               </div>
-              <div className="font-bold text-[#2c2420] truncate">
+              <div className="font-bold truncate" style={{ color: colors.textDark }}>
                 {ticket.createdBy || "-"}
               </div>
-              <div className="text-[10px] text-[#7d6856]">
+              <div className="text-[10px]" style={{ color: colors.text }}>
                 {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}
               </div>
             </div>
 
             {/* Time */}
             <div>
-              <div className="text-[10px] font-semibold text-[#7d6856] uppercase mb-0.5">
+              <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: colors.text }}>
                 🕐 Time
               </div>
-              <div className="font-bold text-[#2c2420]">
+              <div className="font-bold" style={{ color: colors.textDark }}>
                 {ticket.createdAt
                   ? `${Math.floor((Date.now() - new Date(ticket.createdAt).getTime()) / (1000 * 60 * 60))}h ago`
                   : "-"
                 }
               </div>
-              <div className="text-[10px] text-[#7d6856]">
+              <div className="text-[10px]" style={{ color: colors.text }}>
                 {ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
               </div>
             </div>
 
             {/* Completed By */}
             {ticket.status === "COMPLETED" && ticket.completedBy ? (
-              <div className="bg-[#7d6856]/10 -m-3 p-3 rounded-lg">
-                <div className="text-[10px] font-semibold text-[#5c4a3d] uppercase mb-0.5">
+              <div className="-m-3 p-3 rounded-lg" style={{ backgroundColor: `${colors.accent}20` }}>
+                <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: colors.textDark }}>
                   ✅ Completed By
                 </div>
-                <div className="font-bold text-[#2c2420] truncate">
+                <div className="font-bold truncate" style={{ color: colors.textDark }}>
                   {ticket.completedBy}
                 </div>
-                <div className="text-[10px] text-[#7d6856]">
+                <div className="text-[10px]" style={{ color: colors.text }}>
                   {ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString() : ""}
                 </div>
               </div>
             ) : (
               <div className="flex items-center justify-center">
-                <span className="text-[10px] text-[#7d6856] italic">Not completed</span>
+                <span className="text-[10px] italic" style={{ color: colors.text }}>Not completed</span>
               </div>
             )}
           </div>
@@ -285,7 +362,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
           {/* Photos */}
           {ticket.photos && ticket.photos.length > 0 && (
             <div className="mb-3">
-              <div className="text-[10px] text-[#7d6856] font-semibold mb-1.5 uppercase">
+              <div className="text-[10px] font-semibold mb-1.5 uppercase" style={{ color: colors.text }}>
                 📸 Photos ({ticket.photos.length})
               </div>
               <div className="flex gap-1.5 flex-wrap">
@@ -294,7 +371,8 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
                     key={idx}
                     src={url}
                     alt={`Photo ${idx + 1}`}
-                    className="w-16 h-16 object-cover rounded border border-[#c9b6a5] cursor-pointer hover:opacity-80 transition"
+                    className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
+                    style={{ borderWidth: '1px', borderColor: colors.border }}
                     onClick={() => setSelectedPhoto(url)}
                   />
                 ))}
@@ -304,8 +382,8 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
 
           {/* Completion Photos */}
           {ticket.completionPhotos && ticket.completionPhotos.length > 0 && (
-            <div className="mb-3 p-2.5 bg-[#d4c0ae] rounded-lg">
-              <div className="text-[10px] text-[#2c2420] font-semibold mb-1.5 uppercase">
+            <div className="mb-3 p-2.5 rounded-lg" style={{ backgroundColor: colors.accentMedium }}>
+              <div className="text-[10px] font-semibold mb-1.5 uppercase" style={{ color: colors.textDark }}>
                 ✅ After-fix Photos ({ticket.completionPhotos.length})
               </div>
               <div className="flex gap-1.5 flex-wrap">
@@ -314,7 +392,8 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
                     key={idx}
                     src={url}
                     alt={`Completion ${idx + 1}`}
-                    className="w-16 h-16 object-cover rounded border border-[#7d6856] cursor-pointer hover:opacity-80 transition"
+                    className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
+                    style={{ borderWidth: '1px', borderColor: colors.borderDark }}
                     onClick={() => setSelectedPhoto(url)}
                   />
                 ))}
@@ -323,12 +402,13 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
           )}
 
           {/* Notes Section */}
-          <div className="pt-3 border-t border-[#c9b6a5]">
+          <div className="pt-3" style={{ borderTopWidth: '1px', borderTopColor: colors.border }}>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold text-[#2c2420]">📝 Notes ({notes.length})</h3>
+              <h3 className="text-xs font-semibold" style={{ color: colors.textDark }}>📝 Notes ({notes.length})</h3>
               <button
                 onClick={() => setShowNotesModal(true)}
-                className="px-2 py-0.5 bg-[#ede0d1] text-[#2c2420] rounded hover:bg-[#d4c0ae] transition-all text-[10px] font-medium"
+                className="px-2 py-0.5 rounded hover:opacity-80 transition-all text-[10px] font-medium"
+                style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
               >
                 + Add
               </button>
@@ -337,17 +417,18 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
             {notes.length > 0 ? (
               <div className="space-y-1.5">
                 {notes.map((note, idx) => (
-                  <div key={idx} className="bg-[#ede0d1] p-2 rounded">
+                  <div key={idx} className="p-2 rounded" style={{ backgroundColor: colors.accentMedium }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-[#2c2420] line-clamp-2">{note.content}</p>
-                        <p className="text-[10px] text-[#7d6856] mt-0.5 truncate">
+                        <p className="text-xs line-clamp-2" style={{ color: colors.textDark }}>{note.content}</p>
+                        <p className="text-[10px] mt-0.5 truncate" style={{ color: colors.text }}>
                           {note.createdBy} • {new Date(note.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                       <button
                         onClick={() => handleDeleteNote(idx)}
-                        className="text-[#7d6856] hover:text-[#2c2420] text-xs flex-shrink-0"
+                        className="text-xs flex-shrink-0 hover:opacity-70"
+                        style={{ color: colors.text }}
                       >
                         ✕
                       </button>
@@ -356,7 +437,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
                 ))}
               </div>
             ) : (
-              <p className="text-[10px] text-[#7d6856] italic">No notes yet</p>
+              <p className="text-[10px] italic" style={{ color: colors.text }}>No notes yet</p>
             )}
           </div>
         </div>
@@ -365,38 +446,60 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
       {/* Edit Modal */}
       {showEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowEditModal(false)}>
-          <div className="absolute inset-0 bg-[#2c2420]/80" />
-          <div className="relative max-w-2xl w-full bg-[#f5ebe0] border border-[#c9b6a5] rounded-2xl p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-bold text-[#2c2420] mb-6">Edit Ticket</h2>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative max-w-2xl w-full rounded-2xl p-8 shadow-xl"
+            style={{ backgroundColor: colors.bg, borderWidth: '1px', borderColor: colors.border }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold mb-6" style={{ color: colors.textDark }}>Edit Ticket</h2>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#5c4a3d] mb-2">Description</label>
+                <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>Description</label>
                 <textarea
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                   rows={3}
-                  className="w-full px-4 py-2 bg-[#ede0d1] border border-[#c9b6a5] text-[#2c2420] rounded-xl outline-none focus:ring-2 focus:ring-[#7d6856]/20"
+                  className="w-full px-4 py-2 rounded-xl outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: colors.accentMedium,
+                    borderWidth: '1px',
+                    borderColor: colors.border,
+                    color: colors.textDark
+                  }}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#5c4a3d] mb-2">Category</label>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>Category</label>
                   <input
                     type="text"
                     value={editForm.category}
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#ede0d1] border border-[#c9b6a5] text-[#2c2420] rounded-xl outline-none focus:ring-2 focus:ring-[#7d6856]/20"
+                    className="w-full px-4 py-2 rounded-xl outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: colors.accentMedium,
+                      borderWidth: '1px',
+                      borderColor: colors.border,
+                      color: colors.textDark
+                    }}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#5c4a3d] mb-2">Priority</label>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>Priority</label>
                   <select
                     value={editForm.priority}
                     onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#ede0d1] border border-[#c9b6a5] text-[#2c2420] rounded-xl outline-none focus:ring-2 focus:ring-[#7d6856]/20"
+                    className="w-full px-4 py-2 rounded-xl outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: colors.accentMedium,
+                      borderWidth: '1px',
+                      borderColor: colors.border,
+                      color: colors.textDark
+                    }}
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -405,21 +508,33 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#5c4a3d] mb-2">Location</label>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>Location</label>
                   <input
                     type="text"
                     value={editForm.location}
                     onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#ede0d1] border border-[#c9b6a5] text-[#2c2420] rounded-xl outline-none focus:ring-2 focus:ring-[#7d6856]/20"
+                    className="w-full px-4 py-2 rounded-xl outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: colors.accentMedium,
+                      borderWidth: '1px',
+                      borderColor: colors.border,
+                      color: colors.textDark
+                    }}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#5c4a3d] mb-2">Status</label>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>Status</label>
                   <select
                     value={editForm.status}
                     onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#ede0d1] border border-[#c9b6a5] text-[#2c2420] rounded-xl outline-none focus:ring-2 focus:ring-[#7d6856]/20"
+                    className="w-full px-4 py-2 rounded-xl outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: colors.accentMedium,
+                      borderWidth: '1px',
+                      borderColor: colors.border,
+                      color: colors.textDark
+                    }}
                   >
                     <option value="PENDING">Pending</option>
                     <option value="IN_PROGRESS">In Progress</option>
@@ -431,13 +546,15 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
               <div className="flex items-center justify-end gap-3 pt-4">
                 <button
                   onClick={() => setShowEditModal(false)}
-                  className="px-6 py-2 bg-[#e8d5c4] text-[#2c2420] rounded-xl font-medium hover:bg-[#d4c0ae] transition-all"
+                  className="px-6 py-2 rounded-xl font-medium hover:opacity-80 transition-all"
+                  style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleEdit}
-                  className="px-6 py-2 bg-[#2c2420] text-[#f5ebe0] rounded-xl shadow-lg hover:opacity-95 transition-all font-bold"
+                  className="px-6 py-2 rounded-xl shadow-lg hover:opacity-95 transition-all font-bold text-white"
+                  style={{ backgroundColor: colors.textDark }}
                 >
                   Save Changes
                 </button>
@@ -450,28 +567,40 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
       {/* Add Note Modal */}
       {showNotesModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowNotesModal(false)}>
-          <div className="absolute inset-0 bg-[#2c2420]/80" />
-          <div className="relative max-w-lg w-full bg-[#f5ebe0] border border-[#c9b6a5] rounded-2xl p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-bold text-[#2c2420] mb-6">Add Note</h2>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative max-w-lg w-full rounded-2xl p-8 shadow-xl"
+            style={{ backgroundColor: colors.bg, borderWidth: '1px', borderColor: colors.border }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold mb-6" style={{ color: colors.textDark }}>Add Note</h2>
 
             <textarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
               placeholder="Enter your note..."
               rows={4}
-              className="w-full px-4 py-2 bg-[#ede0d1] border border-[#c9b6a5] text-[#2c2420] rounded-xl outline-none focus:ring-2 focus:ring-[#7d6856]/20"
+              className="w-full px-4 py-2 rounded-xl outline-none focus:ring-2"
+              style={{
+                backgroundColor: colors.accentMedium,
+                borderWidth: '1px',
+                borderColor: colors.border,
+                color: colors.textDark
+              }}
             />
 
             <div className="flex items-center justify-end gap-3 mt-6">
               <button
                 onClick={() => setShowNotesModal(false)}
-                className="px-6 py-2 bg-[#e8d5c4] text-[#2c2420] rounded-xl font-medium hover:bg-[#d4c0ae] transition-all"
+                className="px-6 py-2 rounded-xl font-medium hover:opacity-80 transition-all"
+                style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddNote}
-                className="px-6 py-2 bg-[#2c2420] text-[#f5ebe0] rounded-xl shadow-lg hover:opacity-95 transition-all font-bold"
+                className="px-6 py-2 rounded-xl shadow-lg hover:opacity-95 transition-all font-bold text-white"
+                style={{ backgroundColor: colors.textDark }}
               >
                 Add Note
               </button>
@@ -483,23 +612,28 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
       {/* Delete Confirmation */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowDeleteConfirm(false)}>
-          <div className="absolute inset-0 bg-[#2c2420]/80" />
-          <div className="relative max-w-md w-full bg-[#f5ebe0] border border-[#c9b6a5] rounded-2xl p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-bold text-[#2c2420] mb-4">Delete Ticket?</h2>
-            <p className="text-sm text-[#5c4a3d] mb-6">
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative max-w-md w-full rounded-2xl p-8 shadow-xl"
+            style={{ backgroundColor: colors.bg, borderWidth: '1px', borderColor: colors.border }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold mb-4" style={{ color: colors.textDark }}>Delete Ticket?</h2>
+            <p className="text-sm mb-6" style={{ color: colors.text }}>
               This will permanently delete the ticket and its Telegram message. This action cannot be undone.
             </p>
 
             <div className="flex items-center justify-end gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="px-6 py-2 bg-[#e8d5c4] text-[#2c2420] rounded-xl font-medium hover:bg-[#d4c0ae] transition-all"
+                className="px-6 py-2 rounded-xl font-medium hover:opacity-80 transition-all"
+                style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
-                className="px-6 py-2 bg-[#7d6856] text-[#f5ebe0] rounded-xl shadow-lg hover:opacity-95 transition-all font-bold"
+                className="px-6 py-2 bg-red-500 text-white rounded-xl shadow-lg hover:bg-red-600 transition-all font-bold"
               >
                 Delete
               </button>
@@ -510,7 +644,7 @@ export default function TicketCard({ ticket, onStatusChange }: { ticket: any; on
 
       {/* Photo Lightbox */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#2c2420]/90" onClick={() => setSelectedPhoto(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90" onClick={() => setSelectedPhoto(null)}>
           <img src={selectedPhoto} alt="Full size" className="max-w-full max-h-full rounded-xl shadow-2xl" />
         </div>
       )}

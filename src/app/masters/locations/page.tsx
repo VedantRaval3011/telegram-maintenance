@@ -3,12 +3,12 @@
 import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
-import { 
-  Plus, 
-  Trash2, 
-  Edit2, 
-  Search, 
-  CornerDownRight, 
+import {
+  Plus,
+  Trash2,
+  Edit2,
+  Search,
+  CornerDownRight,
   X,
   MoreVertical
 } from "lucide-react";
@@ -32,18 +32,18 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 export default function LocationMasterPage() {
   // --- State ---
   const [page, setPage] = useState(1);
-  
+
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState(""); // Immediate input
   const [debouncedSearch, setDebouncedSearch] = useState(""); // Delayed query
   const [typeFilter, setTypeFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
-  
+
   // Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+
   // UI Interaction State
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; loc: Location } | null>(null);
   const [mobileSelectedId, setMobileSelectedId] = useState<string | null>(null); // For mobile tap-to-show-actions
@@ -136,7 +136,7 @@ export default function LocationMasterPage() {
   const handleDelete = async () => {
     if (!deleteTargetId) return;
     const res = await fetch(`/api/masters/locations/${deleteTargetId}`, { method: "DELETE" });
-    
+
     if (res.ok) {
       mutate();
       setToast({ msg: "Location deleted successfully", type: "success" });
@@ -158,10 +158,10 @@ export default function LocationMasterPage() {
       parentLocationId: formData.parentLocationId === "" ? null : formData.parentLocationId,
     };
 
-    const url = editingId 
-      ? `/api/masters/locations/${editingId}` 
+    const url = editingId
+      ? `/api/masters/locations/${editingId}`
       : "/api/masters/locations";
-    
+
     const method = editingId ? "PUT" : "POST";
 
     const res = await fetch(url, {
@@ -173,9 +173,9 @@ export default function LocationMasterPage() {
     const r = await res.json();
     if (res.ok) {
       mutate();
-      setToast({ 
-        msg: editingId ? "Location updated successfully" : "Location created successfully", 
-        type: "success" 
+      setToast({
+        msg: editingId ? "Location updated successfully" : "Location created successfully",
+        type: "success"
       });
       setIsCreateModalOpen(false);
       resetForm();
@@ -274,7 +274,7 @@ export default function LocationMasterPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          
+
           <div className="flex gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 no-scrollbar">
             <select
               className="bg-[#f5ebe0] border border-[#c9b6a5] rounded-xl px-4 py-3 text-sm text-[#2c2420] focus:ring-2 focus:ring-[#7d6856]/40 outline-none min-w-[140px] appearance-none cursor-pointer hover:bg-[#ede0d1] transition-colors"
@@ -286,7 +286,7 @@ export default function LocationMasterPage() {
               <option value="floor">Floor</option>
               <option value="room">Room</option>
             </select>
-            
+
             <select
               className="bg-[#f5ebe0] border border-[#c9b6a5] rounded-xl px-4 py-3 text-sm text-[#2c2420] focus:ring-2 focus:ring-[#7d6856]/40 outline-none min-w-[120px] appearance-none cursor-pointer hover:bg-[#ede0d1] transition-colors"
               value={activeFilter}
@@ -335,15 +335,14 @@ export default function LocationMasterPage() {
                     const isMobileSelected = mobileSelectedId === loc._id;
 
                     return (
-                      <tr 
-                        key={loc._id} 
+                      <tr
+                        key={loc._id}
                         onContextMenu={(e) => handleContextMenu(e, loc)}
-                        className={`group transition-all duration-200 ${
-                          isMobileSelected ? "bg-[#e8d5c4]" : "hover:bg-[#ede0d1]"
-                        }`}
+                        className={`group transition-all duration-200 ${isMobileSelected ? "bg-[#e8d5c4]" : "hover:bg-[#ede0d1]"
+                          }`}
                       >
                         {/* Name Column - Clickable on Mobile */}
-                        <td 
+                        <td
                           className="px-6 py-4 cursor-pointer md:cursor-default"
                           onClick={() => handleMobileRowClick(loc._id)}
                         >
@@ -365,7 +364,7 @@ export default function LocationMasterPage() {
                                 )}
                               </div>
                             </div>
-                            
+
                             {/* Mobile Actions Panel (Visible when selected) */}
                             {isMobileSelected && (
                               <div className="md:hidden flex items-center gap-3 mt-3 pl-2 animate-in slide-in-from-top-2 duration-200">
@@ -402,15 +401,14 @@ export default function LocationMasterPage() {
                         </td>
                         <td className="px-6 py-4 text-sm text-[#5c4a3d] hidden lg:table-cell">{loc.capacity || "—"}</td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                            loc.isActive 
-                              ? "bg-[#7d6856] text-[#f5ebe0] border-[#5c4a3d]" 
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${loc.isActive
+                              ? "bg-[#7d6856] text-[#f5ebe0] border-[#5c4a3d]"
                               : "bg-[#b8a293] border-[#9c8672] text-[#3d332c]"
-                          }`}>
+                            }`}>
                             {loc.isActive ? "Active" : "Inactive"}
                           </span>
                         </td>
-                        
+
                         {/* Desktop Actions */}
                         <td className="px-6 py-4 text-right hidden md:table-cell">
                           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
@@ -449,24 +447,24 @@ export default function LocationMasterPage() {
 
       {/* --- Context Menu (Right Click) --- */}
       {contextMenu && (
-        <div 
+        <div
           className="fixed z-50 bg-[#f5ebe0] backdrop-blur-md border border-[#c9b6a5] rounded-xl shadow-xl py-1 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
-          <button 
+          <button
             onClick={() => { openEditModal(contextMenu.loc); setContextMenu(null); }}
             className="w-full text-left px-4 py-2.5 text-sm text-[#2c2420] hover:bg-[#e8d5c4] hover:text-[#2c2420] flex items-center gap-2"
           >
             <Edit2 className="w-4 h-4" /> Edit
           </button>
-          <button 
+          <button
             onClick={() => { openCreateModal(contextMenu.loc._id); setContextMenu(null); }}
             className="w-full text-left px-4 py-2.5 text-sm text-[#2c2420] hover:bg-[#e8d5c4] hover:text-[#2c2420] flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Add Child
           </button>
           <div className="h-px bg-[#dccab9] my-1" />
-          <button 
+          <button
             onClick={() => { setDeleteTargetId(contextMenu.loc._id); setContextMenu(null); }}
             className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2"
           >
@@ -481,17 +479,17 @@ export default function LocationMasterPage() {
           <div className="bg-[#f5ebe0] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-[#c9b6a5]">
             <div className="px-6 py-4 border-b border-[#dccab9] flex justify-between items-center bg-[#e8d5c4]">
               <h2 className="text-lg font-bold text-[#2c2420]">
-                {editingId 
-                  ? "Edit Location" 
-                  : formData.parentLocationId 
-                    ? "Add Sub-Location" 
+                {editingId
+                  ? "Edit Location"
+                  : formData.parentLocationId
+                    ? "Add Sub-Location"
                     : "Create New Location"}
               </h2>
               <button onClick={() => setIsCreateModalOpen(false)} className="text-[#7d6856] hover:text-[#2c2420] transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <form onSubmit={handleSave} className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-5">
                 <div className="col-span-2">
@@ -504,7 +502,7 @@ export default function LocationMasterPage() {
                     placeholder="e.g. Main Building"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-xs font-semibold text-[#5c4a3d] mb-1.5 uppercase tracking-wide">Type</label>
                   <input
@@ -523,7 +521,7 @@ export default function LocationMasterPage() {
                     <option value="Area" />
                   </datalist>
                 </div>
-                
+
                 <div>
                   <label className="block text-xs font-semibold text-[#5c4a3d] mb-1.5 uppercase tracking-wide">Code</label>
                   <input
@@ -566,7 +564,7 @@ export default function LocationMasterPage() {
                         className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-[#c9b6a5] bg-[#ede0d1] checked:bg-[#7d6856] checked:border-[#5c4a3d] transition-all"
                       />
                       <svg className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#f5ebe0] opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" viewBox="0 0 14 14" fill="none">
-                        <path d="M3 8L6 11L11 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M3 8L6 11L11 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </div>
                     <span className="text-sm text-[#5c4a3d] group-hover:text-[#2c2420] transition-colors">Active Status</span>
@@ -645,11 +643,10 @@ export default function LocationMasterPage() {
       {/* --- Toast Notification --- */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 duration-300">
-          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border backdrop-blur-md ${
-            toast.type === 'success' 
-              ? 'bg-[#7d6856] border-[#5c4a3d] text-[#f5ebe0]' 
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl border backdrop-blur-md ${toast.type === 'success'
+              ? 'bg-[#7d6856] border-[#5c4a3d] text-[#f5ebe0]'
               : 'bg-rose-700 border-rose-800 text-rose-50'
-          }`}>
+            }`}>
             <div className={`w-2.5 h-2.5 rounded-full ${toast.type === 'success' ? 'bg-[#e8d5c4]' : 'bg-rose-200'}`} />
             <span className="text-sm font-medium tracking-wide">{toast.msg}</span>
           </div>
