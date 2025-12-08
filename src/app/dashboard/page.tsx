@@ -476,6 +476,61 @@ export default function DashboardPage() {
 
 
 
+        {/* Priority Filter Section */}
+        <div className="mb-8">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Filter by Priority:</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setFilters({ priority: "" })}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 ${filters.priority === ""
+                        ? "bg-gray-800 text-white border-gray-800 shadow-md"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                      }`}
+                  >
+                    All Priorities
+                  </button>
+                  <button
+                    onClick={() => setFilters({ priority: "high" })}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "high"
+                        ? "bg-red-500 text-white border-red-500 shadow-md"
+                        : "bg-red-50 text-red-700 border-red-300 hover:border-red-400"
+                      }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                    High
+                  </button>
+                  <button
+                    onClick={() => setFilters({ priority: "medium" })}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "medium"
+                        ? "bg-amber-500 text-white border-amber-500 shadow-md"
+                        : "bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400"
+                      }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    Medium
+                  </button>
+                  <button
+                    onClick={() => setFilters({ priority: "low" })}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "low"
+                        ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-400"
+                      }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    Low
+                  </button>
+                </div>
+              </div>
+              <div className="text-sm text-gray-600 font-medium">
+                Showing <span className="text-gray-900 font-bold">{fullyFiltered.length}</span> ticket{fullyFiltered.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Tickets grid */}
         <div className="grid grid-cols-1 gap-6">
           {fullyFiltered.map((t: any) => {
