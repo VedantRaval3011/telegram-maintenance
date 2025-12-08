@@ -10,6 +10,7 @@ import { WorkflowRule } from "@/models/WorkflowRuleMaster";
 import { WizardSession } from "@/models/WizardSession";
 import { Agency } from "@/models/AgencyMaster";
 import { AgencyAssignmentSession } from "@/models/AgencyAssignmentSession";
+import { Information } from "@/models/Information";
 import {
   telegramSendMessage,
   editMessageText,
@@ -145,7 +146,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "agency_time_hour" | "agency_time_minute" | "agency_time_period" | "additional";
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "agency_time_slot" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -247,28 +248,12 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
             completed: false,
           });
 
-          // Then time picker steps
+          // Time slot picker (First Half / Second Half)
           fields.push({
-            key: "agency_time_hour",
-            label: "⏰ Arrival Hour",
-            type: "agency_time_hour",
+            key: "agency_time_slot",
+            label: "⏰ Time Slot",
+            type: "agency_time_slot",
             required: false, // Will be required dynamically when agency is selected
-            completed: false,
-          });
-
-          fields.push({
-            key: "agency_time_minute",
-            label: "⏰ Arrival Minutes",
-            type: "agency_time_minute",
-            required: false,
-            completed: false,
-          });
-
-          fields.push({
-            key: "agency_time_period",
-            label: "⏰ AM/PM",
-            type: "agency_time_period",
-            required: false,
             completed: false,
           });
         }
@@ -344,27 +329,11 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         value = session.agencyRequired ? (session.agencyName || "Yes") : "No";
         break;
       
-      case "agency_time_hour":
+      case "agency_time_slot":
         // Only required if an agency was selected
         required = agencySelected;
-        completed = session.agencyTimeHour !== null && session.agencyTimeHour !== undefined;
-        value = completed ? `${session.agencyTimeHour}` : undefined;
-        break;
-      
-      case "agency_time_minute":
-        required = agencySelected;
-        completed = session.agencyTimeMinute !== null && session.agencyTimeMinute !== undefined;
-        value = completed ? `:${String(session.agencyTimeMinute).padStart(2, '0')}` : undefined;
-        break;
-      
-      case "agency_time_period":
-        required = agencySelected;
-        completed = !!session.agencyTimePeriod;
-        value = session.agencyTimePeriod;
-        // When period is completed, show the full time
-        if (completed && session.agencyTimeHour && session.agencyTimeMinute !== undefined) {
-          value = `${session.agencyTimeHour}:${String(session.agencyTimeMinute).padStart(2, '0')} ${session.agencyTimePeriod}`;
-        }
+        completed = !!session.agencyTimeSlot;
+        value = session.agencyTimeSlot === "first_half" ? "🌅 First Half" : session.agencyTimeSlot === "second_half" ? "🌆 Second Half" : undefined;
         break;
       
       case "agency_date":
@@ -529,45 +498,11 @@ case "target_location": {
       break;
     }
 
-    case "agency_time_hour": {
-      // Hour selection: 6-12, 1-5 in a 4-column grid
+    case "agency_time_slot": {
+      // Time slot selection: First Half / Second Half
       keyboard.push([
-        { text: "6", callback_data: `select_${botMessageId}_agency_time_hour_6` },
-        { text: "7", callback_data: `select_${botMessageId}_agency_time_hour_7` },
-        { text: "8", callback_data: `select_${botMessageId}_agency_time_hour_8` },
-        { text: "9", callback_data: `select_${botMessageId}_agency_time_hour_9` },
-      ]);
-      keyboard.push([
-        { text: "10", callback_data: `select_${botMessageId}_agency_time_hour_10` },
-        { text: "11", callback_data: `select_${botMessageId}_agency_time_hour_11` },
-        { text: "12", callback_data: `select_${botMessageId}_agency_time_hour_12` },
-        { text: "1", callback_data: `select_${botMessageId}_agency_time_hour_1` },
-      ]);
-      keyboard.push([
-        { text: "2", callback_data: `select_${botMessageId}_agency_time_hour_2` },
-        { text: "3", callback_data: `select_${botMessageId}_agency_time_hour_3` },
-        { text: "4", callback_data: `select_${botMessageId}_agency_time_hour_4` },
-        { text: "5", callback_data: `select_${botMessageId}_agency_time_hour_5` },
-      ]);
-      break;
-    }
-
-    case "agency_time_minute": {
-      // Minute selection: 00, 15, 30, 45
-      keyboard.push([
-        { text: ":00", callback_data: `select_${botMessageId}_agency_time_minute_0` },
-        { text: ":15", callback_data: `select_${botMessageId}_agency_time_minute_15` },
-        { text: ":30", callback_data: `select_${botMessageId}_agency_time_minute_30` },
-        { text: ":45", callback_data: `select_${botMessageId}_agency_time_minute_45` },
-      ]);
-      break;
-    }
-
-    case "agency_time_period": {
-      // AM/PM selection
-      keyboard.push([
-        { text: "🌅 AM", callback_data: `select_${botMessageId}_agency_time_period_AM` },
-        { text: "🌆 PM", callback_data: `select_${botMessageId}_agency_time_period_PM` },
+        { text: "🌅 First Half", callback_data: `select_${botMessageId}_agency_time_slot_first_half` },
+        { text: "🌆 Second Half", callback_data: `select_${botMessageId}_agency_time_slot_second_half` },
       ]);
       break;
     }
@@ -923,8 +858,9 @@ async function createTicketFromSession(session: any, createdBy: string) {
   // Add agency info if present
   if (session.agencyRequired) {
     ticketData.agencyName = session.agencyName || "Unknown Agency";
-    if (session.agencyTime) {
-      ticketData.agencyTime = session.agencyTime;
+    if (session.agencyTimeSlot) {
+      // Convert time slot to human-readable format for display
+      ticketData.agencyTime = session.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
     }
     if (session.agencyDate) {
       ticketData.agencyDate = session.agencyDate;
@@ -1045,28 +981,14 @@ export async function POST(req: NextRequest) {
         
         if (subAction === "date") {
           assignSession.agencyDate = new Date(value);
-          assignSession.currentStep = "hour";
+          assignSession.currentStep = "time_slot";
           await assignSession.save();
           
-          // Show hour picker
+          // Show time slot picker (First Half / Second Half)
           const keyboard = [
             [
-              { text: "6", callback_data: `asgn_${originalMsgId}_hour_6` },
-              { text: "7", callback_data: `asgn_${originalMsgId}_hour_7` },
-              { text: "8", callback_data: `asgn_${originalMsgId}_hour_8` },
-              { text: "9", callback_data: `asgn_${originalMsgId}_hour_9` },
-            ],
-            [
-              { text: "10", callback_data: `asgn_${originalMsgId}_hour_10` },
-              { text: "11", callback_data: `asgn_${originalMsgId}_hour_11` },
-              { text: "12", callback_data: `asgn_${originalMsgId}_hour_12` },
-              { text: "1", callback_data: `asgn_${originalMsgId}_hour_1` },
-            ],
-            [
-              { text: "2", callback_data: `asgn_${originalMsgId}_hour_2` },
-              { text: "3", callback_data: `asgn_${originalMsgId}_hour_3` },
-              { text: "4", callback_data: `asgn_${originalMsgId}_hour_4` },
-              { text: "5", callback_data: `asgn_${originalMsgId}_hour_5` },
+              { text: "🌅 First Half", callback_data: `asgn_${originalMsgId}_time_slot_first_half` },
+              { text: "🌆 Second Half", callback_data: `asgn_${originalMsgId}_time_slot_second_half` },
             ],
             [{ text: "❌ Cancel", callback_data: `asgn_${originalMsgId}_cancel` }]
           ];
@@ -1074,65 +996,14 @@ export async function POST(req: NextRequest) {
           const msg = `🔧 <b>Assign Agency to ${assignSession.ticketId}</b>\n\n` +
                      `👷 Agency: ${assignSession.agencyName}\n` +
                      `📅 Date: ${new Date(assignSession.agencyDate!).toLocaleDateString()}\n\n` +
-                     `⏰ Select arrival hour:`;
+                     `⏰ Select time slot:`;
           
           await editMessageText(chatId, messageId, msg, keyboard);
           return NextResponse.json({ ok: true });
         }
         
-        if (subAction === "hour") {
-          assignSession.agencyTimeHour = parseInt(value);
-          assignSession.currentStep = "minute";
-          await assignSession.save();
-          
-          // Show minute picker
-          const keyboard = [
-            [
-              { text: ":00", callback_data: `asgn_${originalMsgId}_minute_0` },
-              { text: ":15", callback_data: `asgn_${originalMsgId}_minute_15` },
-              { text: ":30", callback_data: `asgn_${originalMsgId}_minute_30` },
-              { text: ":45", callback_data: `asgn_${originalMsgId}_minute_45` },
-            ],
-            [{ text: "❌ Cancel", callback_data: `asgn_${originalMsgId}_cancel` }]
-          ];
-          
-          const msg = `🔧 <b>Assign Agency to ${assignSession.ticketId}</b>\n\n` +
-                     `👷 Agency: ${assignSession.agencyName}\n` +
-                     `📅 Date: ${new Date(assignSession.agencyDate!).toLocaleDateString()}\n` +
-                     `⏰ Hour: ${assignSession.agencyTimeHour}\n\n` +
-                     `⏰ Select minutes:`;
-          
-          await editMessageText(chatId, messageId, msg, keyboard);
-          return NextResponse.json({ ok: true });
-        }
-        
-        if (subAction === "minute") {
-          assignSession.agencyTimeMinute = parseInt(value);
-          assignSession.currentStep = "period";
-          await assignSession.save();
-          
-          // Show AM/PM picker
-          const keyboard = [
-            [
-              { text: "🌅 AM", callback_data: `asgn_${originalMsgId}_period_AM` },
-              { text: "🌆 PM", callback_data: `asgn_${originalMsgId}_period_PM` },
-            ],
-            [{ text: "❌ Cancel", callback_data: `asgn_${originalMsgId}_cancel` }]
-          ];
-          
-          const msg = `🔧 <b>Assign Agency to ${assignSession.ticketId}</b>\n\n` +
-                     `👷 Agency: ${assignSession.agencyName}\n` +
-                     `📅 Date: ${new Date(assignSession.agencyDate!).toLocaleDateString()}\n` +
-                     `⏰ Time: ${assignSession.agencyTimeHour}:${String(assignSession.agencyTimeMinute).padStart(2, '0')}\n\n` +
-                     `🌅 Select AM or PM:`;
-          
-          await editMessageText(chatId, messageId, msg, keyboard);
-          return NextResponse.json({ ok: true });
-        }
-        
-        if (subAction === "period") {
-          assignSession.agencyTimePeriod = value;
-          const agencyTime = `${assignSession.agencyTimeHour}:${String(assignSession.agencyTimeMinute).padStart(2, '0')} ${value}`;
+        if (subAction === "time_slot") {
+          const agencyTime = value === "first_half" ? "First Half" : "Second Half";
           
           // Update the ticket
           await Ticket.findByIdAndUpdate(assignSession.ticketObjectId, {
@@ -1177,15 +1048,9 @@ export async function POST(req: NextRequest) {
         
         // Check for known multi-part field types
         if (fieldType === "agency") {
-          if (value.startsWith("time_hour_")) {
-            fieldType = "agency_time_hour";
-            value = value.replace("time_hour_", "");
-          } else if (value.startsWith("time_minute_")) {
-            fieldType = "agency_time_minute";
-            value = value.replace("time_minute_", "");
-          } else if (value.startsWith("time_period_")) {
-            fieldType = "agency_time_period";
-            value = value.replace("time_period_", "");
+          if (value.startsWith("time_slot_")) {
+            fieldType = "agency_time_slot";
+            value = value.replace("time_slot_", "");
           } else if (value.startsWith("date_")) {
             fieldType = "agency_date";
             value = value.replace("date_", "");
@@ -1238,10 +1103,7 @@ export async function POST(req: NextRequest) {
               session.agencyRequired = false;
               session.agencyName = null;
               session.agencyDate = null;
-              session.agencyTime = null;
-              session.agencyTimeHour = null;
-              session.agencyTimeMinute = null;
-              session.agencyTimePeriod = null;
+              session.agencyTimeSlot = null;
             } else {
               // Lookup agency by ID from AgencyMaster
               const agency = await Agency.findById(value).lean();
@@ -1252,24 +1114,8 @@ export async function POST(req: NextRequest) {
             break;
           }
 
-          case "agency_time_hour": {
-            session.agencyTimeHour = parseInt(value, 10);
-            await session.save();
-            break;
-          }
-
-          case "agency_time_minute": {
-            session.agencyTimeMinute = parseInt(value, 10);
-            await session.save();
-            break;
-          }
-
-          case "agency_time_period": {
-            session.agencyTimePeriod = value; // "AM" or "PM"
-            // When period is selected, build the full time string
-            if (session.agencyTimeHour && session.agencyTimeMinute !== null) {
-              session.agencyTime = `${session.agencyTimeHour}:${String(session.agencyTimeMinute).padStart(2, '0')} ${value}`;
-            }
+          case "agency_time_slot": {
+            session.agencyTimeSlot = value; // "first_half" or "second_half"
             await session.save();
             break;
           }
@@ -1342,34 +1188,16 @@ export async function POST(req: NextRequest) {
             session.agencyRequired = null;
             session.agencyName = null;
             session.agencyDate = null;
-            session.agencyTime = null;
-            session.agencyTimeHour = null;
-            session.agencyTimeMinute = null;
-            session.agencyTimePeriod = null;
+            session.agencyTimeSlot = null;
             break;
           case "agency_date":
-            // Clear date and time fields
+            // Clear date and time slot fields
             session.agencyDate = null;
-            session.agencyTime = null;
-            session.agencyTimeHour = null;
-            session.agencyTimeMinute = null;
-            session.agencyTimePeriod = null;
+            session.agencyTimeSlot = null;
             break;
-          case "agency_time_hour":
-            // Clear time fields
-            session.agencyTime = null;
-            session.agencyTimeHour = null;
-            session.agencyTimeMinute = null;
-            session.agencyTimePeriod = null;
-            break;
-          case "agency_time_minute":
-            session.agencyTime = null;
-            session.agencyTimeMinute = null;
-            session.agencyTimePeriod = null;
-            break;
-          case "agency_time_period":
-            session.agencyTime = null;
-            session.agencyTimePeriod = null;
+          case "agency_time_slot":
+            // Clear time slot field
+            session.agencyTimeSlot = null;
             break;
         }
         await session.save();
@@ -1482,6 +1310,116 @@ export async function POST(req: NextRequest) {
     }
 
     const incomingText = (msg.text || msg.caption || "").trim();
+
+// ========== INFO COMMAND HANDLING ==========
+// Captures any message starting with /info and stores the content
+// Format: /info <any text here>
+if (incomingText.toLowerCase().startsWith("/info ")) {
+  const infoContent = incomingText.substring(6).trim(); // Remove "/info " prefix
+  
+  if (infoContent.length > 0) {
+    const createdBy = msg.from?.username || 
+                     `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
+                     "Unknown";
+    
+    try {
+      // Store the information
+      await Information.create({
+        content: infoContent,
+        createdBy,
+        telegramMessageId: msg.message_id,
+        telegramChatId: chat.id,
+      });
+      
+      // Send confirmation
+      await telegramSendMessage(
+        chat.id,
+        `✅ <b>Information Saved</b>\n\n📝 ${infoContent.length > 100 ? infoContent.substring(0, 100) + "..." : infoContent}\n\n👤 By: ${createdBy}`,
+        msg.message_id
+      );
+    } catch (error) {
+      console.error("Error saving information:", error);
+      await telegramSendMessage(
+        chat.id,
+        "❌ Failed to save information. Please try again.",
+        msg.message_id
+      );
+    }
+  } else {
+    // No content provided
+    await telegramSendMessage(
+      chat.id,
+      "📝 Please provide some information after /info\n\nExample: <code>/info Meeting scheduled at 3 PM</code>",
+      msg.message_id
+    );
+  }
+  
+  return NextResponse.json({ ok: true });
+}
+
+// ========== REOPEN TICKET COMMAND HANDLING ==========
+// Supports: "open TCK-123" or "/open TCK-123" or "reopen TCK-123"
+const reopenMatch = incomingText.match(/^(?:open|reopen|\/open|\/reopen)\s*(tck-?\d+)?/i);
+if (reopenMatch && !msg.reply_to_message) {
+  // Extract ticket number from message
+  const ticketMatch = incomingText.match(/TCK-?(\d+)/i);
+  
+  if (!ticketMatch) {
+    // Ask for ticket number
+    await telegramSendMessage(
+      chat.id,
+      "📝 Please provide the ticket number.\n\nExample: <code>open TCK-123</code>",
+      msg.message_id
+    );
+    return NextResponse.json({ ok: true });
+  }
+  
+  const ticketId = `TCK-${ticketMatch[1]}`;
+  const ticket = await Ticket.findOne({ ticketId });
+  
+  if (!ticket) {
+    await telegramSendMessage(
+      chat.id,
+      `❌ Ticket <b>${ticketId}</b> not found.`,
+      msg.message_id
+    );
+    return NextResponse.json({ ok: true });
+  }
+  
+  if (ticket.status === "PENDING") {
+    await telegramSendMessage(
+      chat.id,
+      `⚠️ Ticket <b>${ticketId}</b> is already pending/open.`,
+      msg.message_id
+    );
+    return NextResponse.json({ ok: true });
+  }
+  
+  // Reopen the ticket
+  const reopenedBy = msg.from?.username || 
+                    `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
+                    "Unknown";
+  
+  ticket.status = "PENDING";
+  ticket.completedBy = null;
+  ticket.completedAt = null;
+  await ticket.save();
+  
+  // Send confirmation
+  const msgText = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n` +
+                 `📝 ${ticket.description}\n` +
+                 `📂 ${ticket.category || "Unknown"}\n` +
+                 `📍 ${ticket.location || "No location"}\n\n` +
+                 `👤 Reopened by: ${reopenedBy}`;
+  
+  await telegramSendMessage(
+    chat.id,
+    msgText,
+    msg.message_id
+  );
+  
+  return NextResponse.json({ ok: true });
+}
 
 // ========== ASSIGN AGENCY COMMAND HANDLING ==========
 // Supports: "assign agency TCK-123" or "/agency TCK-123"

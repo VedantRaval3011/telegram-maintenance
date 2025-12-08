@@ -40,6 +40,30 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
         ticket.telegramMessageId || undefined
       );
     }
+  } else if (payload.status === "PENDING" && payload.reopen) {
+    // ✅ Handle ticket reopen
+    ticket.status = "PENDING";
+    ticket.completedBy = null;
+    ticket.completedAt = null;
+    // Keep completion photos for reference but could clear if needed
+    
+    await ticket.save();
+
+    // Send Telegram notification about reopening
+    if (ticket.telegramChatId) {
+      const reopenedBy = payload.reopenedBy || "Dashboard";
+      const msgText = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n` +
+                     `📝 ${ticket.description}\n` +
+                     `📂 ${ticket.category || "Unknown"}\n` +
+                     `📍 ${ticket.location || "No location"}\n\n` +
+                     `👤 Reopened by: ${reopenedBy}`;
+      
+      await telegramSendMessage(
+        ticket.telegramChatId, 
+        msgText,
+        ticket.telegramMessageId || undefined
+      );
+    }
   } else {
     Object.assign(ticket, payload);
     await ticket.save();

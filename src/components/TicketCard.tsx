@@ -1,22 +1,23 @@
 "use client";
 import React, { useState } from "react";
-import { 
-  Edit2, 
-  Trash2, 
-  Check, 
-  User, 
-  Clock, 
-  MapPin, 
-  Camera, 
-  FileText, 
-  Plus, 
+import {
+  Edit2,
+  Trash2,
+  Check,
+  User,
+  Clock,
+  MapPin,
+  Camera,
+  FileText,
+  Plus,
   X,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
   Building2,
   Calendar,
-  Timer
+  Timer,
+  RotateCcw
 } from "lucide-react";
 
 interface Note {
@@ -115,6 +116,15 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "COMPLETED", completedBy: "DashboardUser" }),
+    });
+    onStatusChange?.();
+  };
+
+  const reopenTicket = async () => {
+    await fetch(`/api/tickets/${ticket.ticketId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "PENDING", reopen: true, reopenedBy: "DashboardUser" }),
     });
     onStatusChange?.();
   };
@@ -263,6 +273,15 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
                   title="Mark as completed"
                 >
                   <Check size={14} />
+                </button>
+              )}
+              {ticket.status === "COMPLETED" && (
+                <button
+                  onClick={reopenTicket}
+                  className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1 bg-amber-500"
+                  title="Reopen ticket"
+                >
+                  <RotateCcw size={14} />
                 </button>
               )}
             </div>

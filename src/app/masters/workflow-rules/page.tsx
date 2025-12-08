@@ -202,38 +202,38 @@ export default function WorkflowRulesPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#e8d5c4] pb-20">
+    <div className="min-h-screen bg-white pb-20">
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-extrabold text-[#2c2420]">
+            <h1 className="text-4xl font-extrabold text-gray-900">
               Workflow Rules
             </h1>
-            <p className="text-[#5c4a3d] mt-2 text-sm font-medium">
+            <p className="text-gray-600 mt-2 text-sm font-medium">
               Configure dynamic wizard flows for each category
             </p>
           </div>
           <div className="flex gap-3">
             <Link
               href="/masters/workflow-rules/preview"
-              className="inline-flex items-center justify-center gap-2 bg-[#d4c0ae] hover:bg-[#c9b6a5] text-[#2c2420] px-4 py-3 rounded-xl font-bold border-2 border-[#b8a293] transition-all active:scale-95"
+              className="inline-flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-900 px-4 py-3 rounded-xl font-bold border-2 border-gray-200 transition-all active:scale-95"
             >
               <Eye className="w-5 h-5" />
               Button View
             </Link>
             <Link
               href="/masters/workflow-rules/preview-expanded"
-              className="inline-flex items-center justify-center gap-2 bg-[#b8a293] hover:bg-[#9c8672] text-[#2c2420] px-4 py-3 rounded-xl font-bold border-2 border-[#9c8672] transition-all active:scale-95"
+              className="inline-flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-900 px-4 py-3 rounded-xl font-bold border-2 border-gray-300 transition-all active:scale-95"
             >
               <Eye className="w-5 h-5" />
               Expanded View
             </Link>
             <button
               onClick={() => handleOpenModal()}
-              className="inline-flex items-center justify-center gap-2 bg-[#2c2420] hover:bg-[#3d332c] text-[#f5ebe0] px-6 py-3 rounded-xl font-bold shadow-lg shadow-[#2c2420]/20 transition-all active:scale-95"
+              className="inline-flex items-center justify-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-gray-900/20 transition-all active:scale-95"
             >
               <Plus className="w-5 h-5" />
               New Rule
@@ -242,9 +242,9 @@ export default function WorkflowRulesPage() {
         </div>
 
         {/* Search Toolbar */}
-        <div className="bg-[#d4c0ae]/50 backdrop-blur-md border border-[#b8a293] rounded-2xl p-4 mb-8 shadow-sm">
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-8 shadow-sm">
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#7d6856]">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
               <Search className="w-5 h-5" />
             </div>
             <input
@@ -252,26 +252,26 @@ export default function WorkflowRulesPage() {
               placeholder="Search by category..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 w-full bg-[#f5ebe0] border border-[#c9b6a5] rounded-xl focus:ring-2 focus:ring-[#7d6856]/40 focus:border-[#7d6856] transition-all py-3 text-sm text-[#2c2420] placeholder-[#9c8672]"
+              className="pl-10 w-full bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-400 focus:border-gray-400 transition-all py-3 text-sm text-gray-900 placeholder-gray-500"
             />
           </div>
         </div>
 
         {/* List */}
         {loading ? (
-          <div className="bg-[#f5ebe0] border border-[#c9b6a5] rounded-2xl shadow-xl overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
             <div className="text-center py-16">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7d6856] mx-auto"></div>
-              <p className="mt-4 text-[#7d6856]">Loading rules...</p>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading rules...</p>
             </div>
           </div>
         ) : filteredRules.length === 0 ? (
-          <div className="bg-[#f5ebe0] border border-[#c9b6a5] rounded-2xl shadow-xl overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
             <div className="text-center py-16">
-              <p className="text-[#7d6856] mb-4">No workflow rules found</p>
+              <p className="text-gray-600 mb-4">No workflow rules found</p>
               <button
                 onClick={() => handleOpenModal()}
-                className="px-6 py-3 bg-[#2c2420] text-[#f5ebe0] rounded-xl hover:bg-[#3d332c] transition-colors font-bold shadow-lg"
+                className="px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-bold shadow-lg"
               >
                 Create First Rule
               </button>
@@ -280,23 +280,23 @@ export default function WorkflowRulesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredRules.map((rule) => (
-              <div key={rule._id} className="bg-[#f5ebe0] backdrop-blur-sm border border-[#c9b6a5] rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl hover:border-[#9c8672] transition-all group">
+              <div key={rule._id} className="bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl hover:border-gray-300 transition-all group">
                 <div className="p-6">
                   {/* Header */}
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-[#d4c0ae] flex items-center justify-center text-[#5c4a3d] border border-[#b8a293]">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-700 border border-gray-200">
                         <Settings className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-[#2c2420]">{(rule.categoryId as ICategory)?.displayName || "Unknown Category"}</h3>
-                        <p className="text-xs text-[#7d6856] font-mono">{(rule.categoryId as ICategory)?.name}</p>
+                        <h3 className="font-bold text-gray-900">{(rule.categoryId as ICategory)?.displayName || "Unknown Category"}</h3>
+                        <p className="text-xs text-gray-600 font-mono">{(rule.categoryId as ICategory)?.name}</p>
                       </div>
                     </div>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={() => handleOpenModal(rule)} 
-                        className="p-2 hover:bg-[#e8d5c4] rounded-lg text-[#5c4a3d] transition-colors"
+                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -313,33 +313,33 @@ export default function WorkflowRulesPage() {
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">
                       {rule.hasSubcategories && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#9db4cf]/30 text-[#2c4a5e] text-xs font-medium border border-[#9db4cf]/50">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200">
                           <Layers className="w-3 h-3" /> Subcats
                         </span>
                       )}
                       {rule.requiresLocation && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#c9a8d4]/30 text-[#5a3d6e] text-xs font-medium border border-[#c9a8d4]/50">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                           <MapPin className="w-3 h-3" /> Location
                         </span>
                       )}
                       {(rule.requiresSourceLocation || rule.requiresTargetLocation) && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#e8b891]/30 text-[#7d5d3d] text-xs font-medium border border-[#e8b891]/50">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
                           <Truck className="w-3 h-3" /> Transfer
                         </span>
                       )}
                       {rule.requiresAgency && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-100 text-rose-700 text-xs font-medium border border-rose-200">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200">
                           <Users className="w-3 h-3" /> Agency
                         </span>
                       )}
                     </div>
 
                     {rule.additionalFields.length > 0 && (
-                      <div className="pt-3 border-t border-[#dccab9]">
-                        <p className="text-xs font-semibold text-[#5c4a3d] mb-2 uppercase tracking-wide">Additional Fields</p>
+                      <div className="pt-3 border-t border-gray-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Additional Fields</p>
                         <div className="flex flex-wrap gap-1.5">
                           {rule.additionalFields.map((f, i) => (
-                            <span key={i} className="px-2 py-0.5 rounded bg-[#d4c0ae] text-[#2c2420] text-[10px] border border-[#b8a293] font-medium">
+                            <span key={i} className="px-2 py-0.5 rounded bg-gray-100 text-gray-900 text-[10px] border border-gray-200 font-medium">
                               {f.label}
                             </span>
                           ))}
@@ -355,15 +355,15 @@ export default function WorkflowRulesPage() {
 
         {/* Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2c2420]/20 backdrop-blur-sm">
-            <div className="bg-[#f5ebe0] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-[#c9b6a5]">
-              <div className="px-6 py-4 border-b border-[#dccab9] flex justify-between items-center bg-[#e8d5c4]">
-                <h2 className="text-lg font-bold text-[#2c2420]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-200">
+              <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h2 className="text-lg font-bold text-gray-900">
                   {editingRule ? "Edit Workflow Rule" : "Create Workflow Rule"}
                 </h2>
                 <button 
                   onClick={() => setIsModalOpen(false)} 
-                  className="text-[#7d6856] hover:text-[#2c2420] transition-colors"
+                  className="text-gray-600 hover:text-gray-900 transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -372,11 +372,11 @@ export default function WorkflowRulesPage() {
               <div className="p-6 overflow-y-auto flex-1 space-y-6">
                 {/* Category Selection */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#5c4a3d] mb-2 uppercase tracking-wide">Category</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Category</label>
                   <select
                     value={formData.categoryId as string}
                     onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                    className="w-full p-3 bg-[#ede0d1] border border-[#c9b6a5] rounded-xl text-[#2c2420] focus:ring-2 focus:ring-[#7d6856]/20 focus:border-[#7d6856] outline-none transition-all"
+                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-gray-400 focus:border-gray-400 outline-none transition-all"
                     disabled={!!editingRule}
                   >
                     <option value="">Select a Category</option>
@@ -437,54 +437,54 @@ export default function WorkflowRulesPage() {
                 </div>
 
                 {/* Additional Fields */}
-                <div className="space-y-4 pt-4 border-t border-[#dccab9]">
+                <div className="space-y-4 pt-4 border-t border-gray-200">
                   <div className="flex justify-between items-center">
-                    <h3 className="font-semibold text-[#2c2420]">Additional Dynamic Fields</h3>
+                    <h3 className="font-semibold text-gray-900">Additional Dynamic Fields</h3>
                     <button
                       onClick={addField}
-                      className="text-sm text-[#5c4a3d] hover:text-[#2c2420] font-medium flex items-center gap-1"
+                      className="text-sm text-gray-600 hover:text-gray-900 font-medium flex items-center gap-1"
                     >
                       <Plus className="w-4 h-4" /> Add Field
                     </button>
                   </div>
 
                   {formData.additionalFields.map((field, idx) => (
-                    <div key={idx} className="bg-[#ede0d1] p-4 rounded-xl border border-[#c9b6a5] relative group">
+                    <div key={idx} className="bg-gray-50 p-4 rounded-xl border border-gray-200 relative group">
                       <button
                         onClick={() => removeField(idx)}
-                        className="absolute top-2 right-2 text-[#7d6856] hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-all"
+                        className="absolute top-2 right-2 text-gray-600 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-all"
                       >
                         <X className="w-4 h-4" />
                       </button>
                       <div className="grid grid-cols-2 gap-4 mb-3">
                         <div>
-                          <label className="text-xs text-[#5c4a3d] font-medium uppercase">Key (Internal)</label>
+                          <label className="text-xs text-gray-700 font-medium uppercase">Key (Internal)</label>
                           <input
                             type="text"
                             value={field.key}
                             onChange={(e) => updateField(idx, { key: e.target.value })}
                             placeholder="e.g. paintType"
-                            className="w-full mt-1 p-2 text-sm border border-[#c9b6a5] rounded-lg focus:border-[#7d6856] outline-none bg-[#f5ebe0] text-[#2c2420]"
+                            className="w-full mt-1 p-2 text-sm border border-gray-300 rounded-lg focus:border-gray-400 outline-none bg-white text-gray-900"
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-[#5c4a3d] font-medium uppercase">Label (User Facing)</label>
+                          <label className="text-xs text-gray-700 font-medium uppercase">Label (User Facing)</label>
                           <input
                             type="text"
                             value={field.label}
                             onChange={(e) => updateField(idx, { label: e.target.value })}
                             placeholder="e.g. Paint Type"
-                            className="w-full mt-1 p-2 text-sm border border-[#c9b6a5] rounded-lg focus:border-[#7d6856] outline-none bg-[#f5ebe0] text-[#2c2420]"
+                            className="w-full mt-1 p-2 text-sm border border-gray-300 rounded-lg focus:border-gray-400 outline-none bg-white text-gray-900"
                           />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs text-[#5c4a3d] font-medium uppercase">Type</label>
+                          <label className="text-xs text-gray-700 font-medium uppercase">Type</label>
                           <select
                             value={field.type}
                             onChange={(e) => updateField(idx, { type: e.target.value as any })}
-                            className="w-full mt-1 p-2 text-sm border border-[#c9b6a5] rounded-lg focus:border-[#7d6856] outline-none bg-[#f5ebe0] text-[#2c2420]"
+                            className="w-full mt-1 p-2 text-sm border border-gray-300 rounded-lg focus:border-gray-400 outline-none bg-white text-gray-900"
                           >
                             <option value="text">Text</option>
                             <option value="number">Number</option>
@@ -495,13 +495,13 @@ export default function WorkflowRulesPage() {
                         </div>
                         {field.type === "select" && (
                           <div>
-                            <label className="text-xs text-[#5c4a3d] font-medium uppercase">Options (Comma sep)</label>
+                            <label className="text-xs text-gray-700 font-medium uppercase">Options (Comma sep)</label>
                             <input
                               type="text"
                               value={field.options?.join(", ") || ""}
                               onChange={(e) => updateField(idx, { options: e.target.value.split(",").map(s => s.trim()) })}
                               placeholder="Option 1, Option 2"
-                              className="w-full mt-1 p-2 text-sm border border-[#c9b6a5] rounded-lg focus:border-[#7d6856] outline-none bg-[#f5ebe0] text-[#2c2420]"
+                              className="w-full mt-1 p-2 text-sm border border-gray-300 rounded-lg focus:border-gray-400 outline-none bg-white text-gray-900"
                             />
                           </div>
                         )}
@@ -509,23 +509,23 @@ export default function WorkflowRulesPage() {
                     </div>
                   ))}
                   {formData.additionalFields.length === 0 && (
-                    <div className="text-center py-6 text-[#7d6856] text-sm bg-[#ede0d1]/50 rounded-xl border border-dashed border-[#c9b6a5]">
+                    <div className="text-center py-6 text-gray-600 text-sm bg-gray-50 rounded-xl border border-dashed border-gray-300">
                       No additional fields configured
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="p-6 border-t border-[#dccab9] bg-[#e8d5c4] flex justify-end gap-3">
+              <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 text-[#5c4a3d] font-medium hover:bg-[#d4c0ae] rounded-xl transition-colors"
+                  className="px-5 py-2.5 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  className="px-5 py-2.5 bg-[#2c2420] hover:bg-[#3d332c] text-[#f5ebe0] font-bold rounded-xl shadow-lg shadow-[#2c2420]/20 transition-all flex items-center gap-2 active:scale-95"
+                  className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl shadow-lg shadow-gray-900/20 transition-all flex items-center gap-2 active:scale-95"
                 >
                   <Save className="w-4 h-4" />
                   Save Rule
@@ -545,21 +545,21 @@ function Toggle({ label, description, checked, onChange, icon }: { label: string
       onClick={() => onChange(!checked)}
       className={`cursor-pointer p-4 rounded-xl border transition-all flex items-start gap-3 ${
         checked 
-          ? "bg-[#e8d5c4] border-[#b8a293] ring-1 ring-[#7d6856]/30" 
-          : "bg-[#f5ebe0] border-[#c9b6a5] hover:border-[#b8a293] hover:bg-[#ede0d1]"
+          ? "bg-gray-100 border-gray-300 ring-1 ring-gray-400" 
+          : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
-      <div className={`mt-0.5 p-1.5 rounded-lg ${checked ? "bg-[#d4c0ae] text-[#5c4a3d]" : "bg-[#e8d5c4] text-[#9c8672]"}`}>
+      <div className={`mt-0.5 p-1.5 rounded-lg ${checked ? "bg-gray-200 text-gray-700" : "bg-gray-100 text-gray-500"}`}>
         {icon}
       </div>
       <div className="flex-1">
         <div className="flex justify-between items-center">
-          <h4 className={`text-sm font-semibold ${checked ? "text-[#2c2420]" : "text-[#5c4a3d]"}`}>{label}</h4>
-          <div className={`w-10 h-5 rounded-full relative transition-colors ${checked ? "bg-[#7d6856]" : "bg-[#c9b6a5]"}`}>
-            <div className={`absolute top-1 w-3 h-3 rounded-full bg-[#f5ebe0] transition-all ${checked ? "left-6" : "left-1"}`} />
+          <h4 className={`text-sm font-semibold ${checked ? "text-gray-900" : "text-gray-700"}`}>{label}</h4>
+          <div className={`w-10 h-5 rounded-full relative transition-colors ${checked ? "bg-gray-700" : "bg-gray-300"}`}>
+            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${checked ? "left-6" : "left-1"}`} />
           </div>
         </div>
-        <p className="text-xs text-[#7d6856] mt-1">{description}</p>
+        <p className="text-xs text-gray-600 mt-1">{description}</p>
       </div>
     </div>
   );

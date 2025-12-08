@@ -30,6 +30,8 @@ export default function Navbar() {
                 { name: "Users", path: "/masters/users" },
                 { name: "Locations", path: "/masters/locations" },
                 { name: "Workflows", path: "/masters/workflow-rules" },
+                { name: "Informations", path: "/masters/informations" },
+                { name: "Agencies", path:"/masters/agencies" },
                 { name: "Summary", path: "/summary" },
               ].map((link) => (
                 <Link

@@ -1,0 +1,24 @@
+// models/Information.ts
+import mongoose, { Document, Model } from "mongoose";
+
+export interface IInformation extends Document {
+  content: string;
+  createdBy: string; // Telegram username or name
+  createdAt: Date;
+  telegramMessageId?: number | null; // Original message that contained the info
+  telegramChatId?: number | null;
+}
+
+const InformationSchema = new mongoose.Schema<IInformation>({
+  content: { type: String, required: true },
+  createdBy: { type: String, default: "Unknown" },
+  createdAt: { type: Date, default: Date.now },
+  telegramMessageId: { type: Number, default: null },
+  telegramChatId: { type: Number, default: null },
+});
+
+// Add text index for search functionality
+InformationSchema.index({ content: "text", createdBy: "text" });
+
+export const Information: Model<IInformation> =
+  mongoose.models.Information || mongoose.model<IInformation>("Information", InformationSchema);
