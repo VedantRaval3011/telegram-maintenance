@@ -90,7 +90,9 @@ export default function Capsule({
       className={`rounded-2xl shadow-sm overflow-hidden flex flex-row h-32 border transition-all duration-200 ${onClick ? "cursor-pointer" : ""
         } ${isHovered ? "shadow-md" : ""} ${className}`}
       style={{
-        borderColor: lightenColor(baseColor, 0.5),
+        borderTopColor: lightenColor(baseColor, 0.5),
+        borderRightColor: lightenColor(baseColor, 0.5),
+        borderBottomColor: lightenColor(baseColor, 0.5),
         borderLeftWidth: '4px',
         borderLeftColor: baseColor
       }}

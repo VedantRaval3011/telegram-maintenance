@@ -1,5 +1,23 @@
 "use client";
 import React, { useState } from "react";
+import { 
+  Edit2, 
+  Trash2, 
+  Check, 
+  User, 
+  Clock, 
+  MapPin, 
+  Camera, 
+  FileText, 
+  Plus, 
+  X,
+  CheckCircle2,
+  ArrowRight,
+  ArrowLeft,
+  Building2,
+  Calendar,
+  Timer
+} from "lucide-react";
 
 interface Note {
   content: string;
@@ -223,25 +241,28 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setShowEditModal(true)}
-                className="px-2 py-1 rounded hover:opacity-80 transition-all text-xs"
+                className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
                 style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
+                title="Edit ticket"
               >
-                ✏️
+                <Edit2 size={14} />
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-2 py-1 rounded hover:opacity-80 transition-all text-xs"
+                className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
                 style={{ backgroundColor: colors.borderDark, color: colors.bgLight }}
+                title="Delete ticket"
               >
-                🗑️
+                <Trash2 size={14} />
               </button>
               {ticket.status !== "COMPLETED" && (
                 <button
                   onClick={markCompleted}
-                  className="px-2 py-1 rounded hover:opacity-95 transition-all text-xs text-white"
+                  className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1"
                   style={{ backgroundColor: colors.textDark }}
+                  title="Mark as completed"
                 >
-                  ✓
+                  <Check size={14} />
                 </button>
               )}
             </div>
@@ -276,30 +297,30 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
             {/* Location - show source/target for transfer category */}
             {ticket.sourceLocation && ticket.targetLocation ? (
               <>
-                <span style={{ color: colors.text }}>
-                  📤 <span className="font-medium">From: {ticket.sourceLocation}</span>
+                <span className="inline-flex items-center gap-1" style={{ color: colors.text }}>
+                  <ArrowRight size={14} /> <span className="font-medium">From: {ticket.sourceLocation}</span>
                 </span>
-                <span style={{ color: colors.text }}>
-                  📥 <span className="font-medium">To: {ticket.targetLocation}</span>
+                <span className="inline-flex items-center gap-1" style={{ color: colors.text }}>
+                  <ArrowLeft size={14} /> <span className="font-medium">To: {ticket.targetLocation}</span>
                 </span>
               </>
             ) : (
-              <span style={{ color: colors.text }}>
-                📍 <span className="font-medium">{ticket.location || "-"}</span>
+              <span className="inline-flex items-center gap-1" style={{ color: colors.text }}>
+                <MapPin size={14} /> <span className="font-medium">{ticket.location || "-"}</span>
               </span>
             )}
 
             {/* Agency Info */}
             {ticket.agencyName && (
-              <span style={{ color: colors.text }}>
-                👷 <span className="font-medium">{ticket.agencyName}</span>
+              <span className="inline-flex items-center gap-1.5" style={{ color: colors.text }}>
+                <Building2 size={14} /> <span className="font-medium">{ticket.agencyName}</span>
                 {ticket.agencyDate && (
-                  <span className="ml-1">
-                    📅 {new Date(ticket.agencyDate).toLocaleDateString()}
+                  <span className="inline-flex items-center gap-1 ml-1">
+                    <Calendar size={12} /> {new Date(ticket.agencyDate).toLocaleDateString()}
                   </span>
                 )}
                 {ticket.agencyTime && (
-                  <span className="ml-1">⏰ {ticket.agencyTime}</span>
+                  <span className="inline-flex items-center gap-1 ml-1"><Timer size={12} /> {ticket.agencyTime}</span>
                 )}
               </span>
             )}
@@ -312,8 +333,8 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
           >
             {/* Created By */}
             <div>
-              <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: colors.text }}>
-                👤 Created By
+              <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.text }}>
+                <User size={12} /> Created By
               </div>
               <div className="font-bold truncate" style={{ color: colors.textDark }}>
                 {ticket.createdBy || "-"}
@@ -325,8 +346,8 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
 
             {/* Time */}
             <div>
-              <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: colors.text }}>
-                🕐 Time
+              <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.text }}>
+                <Clock size={12} /> Time
               </div>
               <div className="font-bold" style={{ color: colors.textDark }}>
                 {ticket.createdAt
@@ -342,8 +363,8 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
             {/* Completed By */}
             {ticket.status === "COMPLETED" && ticket.completedBy ? (
               <div className="-m-3 p-3 rounded-lg" style={{ backgroundColor: `${colors.accent}20` }}>
-                <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: colors.textDark }}>
-                  ✅ Completed By
+                <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.textDark }}>
+                  <CheckCircle2 size={12} /> Completed By
                 </div>
                 <div className="font-bold truncate" style={{ color: colors.textDark }}>
                   {ticket.completedBy}
@@ -362,8 +383,8 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
           {/* Photos */}
           {ticket.photos && ticket.photos.length > 0 && (
             <div className="mb-3">
-              <div className="text-[10px] font-semibold mb-1.5 uppercase" style={{ color: colors.text }}>
-                📸 Photos ({ticket.photos.length})
+              <div className="text-[10px] font-semibold mb-1.5 uppercase flex items-center gap-1" style={{ color: colors.text }}>
+                <Camera size={12} /> Photos ({ticket.photos.length})
               </div>
               <div className="flex gap-1.5 flex-wrap">
                 {ticket.photos.map((url: string, idx: number) => (
@@ -383,8 +404,8 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
           {/* Completion Photos */}
           {ticket.completionPhotos && ticket.completionPhotos.length > 0 && (
             <div className="mb-3 p-2.5 rounded-lg" style={{ backgroundColor: colors.accentMedium }}>
-              <div className="text-[10px] font-semibold mb-1.5 uppercase" style={{ color: colors.textDark }}>
-                ✅ After-fix Photos ({ticket.completionPhotos.length})
+              <div className="text-[10px] font-semibold mb-1.5 uppercase flex items-center gap-1" style={{ color: colors.textDark }}>
+                <CheckCircle2 size={12} /> After-fix Photos ({ticket.completionPhotos.length})
               </div>
               <div className="flex gap-1.5 flex-wrap">
                 {ticket.completionPhotos.map((url: string, idx: number) => (
@@ -404,13 +425,15 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
           {/* Notes Section */}
           <div className="pt-3" style={{ borderTopWidth: '1px', borderTopColor: colors.border }}>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold" style={{ color: colors.textDark }}>📝 Notes ({notes.length})</h3>
+              <h3 className="text-xs font-semibold flex items-center gap-1" style={{ color: colors.textDark }}>
+                <FileText size={14} /> Notes ({notes.length})
+              </h3>
               <button
                 onClick={() => setShowNotesModal(true)}
-                className="px-2 py-0.5 rounded hover:opacity-80 transition-all text-[10px] font-medium"
+                className="px-2 py-1 rounded-lg hover:opacity-80 transition-all text-[10px] font-medium flex items-center gap-1"
                 style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
               >
-                + Add
+                <Plus size={12} /> Add
               </button>
             </div>
 
@@ -427,10 +450,11 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
                       </div>
                       <button
                         onClick={() => handleDeleteNote(idx)}
-                        className="text-xs flex-shrink-0 hover:opacity-70"
+                        className="text-xs flex-shrink-0 hover:opacity-70 p-0.5"
                         style={{ color: colors.text }}
+                        title="Delete note"
                       >
-                        ✕
+                        <X size={14} />
                       </button>
                     </div>
                   </div>

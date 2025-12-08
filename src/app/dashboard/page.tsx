@@ -264,14 +264,7 @@ export default function DashboardPage() {
     const completedStats = calculateStats(globalStatsBase.filter((t: any) => t.status === "COMPLETED"));
 
     // Category Stats - use baseFiltered (exclude category filter) so we see all categories
-    // But we prepend "All Categories"
-    const allCategoriesStat = {
-      id: "all",
-      name: "All Categories",
-      stats: calculateStats(baseFiltered), // baseFiltered respects Status & Priority, but not Category
-    };
-
-    const specificCategoryStats = categories.map((cat: any) => {
+    const categoryStats = categories.map((cat: any) => {
       const catTickets = baseFiltered.filter((t: any) => (t.category || "").toLowerCase() === cat.name.toLowerCase());
       return {
         id: cat._id,
@@ -280,8 +273,6 @@ export default function DashboardPage() {
         color: cat.color,
       };
     }).filter((c: any) => c.stats.total > 0);
-
-    const categoryStats = [allCategoriesStat, ...specificCategoryStats];
 
     // User Stats - use fullyFiltered to show users relevant to current view
     const userStats = users.map((u: any) => {
@@ -328,7 +319,7 @@ export default function DashboardPage() {
     return <div className="p-10 text-center text-gray-500 animate-pulse">Loading…</div>;
 
   return (
-    <div className="min-h-screen bg-white pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20">
       <Navbar />
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         {/* Top Filters: Advanced Toggle */}
@@ -369,16 +360,7 @@ export default function DashboardPage() {
 
         {/* Summary Stats */}
         <div className="mb-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Capsule
-              title="Total Tickets"
-              {...stats.totalStats}
-              onClick={() => setFilters({ status: "" })}
-              onPriorityClick={(p) => setFilters({ priority: p })}
-              selectedPriority={filters.priority}
-              color="#ec4899"
-              className={filters.status === "" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Capsule
               title="Pending"
               {...stats.pendingStats}
