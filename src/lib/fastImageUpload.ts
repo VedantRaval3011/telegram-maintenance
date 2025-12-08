@@ -88,3 +88,18 @@ export async function fastProcessTelegramPhoto(fileId: string): Promise<string |
     return null;
   }
 }
+
+/**
+ * Combined fast download + upload for videos
+ * Returns URL or null if failed (non-blocking for main flow)
+ */
+export async function fastProcessTelegramVideo(fileId: string): Promise<string | null> {
+  try {
+    const buffer = await fastDownloadTelegramFile(fileId);
+    const url = await uploadToBunny(buffer, "telegram-maintenance", "mp4");
+    return url;
+  } catch (err) {
+    console.error("[FAST VIDEO] Processing failed:", err);
+    return null;
+  }
+}

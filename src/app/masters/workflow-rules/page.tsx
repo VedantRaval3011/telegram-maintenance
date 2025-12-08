@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
-import { 
-  Plus, 
-  Search, 
-  Edit2, 
-  Trash2, 
-  X, 
-  Save, 
-  Check, 
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  X,
+  Save,
+  Check,
   AlertCircle,
   ArrowRight,
   Settings,
@@ -18,7 +18,8 @@ import {
   Truck,
   Users,
   Calendar,
-  Eye
+  Eye,
+  Wrench
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import Link from "next/link";
@@ -45,6 +46,7 @@ interface IWorkflowRule {
   requiresTargetLocation: boolean;
   requiresAgency: boolean;
   requiresAgencyDate: boolean;
+  requiresAddOrRepair: boolean;
   additionalFields: IAdditionalField[];
 }
 
@@ -53,11 +55,11 @@ export default function WorkflowRulesPage() {
   const [categories, setCategories] = useState<ICategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<IWorkflowRule | null>(null);
-  
+
   // Form state
   const [formData, setFormData] = useState<IWorkflowRule>({
     categoryId: "",
@@ -67,6 +69,7 @@ export default function WorkflowRulesPage() {
     requiresTargetLocation: false,
     requiresAgency: false,
     requiresAgencyDate: false,
+    requiresAddOrRepair: false,
     additionalFields: []
   });
 
@@ -120,6 +123,7 @@ export default function WorkflowRulesPage() {
         requiresTargetLocation: false,
         requiresAgency: false,
         requiresAgencyDate: false,
+        requiresAddOrRepair: false,
         additionalFields: []
       });
     }
@@ -138,7 +142,7 @@ export default function WorkflowRulesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      
+
       const data = await res.json();
       if (data.success) {
         toast.success(editingRule ? "Rule updated successfully" : "Rule created successfully");
@@ -155,7 +159,7 @@ export default function WorkflowRulesPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this rule?")) return;
-    
+
     try {
       const res = await fetch(`/api/masters/workflow-rules?id=${id}`, {
         method: "DELETE",
@@ -294,14 +298,14 @@ export default function WorkflowRulesPage() {
                       </div>
                     </div>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
-                        onClick={() => handleOpenModal(rule)} 
+                      <button
+                        onClick={() => handleOpenModal(rule)}
                         className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button 
-                        onClick={() => handleDelete(rule._id!)} 
+                      <button
+                        onClick={() => handleDelete(rule._id!)}
                         className="p-2 hover:bg-rose-100 rounded-lg text-rose-600 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -330,6 +334,11 @@ export default function WorkflowRulesPage() {
                       {rule.requiresAgency && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 text-xs font-medium border border-rose-200">
                           <Users className="w-3 h-3" /> Agency
+                        </span>
+                      )}
+                      {rule.requiresAddOrRepair && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+                          <Wrench className="w-3 h-3" /> Add/Repair
                         </span>
                       )}
                     </div>
@@ -361,8 +370,8 @@ export default function WorkflowRulesPage() {
                 <h2 className="text-lg font-bold text-gray-900">
                   {editingRule ? "Edit Workflow Rule" : "Create Workflow Rule"}
                 </h2>
-                <button 
-                  onClick={() => setIsModalOpen(false)} 
+                <button
+                  onClick={() => setIsModalOpen(false)}
                   className="text-gray-600 hover:text-gray-900 transition-colors"
                 >
                   <X className="w-6 h-6" />
@@ -434,6 +443,13 @@ export default function WorkflowRulesPage() {
                       icon={<Calendar className="w-4 h-4" />}
                     />
                   )}
+                  <Toggle
+                    label="Add New or Repair"
+                    description="Choose between Add or Repair"
+                    checked={formData.requiresAddOrRepair}
+                    onChange={(v) => setFormData({ ...formData, requiresAddOrRepair: v })}
+                    icon={<Wrench className="w-4 h-4" />}
+                  />
                 </div>
 
                 {/* Additional Fields */}
@@ -541,13 +557,12 @@ export default function WorkflowRulesPage() {
 
 function Toggle({ label, description, checked, onChange, icon }: { label: string, description: string, checked: boolean, onChange: (v: boolean) => void, icon: React.ReactNode }) {
   return (
-    <div 
+    <div
       onClick={() => onChange(!checked)}
-      className={`cursor-pointer p-4 rounded-xl border transition-all flex items-start gap-3 ${
-        checked 
-          ? "bg-gray-100 border-gray-300 ring-1 ring-gray-400" 
-          : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-      }`}
+      className={`cursor-pointer p-4 rounded-xl border transition-all flex items-start gap-3 ${checked
+        ? "bg-gray-100 border-gray-300 ring-1 ring-gray-400"
+        : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+        }`}
     >
       <div className={`mt-0.5 p-1.5 rounded-lg ${checked ? "bg-gray-200 text-gray-700" : "bg-gray-100 text-gray-500"}`}>
         {icon}

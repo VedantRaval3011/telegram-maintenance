@@ -40,10 +40,14 @@ export interface IWizardSession extends Document {
   agencyDate: Date | null;
   agencyTimeSlot: string | null;  // "first_half" or "second_half"
 
+  /** Add or Repair Choice */
+  addOrRepairChoice: "add" | "repair" | null;
+
   /** Dynamic Additional Fields */
   additionalFieldValues: Record<string, any>;
 
   photos: string[];
+  videos: string[];
 
   /**
    * Current step of the wizard
@@ -127,10 +131,14 @@ const WizardSessionSchema = new Schema<IWizardSession>(
     agencyDate: { type: Date, default: null },
     agencyTimeSlot: { type: String, enum: ["first_half", "second_half", null], default: null },
 
+    /** Add or Repair choice */
+    addOrRepairChoice: { type: String, enum: ["add", "repair", null], default: null },
+
     /** Additional dynamic fields */
     additionalFieldValues: { type: Object, default: {} },
 
     photos: { type: [String], default: [] },
+    videos: { type: [String], default: [] },
 
     /** Dynamic step system */
     currentStep: { type: String, default: "category" },

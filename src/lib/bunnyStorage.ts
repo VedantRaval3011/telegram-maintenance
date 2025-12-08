@@ -9,13 +9,15 @@ const UPLOAD_TIMEOUT = 15000; // 15 seconds max for upload
 
 /**
  * Upload a buffer to BunnyCDN Storage
- * @param buffer - The image buffer to upload
+ * @param buffer - The file buffer to upload
  * @param folder - Optional folder path within the storage zone
- * @returns Promise resolving to the public CDN URL of the uploaded image
+ * @param extension - Optional file extension (default: 'jpg' for images)
+ * @returns Promise resolving to the public CDN URL of the uploaded file
  */
 export async function uploadToBunny(
   buffer: Buffer,
-  folder: string = "telegram-maintenance"
+  folder: string = "telegram-maintenance",
+  extension: string = "jpg"
 ): Promise<string> {
   const storageZone = process.env.BUNNY_STORAGE_ZONE!;
   const apiKey = process.env.BUNNY_STORAGE_API_KEY!;
@@ -30,7 +32,7 @@ export async function uploadToBunny(
   // Generate unique filename with timestamp and random string
   const timestamp = Date.now();
   const randomStr = Math.random().toString(36).substring(2, 8);
-  const filename = `${timestamp}_${randomStr}.jpg`;
+  const filename = `${timestamp}_${randomStr}.${extension}`;
   
   // Construct the full path
   const filePath = folder ? `${folder}/${filename}` : filename;

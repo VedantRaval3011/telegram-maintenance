@@ -8,6 +8,7 @@ import {
   Clock,
   MapPin,
   Camera,
+  Video,
   FileText,
   Plus,
   X,
@@ -420,6 +421,27 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
             </div>
           )}
 
+          {/* Videos */}
+          {ticket.videos && ticket.videos.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] font-semibold mb-1.5 uppercase flex items-center gap-1" style={{ color: colors.text }}>
+                <Video size={12} /> Videos ({ticket.videos.length})
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {ticket.videos.map((url: string, idx: number) => (
+                  <video
+                    key={idx}
+                    src={url}
+                    className="w-24 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
+                    style={{ borderWidth: '1px', borderColor: colors.border }}
+                    controls
+                    muted
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Completion Photos */}
           {ticket.completionPhotos && ticket.completionPhotos.length > 0 && (
             <div className="mb-3 p-2.5 rounded-lg" style={{ backgroundColor: colors.accentMedium }}>
@@ -435,6 +457,27 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
                     className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
                     style={{ borderWidth: '1px', borderColor: colors.borderDark }}
                     onClick={() => setSelectedPhoto(url)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Completion Videos */}
+          {ticket.completionVideos && ticket.completionVideos.length > 0 && (
+            <div className="mb-3 p-2.5 rounded-lg" style={{ backgroundColor: colors.accentMedium }}>
+              <div className="text-[10px] font-semibold mb-1.5 uppercase flex items-center gap-1" style={{ color: colors.textDark }}>
+                <Video size={12} /> After-fix Videos ({ticket.completionVideos.length})
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {ticket.completionVideos.map((url: string, idx: number) => (
+                  <video
+                    key={idx}
+                    src={url}
+                    className="w-24 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
+                    style={{ borderWidth: '1px', borderColor: colors.borderDark }}
+                    controls
+                    muted
                   />
                 ))}
               </div>

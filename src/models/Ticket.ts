@@ -9,7 +9,9 @@ export interface ITicket extends Document {
   priority: "low" | "medium" | "high";
   location?: string | null;
   photos: string[]; // saved file URLs or file paths
+  videos: string[]; // saved video URLs
   completionPhotos?: string[]; // Photos uploaded when completed
+  completionVideos?: string[]; // Videos uploaded when completed
   createdBy?: string | null; // Telegram username or name
   createdAt: Date;
   status: "PENDING" | "COMPLETED";
@@ -23,6 +25,7 @@ export interface ITicket extends Document {
   agencyDate?: Date | null; // Agency arrival date
   sourceLocation?: string | null; // For transfer category - from location
   targetLocation?: string | null; // For transfer category - to location
+  addOrRepairChoice?: "add" | "repair" | null; // Add new or Repair choice
 }
 
 const TicketSchema = new mongoose.Schema<ITicket>({
@@ -37,9 +40,14 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   },
   location: { type: String, default: null },
   photos: { type: [String], default: [] },
-completionPhotos: {
+  videos: { type: [String], default: [] },
+  completionPhotos: {
     type: [String],
-    default: []  // Default to empty array
+    default: []
+  },
+  completionVideos: {
+    type: [String],
+    default: []
   },
   createdBy: { type: String, default: "Unknown" },
   createdAt: { type: Date, default: Date.now },
@@ -54,6 +62,7 @@ completionPhotos: {
   agencyDate: { type: Date, default: null },
   sourceLocation: { type: String, default: null },
   targetLocation: { type: String, default: null },
+  addOrRepairChoice: { type: String, enum: ["add", "repair", null], default: null },
 });
 
 export const Ticket: Model<ITicket> =

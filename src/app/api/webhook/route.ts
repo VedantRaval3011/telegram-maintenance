@@ -19,9 +19,7 @@ import {
   telegramDeleteMessage,
 } from "@/lib/telegram";
 import { uploadBufferToCloudinary } from "@/lib/uploadBufferToCloudinary";
-import { fastProcessTelegramPhoto } from "@/lib/fastImageUpload";
-import fs from "fs";
-import path from "path";
+import { fastProcessTelegramPhoto, fastProcessTelegramVideo } from "@/lib/fastImageUpload";
 
 /**
  * DYNAMIC WORKFLOW-CONTROLLED TELEGRAM WEBHOOK
@@ -146,7 +144,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "agency_time_slot" | "additional";
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -259,6 +257,17 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
         }
       }
 
+      // Add or Repair
+      if (rule.requiresAddOrRepair) {
+        fields.push({
+          key: "add_or_repair",
+          label: "🔧 Add New or Repair",
+          type: "add_or_repair",
+          required: true,
+          completed: false,
+        });
+      }
+
       // Additional fields
       if (rule.additionalFields && rule.additionalFields.length > 0) {
         for (const addField of rule.additionalFields) {
@@ -340,6 +349,11 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         required = agencySelected;
         completed = !!session.agencyDate;
         value = session.agencyDate ? new Date(session.agencyDate).toLocaleDateString() : undefined;
+        break;
+      
+      case "add_or_repair":
+        completed = !!session.addOrRepairChoice;
+        value = session.addOrRepairChoice === "add" ? "➕ Add" : session.addOrRepairChoice === "repair" ? "🔧 Repair" : undefined;
         break;
       
       case "additional":
@@ -551,6 +565,15 @@ case "target_location": {
       break;
     }
 
+    case "add_or_repair": {
+      // Add or Repair choice
+      keyboard.push([
+        { text: "➕ Add", callback_data: `select_${botMessageId}_add_or_repair_add` },
+        { text: "🔧 Repair", callback_data: `select_${botMessageId}_add_or_repair_repair` },
+      ]);
+      break;
+    }
+
     case "additional": {
       if (field.additionalFieldKey) {
         // ✅ OPTIMIZED: Cache workflow rule
@@ -625,6 +648,11 @@ const completedFields = fields.filter(f =>
   // Photos
   if (session.photos && session.photos.length > 0) {
     message += `📸 Photos: ${session.photos.length} attached\n`;
+  }
+
+  // Videos
+  if (session.videos && session.videos.length > 0) {
+    message += `🎬 Videos: ${session.videos.length} attached\n`;
   }
 
   return message;
@@ -851,6 +879,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
     status: "PENDING",
     createdBy,
     photos: session.photos || [],
+    videos: session.videos || [],
     additionalFields: session.additionalFieldValues || {},
     originalMessageId: session.originalMessageId, // Store original message ID
   };
@@ -873,6 +902,11 @@ async function createTicketFromSession(session: any, createdBy: string) {
   }
   if (session.targetLocationPath) {
     ticketData.targetLocation = deduplicateLocationPath(session.targetLocationPath).map((n: any) => n.name).join(" → ");
+  }
+
+  // Add or Repair choice
+  if (session.addOrRepairChoice) {
+    ticketData.addOrRepairChoice = session.addOrRepairChoice;
   }
 
   const ticket = await Ticket.create(ticketData);
@@ -1127,6 +1161,12 @@ export async function POST(req: NextRequest) {
             break;
           }
 
+          case "add_or_repair": {
+            session.addOrRepairChoice = value as "add" | "repair";
+            await session.save();
+            break;
+          }
+
           case "additional": {
             const fieldKey = parts[3];
             const fieldValue = parts.slice(4).join("_");
@@ -1198,6 +1238,10 @@ export async function POST(req: NextRequest) {
           case "agency_time_slot":
             // Clear time slot field
             session.agencyTimeSlot = null;
+            break;
+          case "add_or_repair":
+            // Clear add or repair choice
+            session.addOrRepairChoice = null;
             break;
         }
         await session.save();
@@ -1652,6 +1696,16 @@ if (msg.reply_to_message) {
         }
       }
 
+      // Handle completion video if present
+      let completionVideoUrl: string | null = null;
+      if (msg.video?.file_id) {
+        try {
+          completionVideoUrl = await fastProcessTelegramVideo(msg.video.file_id);
+        } catch (err) {
+          console.error("Completion video upload failed:", err);
+        }
+      }
+
       ticket.status = "COMPLETED";
       ticket.completedBy = completedBy;
       ticket.completedAt = new Date();
@@ -1663,6 +1717,14 @@ if (msg.reply_to_message) {
         }
         ticket.completionPhotos.push(completionPhotoUrl);
       }
+
+      // ✅ Add completion video with proper null check
+      if (completionVideoUrl) {
+        if (!ticket.completionVideos || !Array.isArray(ticket.completionVideos)) {
+          ticket.completionVideos = [];
+        }
+        ticket.completionVideos.push(completionVideoUrl);
+      }
       
       await ticket.save();
 
@@ -1671,6 +1733,9 @@ if (msg.reply_to_message) {
       
       if (completionPhotoUrl) {
         completionMsg += `\n📸 After-fix photo attached`;
+      }
+      if (completionVideoUrl) {
+        completionMsg += `\n🎬 After-fix video attached`;
       }
 
       await telegramSendMessage(
@@ -1715,9 +1780,10 @@ if (msg.reply_to_message) {
 
     // ========== NEW TICKET HANDLING (OPTIMIZED) ==========
     const hasPhoto = !!(msg.photo || msg.document);
+    const hasVideo = !!msg.video;
     const hasText = incomingText.length > 1; // Responsive threshold
     
-    if (hasPhoto || hasText) {
+    if (hasPhoto || hasVideo || hasText) {
       // ⚡ OPTIMIZATION: Send initial "Processing" message IMMEDIATELY
       // This gives instant feedback while we process the heavy stuff
       const initialMsg = "🛠 <b>Ticket Wizard</b>\n⚡ Processing...";
@@ -1734,7 +1800,13 @@ if (msg.reply_to_message) {
         }
       }
       
-      // 2. Category Detection
+      // 2. Video Processing (if applicable)
+      let videoPromise: Promise<string | null> = Promise.resolve(null);
+      if (hasVideo && msg.video?.file_id) {
+        videoPromise = fastProcessTelegramVideo(msg.video.file_id);
+      }
+      
+      // 3. Category Detection
       const categoryPromise = (async () => {
         // Use cached categories if available
         const categories = await getCached('categories:all', () => 
@@ -1751,17 +1823,19 @@ if (msg.reply_to_message) {
       })();
 
       // Wait for everything to complete
-      const [botRes, photoUrl, detectedCategory] = await Promise.all([
+      const [botRes, photoUrl, videoUrl, detectedCategory] = await Promise.all([
         botResPromise,
         photoPromise,
+        videoPromise,
         categoryPromise
       ]);
 
       const botMessageId = (botRes as any)?.result?.message_id;
 
       if (botMessageId) {
-        const description = incomingText || (photoUrl ? "Photo attachment" : "New Ticket");
+        const description = incomingText || (photoUrl ? "Photo attachment" : (videoUrl ? "Video attachment" : "New Ticket"));
         const initialPhotos = photoUrl ? [photoUrl] : [];
+        const initialVideos = videoUrl ? [videoUrl] : [];
         
         // Create session
         const newSession = await WizardSession.create({
@@ -1771,6 +1845,7 @@ if (msg.reply_to_message) {
           originalMessageId: msg.message_id,
           originalText: description,
           photos: initialPhotos,
+          videos: initialVideos,
           category: detectedCategory?.id || null,
           categoryDisplay: detectedCategory?.name || null,
           createdAt: new Date(),

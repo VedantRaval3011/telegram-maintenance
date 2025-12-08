@@ -16,6 +16,9 @@ export interface IWorkflowRule extends Document {
   agencyList: string[]; // List of agency names (when agencyType = "name")
   requiresAgencyDate: boolean; // if requiresAgency === true
 
+  // Add New or Repair
+  requiresAddOrRepair: boolean; // if true, show Add/Repair choice
+
   // Additional dynamic fields
   additionalFields: {
     key: string;
@@ -42,6 +45,8 @@ const WorkflowRuleSchema = new Schema<IWorkflowRule>(
     agencyType: { type: String, enum: ["boolean", "name"], default: "boolean" },
     agencyList: { type: [String], default: [] },
     requiresAgencyDate: { type: Boolean, default: false },
+
+    requiresAddOrRepair: { type: Boolean, default: false },
 
     additionalFields: [
       {
