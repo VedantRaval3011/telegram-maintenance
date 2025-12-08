@@ -53,6 +53,7 @@ const WorkflowRuleSchemaVal = z.object({
   requiresTargetLocation: z.boolean().default(false),
   requiresAgency: z.boolean().default(false),
   requiresAgencyDate: z.boolean().default(false),
+  requiresAddOrRepair: z.boolean().default(false),
   additionalFields: z.array(
     z.object({
       key: z.string().min(1),

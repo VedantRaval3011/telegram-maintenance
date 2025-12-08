@@ -65,6 +65,7 @@ function darkenColor(hex: string, percent: number): string {
 
 export default function TicketCard({ ticket, onStatusChange, categoryColor }: { ticket: any; onStatusChange?: () => void; categoryColor?: string }) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -429,14 +430,23 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
               </div>
               <div className="flex gap-1.5 flex-wrap">
                 {ticket.videos.map((url: string, idx: number) => (
-                  <video
+                  <div
                     key={idx}
-                    src={url}
-                    className="w-24 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
+                    className="w-24 h-16 rounded cursor-pointer hover:opacity-80 transition relative overflow-hidden"
                     style={{ borderWidth: '1px', borderColor: colors.border }}
-                    controls
-                    muted
-                  />
+                    onClick={() => setSelectedVideo(url)}
+                  >
+                    <video
+                      src={url}
+                      className="w-full h-full object-cover"
+                      muted
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <div className="w-6 h-6 rounded-full bg-white/80 flex items-center justify-center">
+                        <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[8px] border-l-gray-800 border-b-[5px] border-b-transparent ml-0.5" />
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -471,14 +481,23 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
               </div>
               <div className="flex gap-1.5 flex-wrap">
                 {ticket.completionVideos.map((url: string, idx: number) => (
-                  <video
+                  <div
                     key={idx}
-                    src={url}
-                    className="w-24 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
+                    className="w-24 h-16 rounded cursor-pointer hover:opacity-80 transition relative overflow-hidden"
                     style={{ borderWidth: '1px', borderColor: colors.borderDark }}
-                    controls
-                    muted
-                  />
+                    onClick={() => setSelectedVideo(url)}
+                  >
+                    <video
+                      src={url}
+                      className="w-full h-full object-cover"
+                      muted
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <div className="w-6 h-6 rounded-full bg-white/80 flex items-center justify-center">
+                        <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[8px] border-l-gray-800 border-b-[5px] border-b-transparent ml-0.5" />
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -732,6 +751,19 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
       {selectedPhoto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90" onClick={() => setSelectedPhoto(null)}>
           <img src={selectedPhoto} alt="Full size" className="max-w-full max-h-full rounded-xl shadow-2xl" />
+        </div>
+      )}
+
+      {/* Video Lightbox */}
+      {selectedVideo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90" onClick={() => setSelectedVideo(null)}>
+          <video
+            src={selectedVideo}
+            className="max-w-full max-h-full rounded-xl shadow-2xl"
+            controls
+            autoPlay
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </>
