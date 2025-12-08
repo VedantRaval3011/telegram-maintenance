@@ -1499,10 +1499,66 @@ if (assignAgencyMatch && !msg.reply_to_message) {
   return NextResponse.json({ ok: true });
 }
 
-// Check for reply to ticket message (Completion or Agency Assignment)
+// Check for reply to ticket message (Reopen, Completion, or Agency Assignment)
 if (msg.reply_to_message) {
   const replyId = msg.reply_to_message.message_id;
   const lowerText = incomingText.toLowerCase();
+  
+  // Check for reopen command in reply
+  const reopenKeywords = ["/open", "open", "/reopen", "reopen"];
+  if (reopenKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
+    // Find ticket by message ID
+    const ticket = await Ticket.findOne({
+      $or: [
+        { telegramMessageId: replyId },
+        { originalMessageId: replyId }
+      ]
+    });
+    
+    if (ticket) {
+      if (ticket.status === "PENDING") {
+        await telegramSendMessage(
+          chat.id,
+          `⚠️ Ticket <b>#${ticket.ticketId}</b> is already open/pending.`,
+          msg.message_id
+        );
+        return NextResponse.json({ ok: true });
+      }
+      
+      // Reopen the ticket
+      const reopenedBy = msg.from?.username || 
+                        `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
+                        "Unknown";
+      
+      ticket.status = "PENDING";
+      ticket.completedBy = null;
+      ticket.completedAt = null;
+      await ticket.save();
+      
+      // Send confirmation with full ticket details
+      let reopenMsg = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n` +
+                     `📝 ${ticket.description}\n` +
+                     `📂 ${ticket.category || "Unknown"}\n`;
+      
+      // Show source/target locations for transfer, otherwise show regular location
+      if (ticket.sourceLocation && ticket.targetLocation) {
+        reopenMsg += `📤 From: ${ticket.sourceLocation}\n`;
+        reopenMsg += `📥 To: ${ticket.targetLocation}\n`;
+      } else {
+        reopenMsg += `📍 ${ticket.location || "No location"}\n`;
+      }
+      
+      reopenMsg += `\n👤 Reopened by: ${reopenedBy}`;
+      
+      await telegramSendMessage(
+        chat.id,
+        reopenMsg,
+        msg.message_id
+      );
+      
+      return NextResponse.json({ ok: true });
+    }
+  }
   
   // Check for agency assignment reply
   const agencyKeywords = ["agency", "/agency", "assign agency", "contractor"];
@@ -1566,7 +1622,7 @@ if (msg.reply_to_message) {
   }
   
   // Check for completion keywords
-  const completionKeywords = ["done", "ok", "completed", "fixed", "resolved"];
+  const completionKeywords = ["done", "ok", "okay", "completed", "fixed", "resolved"];
   if (completionKeywords.some(k => lowerText.includes(k))) {
     // Check both ticket confirmation message and original user message
     const ticket = await Ticket.findOne({
