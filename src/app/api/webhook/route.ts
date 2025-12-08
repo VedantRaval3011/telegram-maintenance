@@ -1095,6 +1095,13 @@ export async function POST(req: NextRequest) {
         } else if (fieldType === "target") {
           fieldType = "target_location";
           value = parts.slice(4).join("_");
+        } else if (fieldType === "add") {
+          // Handle add_or_repair multi-part field type
+          // Callback data: select_123_add_or_repair_add or select_123_add_or_repair_repair
+          if (value.startsWith("or_repair_")) {
+            fieldType = "add_or_repair";
+            value = value.replace("or_repair_", ""); // "add" or "repair"
+          }
         }
 
         switch (fieldType) {
