@@ -309,8 +309,8 @@ export default function AgenciesPage() {
 
                 {/* Modal */}
                 {isModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm overflow-hidden">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200 max-h-[90vh] flex flex-col">
                             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                                 <h2 className="text-lg font-bold text-gray-900">
                                     {editingAgency ? "Edit Agency" : "Add Agency"}
@@ -323,7 +323,7 @@ export default function AgenciesPage() {
                                 </button>
                             </div>
 
-                            <div className="p-6 space-y-4">
+                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
                                 {/* Name */}
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
@@ -397,7 +397,7 @@ export default function AgenciesPage() {
                                     <p className="text-xs text-gray-500 mb-3">
                                         Select which categories this agency can handle. This creates a bidirectional link.
                                     </p>
-                                    <div className="bg-gray-50 border border-gray-300 rounded-xl p-3 max-h-48 overflow-y-auto">
+                                    <div className="bg-gray-50 border border-gray-300 rounded-xl p-2 max-h-32 overflow-y-auto">
                                         {categories.length === 0 ? (
                                             <p className="text-gray-500 text-sm text-center py-2">No categories available</p>
                                         ) : (
@@ -405,9 +405,9 @@ export default function AgenciesPage() {
                                                 {categories.map((cat) => (
                                                     <label
                                                         key={cat._id}
-                                                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${formData.categories.includes(cat._id)
-                                                                ? 'bg-gray-200 border border-gray-400'
-                                                                : 'hover:bg-gray-100 border border-transparent'
+                                                        className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all ${formData.categories.includes(cat._id)
+                                                            ? 'bg-gray-200 border border-gray-400'
+                                                            : 'hover:bg-gray-100 border border-transparent'
                                                             }`}
                                                     >
                                                         <input
@@ -452,7 +452,7 @@ export default function AgenciesPage() {
                                 </div>
                             </div>
 
-                            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 flex-shrink-0">
                                 <button
                                     onClick={() => setIsModalOpen(false)}
                                     className="px-5 py-2.5 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition-colors"
