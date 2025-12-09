@@ -225,6 +225,9 @@ export default function UserMasterPage() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
+  // Sync from Telegram state
+  const [syncing, setSyncing] = useState(false);
+
   const queryParams = new URLSearchParams({
     page: page.toString(),
     limit: "20",
@@ -255,6 +258,34 @@ export default function UserMasterPage() {
       }
     } catch (err) {
       alert("Failed to delete user");
+    }
+  };
+
+  const handleSyncFromTelegram = async () => {
+    if (!confirm("Sync users from the configured Telegram group?\n\nThis will fetch all administrators from the group.")) {
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/masters/users/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}), // Uses TELEGRAM_SYNC_CHAT_ID from env
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        alert(`✅ ${data.message}\n\nCreated: ${data.data.created}\nUpdated: ${data.data.updated}`);
+        mutate(); // Refresh the users list
+      } else {
+        alert(`❌ Error: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Failed to sync users from Telegram");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -319,7 +350,7 @@ export default function UserMasterPage() {
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-              
+
                 User Management
               </h1>
               <p className="text-gray-500">
@@ -329,10 +360,30 @@ export default function UserMasterPage() {
 
             <div className="flex items-center gap-3">
               <button
+                onClick={handleSyncFromTelegram}
+                disabled={syncing}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all border shadow-sm bg-blue-600 text-white border-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {syncing ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                )}
+                {syncing ? "Syncing..." : "Sync from Telegram"}
+              </button>
+
+              <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all border shadow-sm ${showFilters
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                  ? "bg-gray-900 text-white border-gray-900"
+                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                   }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

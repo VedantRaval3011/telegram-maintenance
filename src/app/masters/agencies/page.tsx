@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import {
     Plus,
@@ -15,6 +15,8 @@ import {
     Building2,
     Layers,
     Tag,
+    FolderTree,
+    GitBranch,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -24,6 +26,13 @@ interface ICategory {
     color: string | null;
 }
 
+interface ISubCategory {
+    _id: string;
+    name: string;
+    icon?: string | null;
+    categoryId: ICategory | string | null;
+}
+
 interface IAgency {
     _id: string;
     name: string;
@@ -31,11 +40,13 @@ interface IAgency {
     email: string;
     notes: string;
     categories: ICategory[];
+    subCategories: ISubCategory[];
 }
 
 export default function AgenciesPage() {
     const [agencies, setAgencies] = useState<IAgency[]>([]);
     const [categories, setCategories] = useState<ICategory[]>([]);
+    const [allSubCategories, setAllSubCategories] = useState<ISubCategory[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -43,18 +54,23 @@ export default function AgenciesPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAgency, setEditingAgency] = useState<IAgency | null>(null);
 
+    // Chart popup state
+    const [isChartPopupOpen, setIsChartPopupOpen] = useState(false);
+
     // Form state
     const [formData, setFormData] = useState({
         name: "",
         phone: "",
         email: "",
         notes: "",
-        categories: [] as string[],  // Array of category IDs
+        categories: [] as string[],
+        subCategories: [] as string[],
     });
 
     useEffect(() => {
         fetchAgencies();
         fetchCategories();
+        fetchSubCategories();
     }, []);
 
     const fetchAgencies = async () => {
@@ -84,6 +100,35 @@ export default function AgenciesPage() {
         }
     };
 
+    const fetchSubCategories = async () => {
+        try {
+            const res = await fetch("/api/masters/subcategories");
+            const data = await res.json();
+            if (data.success) {
+                setAllSubCategories(data.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch subcategories", error);
+        }
+    };
+
+    // Build hierarchical structure
+    const categoryTree = useMemo(() => {
+        return categories.map(cat => ({
+            ...cat,
+            subCategories: allSubCategories.filter(sub => {
+                // Handle both string and object categoryId
+                let subCatId: string | null = null;
+                if (typeof sub.categoryId === 'string') {
+                    subCatId = sub.categoryId;
+                } else if (sub.categoryId && typeof sub.categoryId === 'object') {
+                    subCatId = (sub.categoryId as ICategory)._id;
+                }
+                return subCatId === cat._id;
+            })
+        }));
+    }, [categories, allSubCategories]);
+
     const handleOpenModal = (agency?: IAgency) => {
         if (agency) {
             setEditingAgency(agency);
@@ -93,10 +138,11 @@ export default function AgenciesPage() {
                 email: agency.email,
                 notes: agency.notes,
                 categories: agency.categories?.map(c => c._id) || [],
+                subCategories: agency.subCategories?.map(s => s._id) || [],
             });
         } else {
             setEditingAgency(null);
-            setFormData({ name: "", phone: "", email: "", notes: "", categories: [] });
+            setFormData({ name: "", phone: "", email: "", notes: "", categories: [], subCategories: [] });
         }
         setIsModalOpen(true);
     };
@@ -123,6 +169,7 @@ export default function AgenciesPage() {
                     editingAgency ? "Agency updated successfully" : "Agency created successfully"
                 );
                 setIsModalOpen(false);
+                setIsChartPopupOpen(false);
                 fetchAgencies();
             } else {
                 toast.error(data.error || "Failed to save agency");
@@ -152,6 +199,77 @@ export default function AgenciesPage() {
         }
     };
 
+    const toggleSubCategorySelection = (subId: string) => {
+        setFormData(prev => {
+            const isSelected = prev.subCategories.includes(subId);
+            return {
+                ...prev,
+                subCategories: isSelected
+                    ? prev.subCategories.filter(id => id !== subId)
+                    : [...prev.subCategories, subId]
+            };
+        });
+    };
+
+    // Toggle all subcategories of a category, or toggle the category itself if no subcategories
+    const toggleCategorySelection = (catId: string) => {
+        // Get all subcategory IDs that belong to this category
+        const subsInCategory = allSubCategories
+            .filter(sub => {
+                // Handle both string and object categoryId
+                let subCatId: string | null = null;
+                if (typeof sub.categoryId === 'string') {
+                    subCatId = sub.categoryId;
+                } else if (sub.categoryId && typeof sub.categoryId === 'object') {
+                    subCatId = (sub.categoryId as ICategory)._id;
+                }
+                return subCatId === catId;
+            })
+            .map(sub => sub._id);
+
+        console.log('Category ID:', catId);
+        console.log('Subcategories found:', subsInCategory);
+
+        // If no subcategories, toggle the category itself
+        if (subsInCategory.length === 0) {
+            setFormData(prev => {
+                const isCategorySelected = prev.categories.includes(catId);
+                return {
+                    ...prev,
+                    categories: isCategorySelected
+                        ? prev.categories.filter(id => id !== catId)
+                        : [...prev.categories, catId]
+                };
+            });
+            return;
+        }
+
+        setFormData(prev => {
+            // Check if all subcategories in this category are already selected
+            const allSelected = subsInCategory.every(subId => prev.subCategories.includes(subId));
+
+            if (allSelected) {
+                // Deselect all subcategories in this category
+                return {
+                    ...prev,
+                    subCategories: prev.subCategories.filter(id => !subsInCategory.includes(id))
+                };
+            } else {
+                // Select all subcategories in this category
+                const newSelection = [...prev.subCategories];
+                subsInCategory.forEach(subId => {
+                    if (!newSelection.includes(subId)) {
+                        newSelection.push(subId);
+                    }
+                });
+                return {
+                    ...prev,
+                    subCategories: newSelection
+                };
+            }
+        });
+    };
+
     // Filter agencies
     const filteredAgencies = agencies.filter(
         (a) =>
@@ -159,6 +277,25 @@ export default function AgenciesPage() {
             a.phone.includes(searchTerm) ||
             a.email.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    // Group subcategories by their parent category for display
+    const groupSubCategoriesByCategory = (subCategories: ISubCategory[]) => {
+        const grouped: { [catId: string]: { category: ICategory; subs: ISubCategory[] } } = {};
+
+        subCategories.forEach(sub => {
+            if (sub.categoryId) {
+                const cat = typeof sub.categoryId === 'object' ? sub.categoryId as ICategory : null;
+                if (cat) {
+                    if (!grouped[cat._id]) {
+                        grouped[cat._id] = { category: cat, subs: [] };
+                    }
+                    grouped[cat._id].subs.push(sub);
+                }
+            }
+        });
+
+        return Object.values(grouped);
+    };
 
     return (
         <div className="min-h-screen bg-white pb-20">
@@ -172,7 +309,7 @@ export default function AgenciesPage() {
                             Agency Master
                         </h1>
                         <p className="text-gray-600 mt-2 text-sm font-medium">
-                            Manage contractors and agencies for tickets
+                            Manage contractors and agencies linked to subcategories
                         </p>
                     </div>
                     <button
@@ -275,7 +412,8 @@ export default function AgenciesPage() {
                                                 <span className="text-xs">{agency.notes}</span>
                                             </div>
                                         )}
-                                        {/* Linked Categories */}
+
+                                        {/* Linked Categories (Legacy) */}
                                         {agency.categories && agency.categories.length > 0 && (
                                             <div className="mt-3 pt-3 border-t border-gray-200">
                                                 <div className="flex items-center gap-2 mb-2">
@@ -300,6 +438,45 @@ export default function AgenciesPage() {
                                                 </div>
                                             </div>
                                         )}
+
+                                        {/* Linked SubCategories */}
+                                        {agency.subCategories && agency.subCategories.length > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-gray-200">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <FolderTree className="w-4 h-4 text-gray-500" />
+                                                    <span className="text-xs text-gray-500 font-medium">Linked SubCategories</span>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {groupSubCategoriesByCategory(agency.subCategories).map(({ category, subs }) => (
+                                                        <div key={category._id} className="space-y-1">
+                                                            <div
+                                                                className="flex items-center gap-1.5 text-xs font-semibold"
+                                                                style={{ color: category.color || '#6b7280' }}
+                                                            >
+                                                                <Layers className="w-3 h-3" />
+                                                                {category.displayName}
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-1.5 ml-4">
+                                                                {subs.map((sub) => (
+                                                                    <span
+                                                                        key={sub._id}
+                                                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
+                                                                        style={{
+                                                                            backgroundColor: category.color ? `${category.color}15` : '#f3f4f6',
+                                                                            color: category.color || '#6b7280',
+                                                                            border: `1px solid ${category.color ? `${category.color}30` : '#e5e7eb'}`
+                                                                        }}
+                                                                    >
+                                                                        <Tag className="w-3 h-3" />
+                                                                        {sub.name}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -307,7 +484,7 @@ export default function AgenciesPage() {
                     </div>
                 )}
 
-                {/* Modal */}
+                {/* Agency Form Modal */}
                 {isModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm overflow-hidden">
                         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200 max-h-[90vh] flex flex-col">
@@ -388,66 +565,54 @@ export default function AgenciesPage() {
                                     />
                                 </div>
 
-                                {/* Categories Multi-Select */}
+                                {/* Link SubCategories Button */}
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                                        <Layers className="w-4 h-4 inline-block mr-1" />
-                                        Link to Categories
+                                        <FolderTree className="w-4 h-4 inline-block mr-1" />
+                                        Link to SubCategories
                                     </label>
-                                    <p className="text-xs text-gray-500 mb-3">
-                                        Select which categories this agency can handle. This creates a bidirectional link.
-                                    </p>
-                                    <div className="bg-gray-50 border border-gray-300 rounded-xl p-2 max-h-32 overflow-y-auto">
-                                        {categories.length === 0 ? (
-                                            <p className="text-gray-500 text-sm text-center py-2">No categories available</p>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {categories.map((cat) => (
-                                                    <label
-                                                        key={cat._id}
-                                                        className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all ${formData.categories.includes(cat._id)
-                                                            ? 'bg-gray-200 border border-gray-400'
-                                                            : 'hover:bg-gray-100 border border-transparent'
-                                                            }`}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsChartPopupOpen(true)}
+                                        className="w-full p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-700 hover:border-indigo-400 hover:from-indigo-100 hover:to-purple-100 transition-all flex items-center justify-center gap-3 group"
+                                    >
+                                        <GitBranch className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                                        <span className="font-semibold">
+                                            {formData.subCategories.length > 0
+                                                ? `${formData.subCategories.length} SubCategor${formData.subCategories.length === 1 ? 'y' : 'ies'} Selected - Click to Edit`
+                                                : "Open Chart to Select SubCategories"
+                                            }
+                                        </span>
+                                    </button>
+
+                                    {/* Show selected subcategories preview */}
+                                    {formData.subCategories.length > 0 && (
+                                        <div className="mt-3 flex flex-wrap gap-1.5">
+                                            {formData.subCategories.map(subId => {
+                                                const sub = allSubCategories.find(s => s._id === subId);
+                                                if (!sub) return null;
+                                                const cat = categories.find(c => {
+                                                    const catId = typeof sub.categoryId === 'object' && sub.categoryId
+                                                        ? (sub.categoryId as ICategory)._id
+                                                        : sub.categoryId;
+                                                    return c._id === catId;
+                                                });
+                                                return (
+                                                    <span
+                                                        key={subId}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
+                                                        style={{
+                                                            backgroundColor: cat?.color ? `${cat.color}15` : '#f3f4f6',
+                                                            color: cat?.color || '#6b7280',
+                                                            border: `1px solid ${cat?.color ? `${cat.color}30` : '#e5e7eb'}`
+                                                        }}
                                                     >
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={formData.categories.includes(cat._id)}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    setFormData({
-                                                                        ...formData,
-                                                                        categories: [...formData.categories, cat._id]
-                                                                    });
-                                                                } else {
-                                                                    setFormData({
-                                                                        ...formData,
-                                                                        categories: formData.categories.filter(id => id !== cat._id)
-                                                                    });
-                                                                }
-                                                            }}
-                                                            className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
-                                                        />
-                                                        <span
-                                                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-sm font-medium"
-                                                            style={{
-                                                                backgroundColor: cat.color ? `${cat.color}20` : '#f3f4f6',
-                                                                color: cat.color || '#374151',
-                                                                border: `1px solid ${cat.color ? `${cat.color}40` : '#e5e7eb'}`
-                                                            }}
-                                                        >
-                                                            <Tag className="w-3.5 h-3.5" />
-                                                            {cat.displayName}
-                                                        </span>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                    {formData.categories.length > 0 && (
-                                        <p className="text-xs text-gray-600 mt-2">
-                                            {formData.categories.length} categor{formData.categories.length === 1 ? 'y' : 'ies'} selected
-                                        </p>
+                                                        <Tag className="w-3 h-3" />
+                                                        {sub.name}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -466,6 +631,206 @@ export default function AgenciesPage() {
                                     <Save className="w-4 h-4" />
                                     Save Agency
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {/* Chart Popup - Folder Structure */}
+                {isChartPopupOpen && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden border border-gray-200 max-h-[90vh] flex flex-col">
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-800">
+                                <div className="flex items-center gap-3">
+                                    <FolderTree className="w-6 h-6 text-yellow-400" />
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">
+                                            Select SubCategories
+                                        </h2>
+                                        <p className="text-gray-400 text-xs">
+                                            Click on subcategories to select/deselect
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setIsChartPopupOpen(false)}
+                                    className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-gray-700 rounded-lg"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            {/* Folder Tree Content */}
+                            <div className="p-4 overflow-y-auto flex-1 bg-gray-50">
+                                {categoryTree.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <FolderTree className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                                        <p className="text-gray-500">No categories available</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-1 font-mono text-sm">
+                                        {categoryTree.map((cat, catIndex) => {
+                                            const selectedCount = cat.subCategories.filter(s => formData.subCategories.includes(s._id)).length;
+                                            const isCategoryDirectlySelected = formData.categories.includes(cat._id);
+                                            const isLast = catIndex === categoryTree.length - 1;
+                                            const hasNoSubcategories = cat.subCategories.length === 0;
+
+                                            return (
+                                                <div key={cat._id} className="select-none">
+                                                    {/* Category Folder */}
+                                                    <div className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-gray-100 transition-colors">
+                                                        <span className="text-gray-400 w-4">{isLast ? '└' : '├'}</span>
+
+                                                        {/* Category Checkbox - selects/deselects all subcategories, or the category itself if no subcategories */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleCategorySelection(cat._id)}
+                                                            className={`
+                                                                w-4 h-4 rounded border-2 flex items-center justify-center transition-all flex-shrink-0 cursor-pointer
+                                                                ${hasNoSubcategories
+                                                                    ? isCategoryDirectlySelected
+                                                                        ? 'border-indigo-600 bg-indigo-600'
+                                                                        : 'border-gray-400 bg-white hover:border-gray-500'
+                                                                    : selectedCount === cat.subCategories.length && selectedCount > 0
+                                                                        ? 'border-indigo-600 bg-indigo-600'
+                                                                        : selectedCount > 0
+                                                                            ? 'border-indigo-400 bg-indigo-200'
+                                                                            : 'border-gray-400 bg-white hover:border-gray-500'
+                                                                }
+                                                            `}
+                                                        >
+                                                            {/* Show checkmark for categories without subcategories when selected */}
+                                                            {hasNoSubcategories && isCategoryDirectlySelected && (
+                                                                <svg className="w-3 h-3 text-white" viewBox="0 0 14 14" fill="none">
+                                                                    <path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                </svg>
+                                                            )}
+                                                            {/* Show checkmark for categories with all subcategories selected */}
+                                                            {!hasNoSubcategories && selectedCount === cat.subCategories.length && selectedCount > 0 && (
+                                                                <svg className="w-3 h-3 text-white" viewBox="0 0 14 14" fill="none">
+                                                                    <path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                </svg>
+                                                            )}
+                                                            {/* Show partial indicator for partially selected categories */}
+                                                            {!hasNoSubcategories && selectedCount > 0 && selectedCount < cat.subCategories.length && (
+                                                                <div className="w-2 h-0.5 bg-indigo-600 rounded"></div>
+                                                            )}
+                                                        </button>
+
+                                                        <span className="text-yellow-500 text-lg">📁</span>
+                                                        <span
+                                                            className="font-semibold"
+                                                            style={{ color: cat.color || '#374151' }}
+                                                        >
+                                                            {cat.displayName}
+                                                        </span>
+                                                        {/* Show selection indicator */}
+                                                        {hasNoSubcategories && isCategoryDirectlySelected && (
+                                                            <span
+                                                                className="ml-auto px-2 py-0.5 rounded-full text-xs font-bold"
+                                                                style={{
+                                                                    backgroundColor: cat.color ? `${cat.color}20` : '#e5e7eb',
+                                                                    color: cat.color || '#374151',
+                                                                }}
+                                                            >
+                                                                Selected
+                                                            </span>
+                                                        )}
+                                                        {!hasNoSubcategories && selectedCount > 0 && (
+                                                            <span
+                                                                className="ml-auto px-2 py-0.5 rounded-full text-xs font-bold"
+                                                                style={{
+                                                                    backgroundColor: cat.color ? `${cat.color}20` : '#e5e7eb',
+                                                                    color: cat.color || '#374151',
+                                                                }}
+                                                            >
+                                                                {selectedCount}/{cat.subCategories.length}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* SubCategories as items inside folder */}
+                                                    {cat.subCategories.length > 0 && (
+                                                        <div className="ml-6">
+                                                            {cat.subCategories.map((sub, subIndex) => {
+                                                                const isSelected = formData.subCategories.includes(sub._id);
+                                                                const isSubLast = subIndex === cat.subCategories.length - 1;
+
+                                                                return (
+                                                                    <button
+                                                                        key={sub._id}
+                                                                        type="button"
+                                                                        onClick={() => toggleSubCategorySelection(sub._id)}
+                                                                        className={`
+                                                                            w-full flex items-center gap-2 py-2 px-3 rounded-lg transition-all text-left
+                                                                            ${isSelected
+                                                                                ? 'bg-indigo-100 hover:bg-indigo-200'
+                                                                                : 'hover:bg-gray-100'
+                                                                            }
+                                                                        `}
+                                                                    >
+                                                                        <span className="text-gray-300 w-4">{isSubLast ? '└' : '├'}</span>
+
+                                                                        {/* Checkbox */}
+                                                                        <div
+                                                                            className={`
+                                                                                w-4 h-4 rounded border-2 flex items-center justify-center transition-all flex-shrink-0
+                                                                                ${isSelected
+                                                                                    ? 'border-indigo-600 bg-indigo-600'
+                                                                                    : 'border-gray-400 bg-white'
+                                                                                }
+                                                                            `}
+                                                                        >
+                                                                            {isSelected && (
+                                                                                <svg className="w-3 h-3 text-white" viewBox="0 0 14 14" fill="none">
+                                                                                    <path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                                </svg>
+                                                                            )}
+                                                                        </div>
+
+
+
+                                                                        {/* SubCategory name */}
+                                                                        <span
+                                                                            className={`font-medium ${isSelected ? 'text-indigo-700' : 'text-gray-700'}`}
+                                                                        >
+                                                                            {sub.name}
+                                                                        </span>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-gray-200 bg-white flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-gray-600 text-sm font-medium">
+                                        {formData.subCategories.length + formData.categories.length} item{(formData.subCategories.length + formData.categories.length) !== 1 ? 's' : ''} selected
+                                    </span>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setFormData(prev => ({ ...prev, subCategories: [], categories: [] }))}
+                                        className="px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
+                                    >
+                                        Clear All
+                                    </button>
+                                    <button
+                                        onClick={() => setIsChartPopupOpen(false)}
+                                        className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-lg shadow-lg transition-all active:scale-95"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -541,11 +541,24 @@ case "target_location": {
     }
 
     case "agency": {
-      // ✅ Fetch the selected category to get its linked agencies
+      // ✅ Fetch agencies linked to the selected subcategory OR category (fallback)
       let agencies: any[] = [];
       
-      if (session.category) {
-        // Get the category with its agencies array
+      // First try subcategory
+      if (session.subCategoryId) {
+        const subCategoryDoc = await SubCategory.findById(session.subCategoryId).lean();
+        
+        if (subCategoryDoc && subCategoryDoc.agencies && subCategoryDoc.agencies.length > 0) {
+          // Only show agencies linked to this subcategory
+          agencies = await Agency.find({ 
+            _id: { $in: subCategoryDoc.agencies },
+            isActive: true 
+          }).sort({ name: 1 }).lean();
+        }
+      }
+      
+      // If no agencies from subcategory, try category (legacy fallback)
+      if (agencies.length === 0 && session.category) {
         const categoryDoc = await Category.findById(session.category).lean();
         
         if (categoryDoc && categoryDoc.agencies && categoryDoc.agencies.length > 0) {
@@ -554,15 +567,11 @@ case "target_location": {
             _id: { $in: categoryDoc.agencies },
             isActive: true 
           }).sort({ name: 1 }).lean();
-        } else {
-          // If no agencies linked to category, show all active agencies as fallback
-          agencies = await getCached(
-            'agencies:active',
-            () => Agency.find({ isActive: true }).sort({ name: 1 }).lean()
-          );
         }
-      } else {
-        // No category selected, show all agencies
+      }
+      
+      // If still no agencies, show all active agencies as fallback
+      if (agencies.length === 0) {
         agencies = await getCached(
           'agencies:active',
           () => Agency.find({ isActive: true }).sort({ name: 1 }).lean()

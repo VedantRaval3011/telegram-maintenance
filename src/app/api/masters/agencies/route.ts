@@ -3,15 +3,24 @@ import type { NextRequest } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import { Agency } from "@/models/AgencyMaster";
 import { Category } from "@/models/Category";
+import { SubCategory } from "@/models/SubCategoryMaster";
 
 /**
- * GET - Fetch all active agencies with their linked categories
+ * GET - Fetch all active agencies with their linked categories and subcategories
  */
 export async function GET() {
   try {
     await connectToDB();
     const agencies = await Agency.find({ isActive: true })
-      .populate("categories", "_id displayName color")
+      .populate("categories", "_id displayName color")  // Legacy: populate categories
+      .populate({
+        path: "subCategories",
+        select: "_id name categoryId icon",
+        populate: {
+          path: "categoryId",
+          select: "_id displayName color"
+        }
+      })
       .sort({ name: 1 })
       .lean();
 
@@ -26,13 +35,13 @@ export async function GET() {
 }
 
 /**
- * POST - Create or update an agency with bidirectional category sync
+ * POST - Create or update an agency with bidirectional category/subcategory sync
  */
 export async function POST(req: NextRequest) {
   try {
     await connectToDB();
     const body = await req.json();
-    const { _id, name, phone, email, notes, categories = [] } = body;
+    const { _id, name, phone, email, notes, categories = [], subCategories = [] } = body;
 
     if (!name || name.trim() === "") {
       return NextResponse.json(
@@ -43,12 +52,14 @@ export async function POST(req: NextRequest) {
 
     let agency;
     let oldCategories: string[] = [];
+    let oldSubCategories: string[] = [];
 
     if (_id) {
-      // Get old categories before update
+      // Get old categories/subcategories before update
       const existingAgency = await Agency.findById(_id).lean();
       if (existingAgency) {
         oldCategories = (existingAgency.categories || []).map((c: any) => c.toString());
+        oldSubCategories = (existingAgency.subCategories || []).map((c: any) => c.toString());
       }
 
       // Update existing agency
@@ -59,7 +70,8 @@ export async function POST(req: NextRequest) {
           phone, 
           email, 
           notes,
-          categories 
+          categories,
+          subCategories 
         },
         { new: true }
       );
@@ -77,10 +89,11 @@ export async function POST(req: NextRequest) {
         email: email || "",
         notes: notes || "",
         categories: categories || [],
+        subCategories: subCategories || [],
       });
     }
 
-    // Sync bidirectional relationship with Category model
+    // Sync bidirectional relationship with Category model (legacy)
     const newCategories = categories.map((c: any) => c.toString());
     
     // Remove agency from old categories that are no longer linked
@@ -101,9 +114,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Populate categories for response
+    // Sync bidirectional relationship with SubCategory model
+    const newSubCategories = subCategories.map((c: any) => c.toString());
+    
+    // Remove agency from old subcategories that are no longer linked
+    const removedSubCategories = oldSubCategories.filter(c => !newSubCategories.includes(c));
+    if (removedSubCategories.length > 0) {
+      await SubCategory.updateMany(
+        { _id: { $in: removedSubCategories } },
+        { $pull: { agencies: agency._id } }
+      );
+    }
+
+    // Add agency to new subcategories
+    const addedSubCategories = newSubCategories.filter((c: string) => !oldSubCategories.includes(c));
+    if (addedSubCategories.length > 0) {
+      await SubCategory.updateMany(
+        { _id: { $in: addedSubCategories } },
+        { $addToSet: { agencies: agency._id } }
+      );
+    }
+
+    // Populate for response
     const populatedAgency = await Agency.findById(agency._id)
       .populate("categories", "_id displayName color")
+      .populate({
+        path: "subCategories",
+        select: "_id name categoryId icon",
+        populate: {
+          path: "categoryId",
+          select: "_id displayName color"
+        }
+      })
       .lean();
 
     return NextResponse.json({ success: true, data: populatedAgency });
@@ -117,7 +159,7 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * DELETE - Soft delete an agency and remove from all linked categories
+ * DELETE - Soft delete an agency and remove from all linked categories/subcategories
  */
 export async function DELETE(req: NextRequest) {
   try {
@@ -132,7 +174,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Get the agency to find its linked categories
+    // Get the agency to find its linked categories/subcategories
     const agency = await Agency.findById(id).lean();
     
     const updated = await Agency.findByIdAndUpdate(
@@ -152,6 +194,14 @@ export async function DELETE(req: NextRequest) {
     if (agency && agency.categories && agency.categories.length > 0) {
       await Category.updateMany(
         { _id: { $in: agency.categories } },
+        { $pull: { agencies: id } }
+      );
+    }
+
+    // Remove agency from all linked subcategories
+    if (agency && agency.subCategories && agency.subCategories.length > 0) {
+      await SubCategory.updateMany(
+        { _id: { $in: agency.subCategories } },
         { $pull: { agencies: id } }
       );
     }
