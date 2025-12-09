@@ -1410,9 +1410,22 @@ export async function POST(req: NextRequest) {
             }
           }
           
+          // Show photo/video counts if present
+          const photoCount = ticket.photos?.length || 0;
+          const videoCount = ticket.videos?.length || 0;
+          if (photoCount > 0 || videoCount > 0) {
+            let mediaInfo = '';
+            if (photoCount > 0) mediaInfo += `📸 ${photoCount} photo${photoCount > 1 ? 's' : ''}`;
+            if (photoCount > 0 && videoCount > 0) mediaInfo += ' • ';
+            if (videoCount > 0) mediaInfo += `🎬 ${videoCount} video${videoCount > 1 ? 's' : ''}`;
+            ticketMsg += `${mediaInfo}\n`;
+          }
+          
           ticketMsg += `👤 ${createdBy}`;
 
-          const sentMsg = await telegramSendMessage(chatId, ticketMsg);
+          // ✅ CRITICAL: Reply to the original message (the image) so users know which image the ticket was created for
+          const replyToMessageId = sessionData.originalMessageId;
+          const sentMsg = await telegramSendMessage(chatId, ticketMsg, replyToMessageId);
           
           if (sentMsg.ok && sentMsg.result) {
             await Ticket.findByIdAndUpdate(ticket._id, {
