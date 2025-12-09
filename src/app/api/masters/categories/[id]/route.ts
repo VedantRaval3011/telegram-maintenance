@@ -55,6 +55,7 @@ const UpdateCategorySchema = z.object({
   description: z.string().nullable().optional(),
   color: z.string().optional(),
   icon: z.string().optional(),
+  agencies: z.array(z.string()).optional(),  // Array of agency ObjectId strings
   isActive: z.boolean().optional(),
   priority: z.number().optional(),
 });

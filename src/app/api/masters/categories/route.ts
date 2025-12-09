@@ -50,6 +50,14 @@ export async function GET(req: NextRequest) {
         {
           $addFields: {
             subCount: { $size: "$subs" },
+            // Convert agency ObjectIds to strings
+            agencies: {
+              $map: {
+                input: { $ifNull: ["$agencies", []] },
+                as: "agencyId",
+                in: { $toString: "$$agencyId" }
+              }
+            }
           },
         },
         { $project: { subs: 0 } },
@@ -93,7 +101,7 @@ const CreateCategorySchema = z.object({
   description: z.string().optional(),
   color: z.string().optional(),
   icon: z.string().optional(),
-  agency: z.string().optional(),
+  agencies: z.array(z.string()).default([]),  // Array of agency ObjectId strings
   isActive: z.boolean().optional().default(true),
   priority: z.number().optional().default(0),
 });

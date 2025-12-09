@@ -1,4 +1,7 @@
-import mongoose, { Document, Model, Schema } from "mongoose";
+import mongoose, { Document, Model, Schema, Types } from "mongoose";
+
+// Pre-register Agency model dependency
+import "@/models/AgencyMaster";
 
 export interface ICategory extends Document {
   name: string;          
@@ -7,7 +10,7 @@ export interface ICategory extends Document {
   description?: string | null;
   color?: string | null;
   icon?: string | null;
-  agency?: string | null;
+  agencies: Types.ObjectId[];  // Multiple agencies can be associated with a category
   isActive: boolean;
   priority: number;
   createdAt: Date;
@@ -22,7 +25,7 @@ const CategorySchema = new Schema<ICategory>(
     description: { type: String, default: null },
     color: { type: String, default: null },  
     icon: { type: String, default: "📋" },
-    agency: { type: String, default: null },   
+    agencies: [{ type: Schema.Types.ObjectId, ref: "Agency", default: [] }],   
 
     isActive: { type: Boolean, default: true },
     priority: { type: Number, default: 0 },

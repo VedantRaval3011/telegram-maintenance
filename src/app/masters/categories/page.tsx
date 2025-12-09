@@ -13,6 +13,15 @@ const fetchSubCategories = async (categoryId: string) => {
   return json.data || [];
 };
 
+interface Agency {
+  _id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  isActive: boolean;
+}
+
 interface Category {
   _id: string;
   name: string;
@@ -21,6 +30,7 @@ interface Category {
   description?: string;
   color?: string;
   icon?: string;
+  agencies?: string[];  // Array of agency IDs
   isActive: boolean;
   priority: number;
   subCount?: number;
@@ -52,6 +62,16 @@ export default function CategoryMasterPage() {
   const [subCategoryList, setSubCategoryList] = useState<any[]>([]);
   const [subCategoryCategoryId, setSubCategoryCategoryId] = useState<string | null>(null);
 
+  // Agency state
+  const [showAgencyModal, setShowAgencyModal] = useState(false);
+  const [agencySearch, setAgencySearch] = useState("");  // Search filter for agencies
+  const [agencyForm, setAgencyForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    notes: "",
+  });
+
   const [subForm, setSubForm] = useState({
     name: "",
     icon: "",
@@ -70,6 +90,7 @@ export default function CategoryMasterPage() {
     icon: "📋",
     priority: "0",
     isActive: true,
+    agencies: [] as string[],  // Selected agency IDs
   });
 
   const queryParams = new URLSearchParams({
@@ -82,6 +103,20 @@ export default function CategoryMasterPage() {
     `/api/masters/categories?${queryParams}`,
     fetcher
   );
+
+  // Fetch agencies
+  const { data: agenciesData, mutate: mutateAgencies } = useSWR(
+    "/api/masters/agencies",
+    fetcher
+  );
+
+  const agencies: Agency[] = agenciesData?.data || [];
+
+  // Filter agencies by search term
+  const filteredAgencies = agencies.filter(agency =>
+    agency.name.toLowerCase().includes(agencySearch.toLowerCase())
+  );
+
 
   const handleSeed = async () => {
     if (!confirm("Seed default categories? This will create: Electrical, Plumbing, Furniture, Cleaning, HVAC, Paint, and Other.")) return;
@@ -149,6 +184,7 @@ export default function CategoryMasterPage() {
           icon: "📋",
           priority: "0",
           isActive: true,
+          agencies: [],
         });
         alert("Category created successfully");
       } else {
@@ -176,6 +212,7 @@ export default function CategoryMasterPage() {
           icon: formData.icon,
           priority: parseInt(formData.priority),
           isActive: formData.isActive,
+          agencies: formData.agencies,
         }),
       });
 
@@ -195,6 +232,7 @@ export default function CategoryMasterPage() {
 
   const openEditModal = (category: Category) => {
     setEditingCategory(category);
+    setAgencySearch("");  // Clear agency search
     setFormData({
       name: category.name,
       displayName: category.displayName,
@@ -204,12 +242,62 @@ export default function CategoryMasterPage() {
       icon: category.icon || "📋",
       priority: category.priority.toString(),
       isActive: category.isActive,
+      agencies: category.agencies || [],
     });
     setShowEditModal(true);
   };
 
+  // Handle inline agency creation
+  const handleCreateAgency = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!agencyForm.name.trim()) {
+      alert("Agency name is required");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/masters/agencies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(agencyForm),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        mutateAgencies();  // Refresh agencies list
+        setShowAgencyModal(false);
+        setAgencyForm({ name: "", phone: "", email: "", notes: "" });
+
+        // Automatically add the new agency to the form
+        if (result.data?._id) {
+          setFormData(prev => ({
+            ...prev,
+            agencies: [...prev.agencies, result.data._id],
+          }));
+        }
+        alert("Agency created successfully!");
+      } else {
+        const data = await res.json();
+        alert(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Failed to create agency");
+    }
+  };
+
+  // Toggle agency selection
+  const toggleAgencySelection = (agencyId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      agencies: prev.agencies.includes(agencyId)
+        ? prev.agencies.filter(id => id !== agencyId)
+        : [...prev.agencies, agencyId],
+    }));
+  };
+
   if (error) return <div className="p-10 text-center text-rose-500">Failed to load categories</div>;
   if (!data) return <div className="p-10 text-center text-gray-600 animate-pulse">Loading categories...</div>;
+
 
   const categories: Category[] = data.data || [];
 
@@ -230,7 +318,10 @@ export default function CategoryMasterPage() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setAgencySearch("");  // Clear agency search
+                setShowCreateModal(true);
+              }}
               className="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-600/20 transition-all active:scale-95"
             >
               + Create Category
@@ -282,8 +373,8 @@ export default function CategoryMasterPage() {
                       </div>
                       <span
                         className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${category.isActive
-                            ? "bg-green-600 text-white border-green-700"
-                            : "bg-gray-400 border-gray-500 text-white"
+                          ? "bg-green-600 text-white border-green-700"
+                          : "bg-gray-400 border-gray-500 text-white"
                           }`}
                       >
                         {category.isActive ? "Active" : "Inactive"}
@@ -460,6 +551,88 @@ export default function CategoryMasterPage() {
                   />
                 </div>
 
+                {/* Multi-Agency Selection */}
+                <div className="col-span-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                      Agencies
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAgencyModal(true)}
+                      className="text-xs font-semibold text-green-600 hover:text-green-700 flex items-center gap-1 transition-colors"
+                    >
+                      <span className="text-lg leading-none">+</span> Add Agency
+                    </button>
+                  </div>
+
+                  {/* Agency Search */}
+                  {agencies.length > 3 && (
+                    <div className="mb-2">
+                      <input
+                        type="text"
+                        placeholder="🔍 Search agencies..."
+                        value={agencySearch}
+                        onChange={(e) => setAgencySearch(e.target.value)}
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-green-400 focus:border-green-400 outline-none transition-all"
+                      />
+                    </div>
+                  )}
+
+                  <div className="bg-gray-50 border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    {agencies.length === 0 ? (
+                      <p className="text-gray-500 text-sm text-center py-2">No agencies available</p>
+                    ) : filteredAgencies.length === 0 ? (
+                      <p className="text-gray-500 text-sm text-center py-2">No agencies match your search</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredAgencies.map((agency) => (
+                          <label
+                            key={agency._id}
+                            className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="relative flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={formData.agencies.includes(agency._id)}
+                                onChange={() => toggleAgencySelection(agency._id)}
+                                className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-gray-300 bg-white checked:bg-green-600 checked:border-green-600 transition-all"
+                              />
+                              <svg className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" viewBox="0 0 14 14" fill="none">
+                                <path d="M3 8L6 11L11 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </div>
+                            <span className="text-sm text-gray-700">{agency.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {formData.agencies.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {formData.agencies.map((agencyId) => {
+                        const agency = agencies.find(a => a._id === agencyId);
+                        return agency ? (
+                          <span
+                            key={agencyId}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium"
+                          >
+                            {agency.name}
+                            <button
+                              type="button"
+                              onClick={() => toggleAgencySelection(agencyId)}
+                              className="hover:text-green-600 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex items-center pt-2">
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div className="relative flex items-center">
@@ -615,6 +788,88 @@ export default function CategoryMasterPage() {
                     }
                     className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 focus:ring-2 focus:ring-gray-400 focus:border-gray-400 outline-none transition-all"
                   />
+                </div>
+
+                {/* Multi-Agency Selection */}
+                <div className="col-span-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                      Agencies
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAgencyModal(true)}
+                      className="text-xs font-semibold text-green-600 hover:text-green-700 flex items-center gap-1 transition-colors"
+                    >
+                      <span className="text-lg leading-none">+</span> Add Agency
+                    </button>
+                  </div>
+
+                  {/* Agency Search */}
+                  {agencies.length > 3 && (
+                    <div className="mb-2">
+                      <input
+                        type="text"
+                        placeholder="🔍 Search agencies..."
+                        value={agencySearch}
+                        onChange={(e) => setAgencySearch(e.target.value)}
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-green-400 focus:border-green-400 outline-none transition-all"
+                      />
+                    </div>
+                  )}
+
+                  <div className="bg-gray-50 border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    {agencies.length === 0 ? (
+                      <p className="text-gray-500 text-sm text-center py-2">No agencies available</p>
+                    ) : filteredAgencies.length === 0 ? (
+                      <p className="text-gray-500 text-sm text-center py-2">No agencies match your search</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredAgencies.map((agency) => (
+                          <label
+                            key={agency._id}
+                            className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="relative flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={formData.agencies.includes(agency._id)}
+                                onChange={() => toggleAgencySelection(agency._id)}
+                                className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-gray-300 bg-white checked:bg-green-600 checked:border-green-600 transition-all"
+                              />
+                              <svg className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" viewBox="0 0 14 14" fill="none">
+                                <path d="M3 8L6 11L11 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </div>
+                            <span className="text-sm text-gray-700">{agency.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {formData.agencies.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {formData.agencies.map((agencyId) => {
+                        const agency = agencies.find(a => a._id === agencyId);
+                        return agency ? (
+                          <span
+                            key={agencyId}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium"
+                          >
+                            {agency.name}
+                            <button
+                              type="button"
+                              onClick={() => toggleAgencySelection(agencyId)}
+                              className="hover:text-green-600 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center pt-2">
@@ -834,6 +1089,104 @@ export default function CategoryMasterPage() {
                 </form>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Agency Modal */}
+      {showAgencyModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gradient-to-r from-green-600 to-green-700">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="text-xl">🏢</span> Add New Agency
+              </h2>
+              <button
+                onClick={() => {
+                  setShowAgencyModal(false);
+                  setAgencyForm({ name: "", phone: "", email: "", notes: "" });
+                }}
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAgency} className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                  Agency Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={agencyForm.name}
+                  onChange={(e) => setAgencyForm({ ...agencyForm, name: e.target.value })}
+                  placeholder="Enter agency name"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 focus:ring-2 focus:ring-green-400 focus:border-green-400 outline-none transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                    Phone
+                  </label>
+                  <input
+                    type="tel"
+                    value={agencyForm.phone}
+                    onChange={(e) => setAgencyForm({ ...agencyForm, phone: e.target.value })}
+                    placeholder="Phone number"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 focus:ring-2 focus:ring-green-400 focus:border-green-400 outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={agencyForm.email}
+                    onChange={(e) => setAgencyForm({ ...agencyForm, email: e.target.value })}
+                    placeholder="Email address"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 focus:ring-2 focus:ring-green-400 focus:border-green-400 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                  Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={agencyForm.notes}
+                  onChange={(e) => setAgencyForm({ ...agencyForm, notes: e.target.value })}
+                  placeholder="Additional notes about this agency"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 focus:ring-2 focus:ring-green-400 focus:border-green-400 outline-none transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAgencyModal(false);
+                    setAgencyForm({ name: "", phone: "", email: "", notes: "" });
+                  }}
+                  className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow-lg shadow-green-600/20 transition-all active:scale-95"
+                >
+                  Create Agency
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

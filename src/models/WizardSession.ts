@@ -37,6 +37,8 @@ export interface IWizardSession extends Document {
   /** Agency Logic */
   agencyRequired: boolean | null;
   agencyName: string | null;
+  agencyMonth: number | null;    // Month number (0-11)
+  agencyYear: number | null;     // Year for the selected month
   agencyDate: Date | null;
   agencyTimeSlot: string | null;  // "first_half" or "second_half"
 
@@ -128,6 +130,8 @@ const WizardSessionSchema = new Schema<IWizardSession>(
     /** Agency fields */
     agencyRequired: { type: Boolean, default: null },
     agencyName: { type: String, default: null },
+    agencyMonth: { type: Number, default: null },
+    agencyYear: { type: Number, default: null },
     agencyDate: { type: Date, default: null },
     agencyTimeSlot: { type: String, enum: ["first_half", "second_half", null], default: null },
 
