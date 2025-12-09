@@ -13,8 +13,16 @@ import {
     Mail,
     FileText,
     Building2,
+    Layers,
+    Tag,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+
+interface ICategory {
+    _id: string;
+    displayName: string;
+    color: string | null;
+}
 
 interface IAgency {
     _id: string;
@@ -22,10 +30,12 @@ interface IAgency {
     phone: string;
     email: string;
     notes: string;
+    categories: ICategory[];
 }
 
 export default function AgenciesPage() {
     const [agencies, setAgencies] = useState<IAgency[]>([]);
+    const [categories, setCategories] = useState<ICategory[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -39,10 +49,12 @@ export default function AgenciesPage() {
         phone: "",
         email: "",
         notes: "",
+        categories: [] as string[],  // Array of category IDs
     });
 
     useEffect(() => {
         fetchAgencies();
+        fetchCategories();
     }, []);
 
     const fetchAgencies = async () => {
@@ -60,6 +72,18 @@ export default function AgenciesPage() {
         }
     };
 
+    const fetchCategories = async () => {
+        try {
+            const res = await fetch("/api/masters/categories");
+            const data = await res.json();
+            if (data.success) {
+                setCategories(data.data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch categories", error);
+        }
+    };
+
     const handleOpenModal = (agency?: IAgency) => {
         if (agency) {
             setEditingAgency(agency);
@@ -68,10 +92,11 @@ export default function AgenciesPage() {
                 phone: agency.phone,
                 email: agency.email,
                 notes: agency.notes,
+                categories: agency.categories?.map(c => c._id) || [],
             });
         } else {
             setEditingAgency(null);
-            setFormData({ name: "", phone: "", email: "", notes: "" });
+            setFormData({ name: "", phone: "", email: "", notes: "", categories: [] });
         }
         setIsModalOpen(true);
     };
@@ -250,6 +275,31 @@ export default function AgenciesPage() {
                                                 <span className="text-xs">{agency.notes}</span>
                                             </div>
                                         )}
+                                        {/* Linked Categories */}
+                                        {agency.categories && agency.categories.length > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-gray-200">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Layers className="w-4 h-4 text-gray-500" />
+                                                    <span className="text-xs text-gray-500 font-medium">Linked Categories</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {agency.categories.map((cat) => (
+                                                        <span
+                                                            key={cat._id}
+                                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
+                                                            style={{
+                                                                backgroundColor: cat.color ? `${cat.color}20` : '#f3f4f6',
+                                                                color: cat.color || '#6b7280',
+                                                                border: `1px solid ${cat.color ? `${cat.color}40` : '#e5e7eb'}`
+                                                            }}
+                                                        >
+                                                            <Tag className="w-3 h-3" />
+                                                            {cat.displayName}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -336,6 +386,69 @@ export default function AgenciesPage() {
                                         rows={3}
                                         className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-gray-400 focus:border-gray-400 outline-none transition-all resize-none"
                                     />
+                                </div>
+
+                                {/* Categories Multi-Select */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                                        <Layers className="w-4 h-4 inline-block mr-1" />
+                                        Link to Categories
+                                    </label>
+                                    <p className="text-xs text-gray-500 mb-3">
+                                        Select which categories this agency can handle. This creates a bidirectional link.
+                                    </p>
+                                    <div className="bg-gray-50 border border-gray-300 rounded-xl p-3 max-h-48 overflow-y-auto">
+                                        {categories.length === 0 ? (
+                                            <p className="text-gray-500 text-sm text-center py-2">No categories available</p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {categories.map((cat) => (
+                                                    <label
+                                                        key={cat._id}
+                                                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${formData.categories.includes(cat._id)
+                                                                ? 'bg-gray-200 border border-gray-400'
+                                                                : 'hover:bg-gray-100 border border-transparent'
+                                                            }`}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={formData.categories.includes(cat._id)}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        categories: [...formData.categories, cat._id]
+                                                                    });
+                                                                } else {
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        categories: formData.categories.filter(id => id !== cat._id)
+                                                                    });
+                                                                }
+                                                            }}
+                                                            className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+                                                        />
+                                                        <span
+                                                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-sm font-medium"
+                                                            style={{
+                                                                backgroundColor: cat.color ? `${cat.color}20` : '#f3f4f6',
+                                                                color: cat.color || '#374151',
+                                                                border: `1px solid ${cat.color ? `${cat.color}40` : '#e5e7eb'}`
+                                                            }}
+                                                        >
+                                                            <Tag className="w-3.5 h-3.5" />
+                                                            {cat.displayName}
+                                                        </span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {formData.categories.length > 0 && (
+                                        <p className="text-xs text-gray-600 mt-2">
+                                            {formData.categories.length} categor{formData.categories.length === 1 ? 'y' : 'ies'} selected
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 

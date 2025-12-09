@@ -31,6 +31,7 @@ interface Category {
   color?: string;
   icon?: string;
   agencies?: string[];  // Array of agency IDs
+  linkedAgencies?: { _id: string; name: string }[];  // Populated agency data
   isActive: boolean;
   priority: number;
   subCount?: number;
@@ -395,6 +396,25 @@ export default function CategoryMasterPage() {
                         {new Date(category.createdAt).toLocaleDateString()}
                       </span>
                     </div>
+
+                    {/* Linked Agencies */}
+                    {category.linkedAgencies && category.linkedAgencies.length > 0 && (
+                      <div className="mb-4 pb-4 border-b border-gray-300">
+                        <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
+                          🏢 Linked Agencies ({category.linkedAgencies.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {category.linkedAgencies.map((agency) => (
+                            <span
+                              key={agency._id}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-white/80 border border-gray-300 rounded-lg text-xs font-medium text-gray-700"
+                            >
+                              👷 {agency.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Subcategories Button */}
                     <button

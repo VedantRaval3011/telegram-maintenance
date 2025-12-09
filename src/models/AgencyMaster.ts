@@ -1,10 +1,14 @@
-import mongoose, { Document, Model, Schema } from "mongoose";
+import mongoose, { Document, Model, Schema, Types } from "mongoose";
+
+// Pre-register Category model dependency
+import "@/models/Category";
 
 export interface IAgency extends Document {
   name: string;
   phone: string;
   email: string;
   notes: string;
+  categories: Types.ObjectId[];  // Categories this agency is linked to
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -16,6 +20,7 @@ const AgencySchema = new Schema<IAgency>(
     phone: { type: String, default: "", trim: true },
     email: { type: String, default: "", trim: true },
     notes: { type: String, default: "", trim: true },
+    categories: [{ type: Schema.Types.ObjectId, ref: "Category", default: [] }],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

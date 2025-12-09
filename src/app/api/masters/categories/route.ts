@@ -48,9 +48,29 @@ export async function GET(req: NextRequest) {
           },
         },
         {
+          // Lookup agencies to get their full data
+          $lookup: {
+            from: "agencies",
+            localField: "agencies",
+            foreignField: "_id",
+            as: "agencyDetails",
+          },
+        },
+        {
           $addFields: {
             subCount: { $size: "$subs" },
-            // Convert agency ObjectIds to strings
+            // Map agencies to include _id and name
+            linkedAgencies: {
+              $map: {
+                input: { $ifNull: ["$agencyDetails", []] },
+                as: "agency",
+                in: {
+                  _id: { $toString: "$$agency._id" },
+                  name: "$$agency.name",
+                }
+              }
+            },
+            // Keep legacy agencies array as string IDs for backwards compatibility
             agencies: {
               $map: {
                 input: { $ifNull: ["$agencies", []] },
@@ -60,7 +80,7 @@ export async function GET(req: NextRequest) {
             }
           },
         },
-        { $project: { subs: 0 } },
+        { $project: { subs: 0, agencyDetails: 0 } },
         { $sort: { priority: -1, name: 1 } },
         { $skip: skip },
         { $limit: limit },
