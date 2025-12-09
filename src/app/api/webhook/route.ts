@@ -1882,6 +1882,67 @@ if (msg.reply_to_message) {
     const hasText = incomingText.length > 1; // Responsive threshold
     
     if (hasPhoto || hasVideo || hasText) {
+      // 🔍 CRITICAL FIX: Check if THIS USER has an existing active session
+      // This prevents photos from being attached to the wrong user's ticket
+      const existingSession = await WizardSession.findOne({
+        chatId: chat.id,
+        userId: msg.from.id, // ✅ KEY: Filter by THIS specific user's ID
+      }).sort({ createdAt: -1 }); // Get the most recent session for this user
+
+      // === CASE 1: User has an existing session - add media to it ===
+      if (existingSession && (hasPhoto || hasVideo)) {
+        // Process media in parallel
+        let photoUrl: string | null = null;
+        let videoUrl: string | null = null;
+        
+        if (hasPhoto) {
+          const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
+          if (fileId) {
+            photoUrl = await fastProcessTelegramPhoto(fileId);
+          }
+        }
+        
+        if (hasVideo && msg.video?.file_id) {
+          videoUrl = await fastProcessTelegramVideo(msg.video.file_id);
+        }
+        
+        // Add media to existing session
+        const updateData: any = {};
+        if (photoUrl) {
+          updateData.$push = { ...updateData.$push, photos: photoUrl };
+        }
+        if (videoUrl) {
+          updateData.$push = { ...updateData.$push, videos: videoUrl };
+        }
+        
+        // Also update description if text was provided with the media
+        if (hasText && incomingText) {
+          // Append to existing description or replace if it was just "Photo attachment"
+          const currentText = existingSession.originalText;
+          if (currentText === "Photo attachment" || currentText === "Video attachment" || currentText === "New Ticket") {
+            updateData.originalText = incomingText;
+          }
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          await WizardSession.findByIdAndUpdate(existingSession._id, updateData);
+        }
+        
+        // Refresh the wizard UI to show updated media count
+        await refreshWizardUI(existingSession, chat.id, existingSession.botMessageId);
+        
+        // Send a brief confirmation that media was added (without creating new wizard)
+        const mediaType = photoUrl ? "📸 Photo" : "🎬 Video";
+        await telegramSendMessage(
+          chat.id,
+          `${mediaType} added to your ticket. Total: ${(existingSession.photos?.length || 0) + (photoUrl ? 1 : 0)} photos, ${(existingSession.videos?.length || 0) + (videoUrl ? 1 : 0)} videos`,
+          msg.message_id
+        );
+        
+        return NextResponse.json({ ok: true });
+      }
+      
+      // === CASE 2: No existing session or just text - create new session ===
       // ⚡ OPTIMIZATION: Send initial "Processing" message IMMEDIATELY
       // This gives instant feedback while we process the heavy stuff
       const initialMsg = "🛠 <b>Ticket Wizard</b>\n⚡ Processing...";
@@ -1935,10 +1996,10 @@ if (msg.reply_to_message) {
         const initialPhotos = photoUrl ? [photoUrl] : [];
         const initialVideos = videoUrl ? [videoUrl] : [];
         
-        // Create session
+        // Create session with THIS user's ID to ensure proper association
         const newSession = await WizardSession.create({
           chatId: chat.id,
-          userId: msg.from.id,
+          userId: msg.from.id, // ✅ CRITICAL: Always associate with the sender's user ID
           botMessageId,
           originalMessageId: msg.message_id,
           originalText: description,

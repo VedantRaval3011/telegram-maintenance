@@ -967,12 +967,23 @@ export default function CategoryMasterPage() {
                       <button
                         onClick={async () => {
                           if (!confirm("Delete this subcategory?")) return;
-                          await fetch(`/api/masters/subcategories/${sub._id}`, {
-                            method: "DELETE",
-                          });
-                          const newList = await fetchSubCategories(subCategoryCategoryId!);
-                          setSubCategoryList(newList);
-                          mutate();
+                          try {
+                            const subId = String(sub._id);
+                            const res = await fetch(`/api/masters/subcategories/${subId}`, {
+                              method: "DELETE",
+                            });
+                            const result = await res.json();
+                            if (!res.ok || !result.success) {
+                              alert(`Error: ${result.error || "Failed to delete subcategory"}`);
+                              return;
+                            }
+                            const newList = await fetchSubCategories(subCategoryCategoryId!);
+                            setSubCategoryList(newList);
+                            mutate();
+                          } catch (err) {
+                            console.error("Delete error:", err);
+                            alert("Failed to delete subcategory");
+                          }
                         }}
                         className="px-3 py-1.5 bg-rose-100 text-rose-700 rounded-lg text-xs font-medium hover:bg-rose-200 transition-colors"
                       >
