@@ -144,7 +144,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency_confirm" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -236,13 +236,23 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
         });
       }
 
-      // Agency
+      // Agency - First ask Yes/No, then show agency list if Yes
       if (rule.requiresAgency) {
+        // Step 1: Ask if agency is required (Yes/No)
+        fields.push({
+          key: "agency_confirm",
+          label: "🧾 Agency Required?",
+          type: "agency_confirm",
+          required: true,
+          completed: false,
+        });
+
+        // Step 2: Show agency list only if user selected "Yes"
         fields.push({
           key: "agency",
-          label: "🧾 Agency/Contractor",
+          label: "👷 Select Agency",
           type: "agency",
-          required: true,
+          required: false, // Will be required dynamically when agency_confirm is "yes"
           completed: false,
         });
 
@@ -341,10 +351,17 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         value = deduplicateLocationPath(session.targetLocationPath).map((n: any) => n.name).join(" → ") || "Selected";
         break;
       
-      case "agency":
-        // Only complete when explicitly set to true or false (not null/undefined)
+      case "agency_confirm":
+        // Yes/No confirmation for agency
         completed = session.agencyRequired === true || session.agencyRequired === false;
-        value = session.agencyRequired ? (session.agencyName || "Yes") : "No";
+        value = session.agencyRequired === true ? "✅ Yes" : session.agencyRequired === false ? "❌ No" : undefined;
+        break;
+      
+      case "agency":
+        // Only required if agency_confirm is "yes"
+        required = session.agencyRequired === true;
+        completed = session.agencyRequired === true ? !!session.agencyName : true;
+        value = session.agencyName || (session.agencyRequired === false ? "Skipped" : undefined);
         break;
       
       case "agency_time_slot":
@@ -514,12 +531,34 @@ case "target_location": {
   break;
 }
 
+    case "agency_confirm": {
+      // Yes/No confirmation for agency
+      keyboard.push([
+        { text: "✅ Yes", callback_data: `select_${botMessageId}_agency_confirm_yes` },
+        { text: "❌ No", callback_data: `select_${botMessageId}_agency_confirm_no` },
+      ]);
+      break;
+    }
+
     case "agency": {
-      // ✅ Fetch the selected category to get its linked agencies
+      // ✅ Fetch agencies linked to the selected subcategory OR category (fallback)
       let agencies: any[] = [];
       
-      if (session.category) {
-        // Get the category with its agencies array
+      // First try subcategory
+      if (session.subCategoryId) {
+        const subCategoryDoc = await SubCategory.findById(session.subCategoryId).lean();
+        
+        if (subCategoryDoc && subCategoryDoc.agencies && subCategoryDoc.agencies.length > 0) {
+          // Only show agencies linked to this subcategory
+          agencies = await Agency.find({ 
+            _id: { $in: subCategoryDoc.agencies },
+            isActive: true 
+          }).sort({ name: 1 }).lean();
+        }
+      }
+      
+      // If no agencies from subcategory, try category (legacy fallback)
+      if (agencies.length === 0 && session.category) {
         const categoryDoc = await Category.findById(session.category).lean();
         
         if (categoryDoc && categoryDoc.agencies && categoryDoc.agencies.length > 0) {
@@ -528,15 +567,11 @@ case "target_location": {
             _id: { $in: categoryDoc.agencies },
             isActive: true 
           }).sort({ name: 1 }).lean();
-        } else {
-          // If no agencies linked to category, show all active agencies as fallback
-          agencies = await getCached(
-            'agencies:active',
-            () => Agency.find({ isActive: true }).sort({ name: 1 }).lean()
-          );
         }
-      } else {
-        // No category selected, show all agencies
+      }
+      
+      // If still no agencies, show all active agencies as fallback
+      if (agencies.length === 0) {
         agencies = await getCached(
           'agencies:active',
           () => Agency.find({ isActive: true }).sort({ name: 1 }).lean()
@@ -549,11 +584,6 @@ case "target_location": {
           callback_data: `select_${botMessageId}_agency_${agency._id}`
         }]);
       }
-      
-      keyboard.push([{
-        text: "❌ No Agency",
-        callback_data: `select_${botMessageId}_agency_no`
-      }]);
       break;
     }
 
@@ -1208,20 +1238,26 @@ export async function POST(req: NextRequest) {
             break;
           }
 
-          case "agency": {
-            if (value === "no") {
+          case "agency_confirm": {
+            if (value === "yes") {
+              session.agencyRequired = true;
+              // Don't set agencyName yet - user will select from list
+            } else {
               session.agencyRequired = false;
               session.agencyName = null;
               session.agencyMonth = null;
               session.agencyYear = null;
               session.agencyDate = null;
               session.agencyTimeSlot = null;
-            } else {
-              // Lookup agency by ID from AgencyMaster
-              const agency = await Agency.findById(value).lean();
-              session.agencyRequired = true;
-              session.agencyName = agency?.name || value;
             }
+            await session.save();
+            break;
+          }
+
+          case "agency": {
+            // Lookup agency by ID from AgencyMaster
+            const agency = await Agency.findById(value).lean();
+            session.agencyName = agency?.name || value;
             await session.save();
             break;
           }
@@ -1312,9 +1348,17 @@ export async function POST(req: NextRequest) {
           case "target_location":
             session.targetLocationComplete = false;
             break;
-          case "agency":
-            // Clear agency and all dependent fields
+          case "agency_confirm":
+            // Clear agency confirmation and all dependent fields
             session.agencyRequired = null;
+            session.agencyName = null;
+            session.agencyMonth = null;
+            session.agencyYear = null;
+            session.agencyDate = null;
+            session.agencyTimeSlot = null;
+            break;
+          case "agency":
+            // Clear agency name only (keep agencyRequired as true)
             session.agencyName = null;
             session.agencyMonth = null;
             session.agencyYear = null;
@@ -1410,9 +1454,22 @@ export async function POST(req: NextRequest) {
             }
           }
           
+          // Show photo/video counts if present
+          const photoCount = ticket.photos?.length || 0;
+          const videoCount = ticket.videos?.length || 0;
+          if (photoCount > 0 || videoCount > 0) {
+            let mediaInfo = '';
+            if (photoCount > 0) mediaInfo += `📸 ${photoCount} photo${photoCount > 1 ? 's' : ''}`;
+            if (photoCount > 0 && videoCount > 0) mediaInfo += ' • ';
+            if (videoCount > 0) mediaInfo += `🎬 ${videoCount} video${videoCount > 1 ? 's' : ''}`;
+            ticketMsg += `${mediaInfo}\n`;
+          }
+          
           ticketMsg += `👤 ${createdBy}`;
 
-          const sentMsg = await telegramSendMessage(chatId, ticketMsg);
+          // ✅ CRITICAL: Reply to the original message (the image) so users know which image the ticket was created for
+          const replyToMessageId = sessionData.originalMessageId;
+          const sentMsg = await telegramSendMessage(chatId, ticketMsg, replyToMessageId);
           
           if (sentMsg.ok && sentMsg.result) {
             await Ticket.findByIdAndUpdate(ticket._id, {
