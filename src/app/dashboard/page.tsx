@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
 import FilterBar from "@/components/FilterBar";
@@ -18,12 +18,18 @@ export default function DashboardPage() {
   const { data: subCategoriesData } = useSWR("/api/masters/subcategories?limit=100", fetcher);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false); // Track if showing completed view
+  const [showUpArrow, setShowUpArrow] = useState(false); // Track if up arrow should be shown
+  const scrollPosition = useRef<number>(0); // Store scroll position before jumping
+  const clickedElementRef = useRef<HTMLElement | null>(null); // Store reference to clicked category element
+  const ticketListRef = useRef<HTMLDivElement>(null); // Ref for ticket list section
+
 
   const [filters, setFiltersState] = useState({
     category: "",
     subCategory: "",
     location: "",
-    status: "PENDING", // Default to PENDING
+    status: "", // Default to show all (both PENDING and COMPLETED)
     priority: "", // Priority filter
     user: "", // User filter
     name: "",
@@ -43,7 +49,7 @@ export default function DashboardPage() {
       category: "",
       subCategory: "",
       location: "",
-      status: "PENDING",
+      status: "", // Reset to show all items
       priority: "",
       user: "",
       name: "",
@@ -53,6 +59,73 @@ export default function DashboardPage() {
       timeTo: "",
       sortBy: "",
     });
+  }, []);
+
+  // Scroll to ticket list and save current position
+  const scrollToTicketList = useCallback(() => {
+    scrollPosition.current = window.scrollY;
+    setShowUpArrow(true);
+    setTimeout(() => {
+      if (ticketListRef.current) {
+        const elementPosition = ticketListRef.current.getBoundingClientRect().top + window.scrollY;
+        const offsetPosition = elementPosition - 100; // 100px offset to show full ticket
+        window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+      }
+    }, 100);
+  }, []);
+
+  // Scroll back to saved position and clear selections
+  const scrollBackToTop = useCallback(() => {
+    if (clickedElementRef.current) {
+      // Scroll to the clicked category element position
+      const elementPosition = clickedElementRef.current.getBoundingClientRect().top + window.scrollY;
+      const offsetPosition = elementPosition - 80; // 80px offset for navbar
+      window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+    } else {
+      // Fallback to saved scroll position
+      window.scrollTo({ top: scrollPosition.current, behavior: 'smooth' });
+    }
+    setShowUpArrow(false);
+    // Don't clear filters - keep the category selected so user can see the filtered tickets
+  }, []);
+
+  // Double-click on background to reset filters and show all pending data
+  useEffect(() => {
+    const handleDoubleClickReset = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Check if double-click is on the background (not on interactive elements)
+      // Exclude clicks on buttons, capsules, tickets, inputs, etc.
+      const isInteractiveElement = target.closest('button, a, input, textarea, select, [role="button"]');
+      const isCapsule = target.closest('[class*="rounded-2xl"]') || target.closest('[class*="rounded-xl"]');
+      
+      // Only reset if clicked on the background (body or main container divs)
+      const isBackground = target.tagName === 'BODY' || 
+                          target.classList.contains('min-h-screen') ||
+                          target.classList.contains('dashboard-content') ||
+                          (target.tagName === 'DIV' && !target.hasAttribute('id') && !isCapsule);
+      
+      if (isBackground && !isInteractiveElement) {
+        // Reset to show all pending data
+        resetFilters();
+        setSelectedCategory(null);
+        setShowUpArrow(false);
+        clickedElementRef.current = null;
+        
+        // Scroll to pending section
+        setTimeout(() => {
+          const pendingDiv = document.getElementById('pending-capsule');
+          if (pendingDiv) {
+            const elementPosition = pendingDiv.getBoundingClientRect().top + window.scrollY;
+            const offsetPosition = elementPosition - 80; // 80px offset for navbar
+            window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+          }
+        }, 100);
+      }
+    };
+
+    document.addEventListener('dblclick', handleDoubleClickReset);
+    return () => document.removeEventListener('dblclick', handleDoubleClickReset);
   }, []);
 
   const tickets = data && Array.isArray(data.data) ? data.data : [];
@@ -95,8 +168,15 @@ export default function DashboardPage() {
 
     let out = tickets.slice();
 
+    // Apply showCompleted filter first - this overrides status filter
+    if (showCompleted) {
+      out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "completed");
+    } else {
+      out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "pending");
+    }
+
     if (location) out = out.filter((t: any) => (t.location || "").toString().toLowerCase() === location.toLowerCase());
-    if (status) out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === status.toLowerCase());
+    // Don't apply status filter here since we're using showCompleted
     if (priority) out = out.filter((t: any) => (t.priority || "").toString().toLowerCase() === priority.toLowerCase());
 
     if (user) {
@@ -152,7 +232,7 @@ export default function DashboardPage() {
     }
 
     return out;
-  }, [tickets, filters]);
+  }, [tickets, filters, showCompleted]);
 
   // Global Stats Base: Respects everything EXCEPT Category/SubCategory and Status
   // This ensures Global Capsules (Pending/Completed) change with Priority/Location/User/Date/Time, but NOT Category.
@@ -321,7 +401,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 dashboard-content">
         {/* Top Filters: Advanced Toggle */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-end gap-4 mb-6">
           {/* Advanced Filters Toggle */}
@@ -339,6 +419,22 @@ export default function DashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
               Advanced Filters
+            </button>
+            <button
+              onClick={() => {
+                setShowCompleted(!showCompleted);
+                // When switching to completed view, reset filters
+                if (!showCompleted) {
+                  resetFilters();
+                }
+              }}
+              className={`px-4 py-2.5 rounded-xl font-medium transition-all shadow-sm ${
+                showCompleted 
+                  ? "bg-teal-600 text-white hover:bg-teal-700" 
+                  : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+              }`}
+            >
+              {showCompleted ? "Show Pending" : "Completed"}
             </button>
             {(filters.category || filters.location || filters.priority || filters.user || filters.name || filters.dateFrom || filters.dateTo) && (
               <button
@@ -361,24 +457,50 @@ export default function DashboardPage() {
         {/* Summary Stats */}
         <div className="mb-12">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Capsule
-              title="Pending"
-              {...stats.pendingStats}
-              onClick={() => setFilters({ status: "PENDING" })}
-              onPriorityClick={(p) => setFilters({ priority: p })}
-              selectedPriority={filters.priority}
-              color="#3b82f6"
-              className={filters.status === "PENDING" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-            />
-            <Capsule
-              title="Completed"
-              {...stats.completedStats}
-              onClick={() => setFilters({ status: "COMPLETED" })}
-              onPriorityClick={(p) => setFilters({ priority: p })}
-              selectedPriority={filters.priority}
-              color="#14b8a6"
-              className={filters.status === "COMPLETED" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-            />
+            {!showCompleted ? (
+              <div id="pending-capsule">
+                <Capsule
+                  title="Pending"
+                  {...stats.pendingStats}
+                  onClick={() => {
+                    // Save reference to pending capsule and scroll to ticket list
+                    const pendingDiv = document.getElementById('pending-capsule');
+                    if (pendingDiv) {
+                      clickedElementRef.current = pendingDiv;
+                    }
+                    setFilters({ category: "", status: "" });
+                    setSelectedCategory(null);
+                    scrollToTicketList();
+                  }}
+                  onPriorityClick={(p) => setFilters({ priority: p })}
+                  selectedPriority={filters.priority}
+                  color="#3b82f6"
+                  className={filters.status === "PENDING" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
+                  onScrollBack={scrollBackToTop}
+                />
+              </div>
+            ) : (
+              <div id="completed-capsule">
+                <Capsule
+                  title="Completed"
+                  {...stats.completedStats}
+                  onClick={() => {
+                    // Save reference to completed capsule and scroll to ticket list
+                    const completedDiv = document.getElementById('completed-capsule');
+                    if (completedDiv) {
+                      clickedElementRef.current = completedDiv;
+                    }
+                    setFilters({ status: filters.status === "COMPLETED" ? "" : "COMPLETED" });
+                    scrollToTicketList();
+                  }}
+                  onPriorityClick={(p) => setFilters({ priority: p })}
+                  selectedPriority={filters.priority}
+                  color="#14b8a6"
+                  className={filters.status === "COMPLETED" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
+                  onScrollBack={scrollBackToTop}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -388,14 +510,33 @@ export default function DashboardPage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-6">By Category</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {stats.categoryStats.map((cat: any) => (
-                <div key={cat.id} className="relative">
+                <div key={cat.id} className="relative" id={`category-${cat.id}`}>
                   <Capsule
                     title={cat.name}
                     {...cat.stats}
                     onClick={() => {
                       const isAll = cat.id === "all";
-                      setFilters({ category: isAll ? "" : cat.name });
-                      setSelectedCategory(isAll ? null : cat.id);
+                      const isCurrentlySelected = selectedCategory === cat.id || 
+                        (cat.id === "all" ? filters.category === "" : filters.category === cat.name);
+                      
+                      if (isCurrentlySelected) {
+                        // Deselect if already selected
+                        setFilters({ category: "" });
+                        setSelectedCategory(null);
+                      } else {
+                        // Save reference to clicked element
+                        const clickedDiv = document.getElementById(`category-${cat.id}`);
+                        if (clickedDiv) {
+                          clickedElementRef.current = clickedDiv;
+                        }
+                        
+                        // Select the category and scroll to ticket list
+                        setFilters({ category: isAll ? "" : cat.name });
+                        setSelectedCategory(isAll ? null : cat.id);
+                        if (!isAll) {
+                          scrollToTicketList();
+                        }
+                      }
                     }}
                     onPriorityClick={(p) => setFilters({ priority: p })}
                     selectedPriority={filters.priority}
@@ -426,23 +567,32 @@ export default function DashboardPage() {
             {stats.subCategoryStats.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {stats.subCategoryStats.map((sub: any) => (
-                  <Capsule
-                    key={sub.id}
-                    title={sub.name}
-                    {...sub.stats}
-                    onClick={() => {
-                      // Filter by this subcategory
-                      const cat = categories.find((c: any) => c._id === selectedCategory);
-                      setFilters({
-                        category: cat ? cat.name : "",
-                        subCategory: sub.name
-                      });
-                    }}
-                    className={filters.subCategory === sub.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-                    onPriorityClick={(p) => setFilters({ priority: p })}
-                    selectedPriority={filters.priority}
-                    color={categories.find((c: any) => c._id === selectedCategory)?.color || "#6b7280"}
-                  />
+                  <div key={sub.id} id={`subcategory-${sub.id}`}>
+                    <Capsule
+                      title={sub.name}
+                      {...sub.stats}
+                      onClick={() => {
+                        // Save reference to clicked subcategory element
+                        const subDiv = document.getElementById(`subcategory-${sub.id}`);
+                        if (subDiv) {
+                          clickedElementRef.current = subDiv;
+                        }
+                        
+                        // Filter by this subcategory and scroll to ticket list
+                        const cat = categories.find((c: any) => c._id === selectedCategory);
+                        setFilters({
+                          category: cat ? cat.name : "",
+                          subCategory: sub.name
+                        });
+                        scrollToTicketList();
+                      }}
+                      className={filters.subCategory === sub.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
+                      onPriorityClick={(p) => setFilters({ priority: p })}
+                      selectedPriority={filters.priority}
+                      color={categories.find((c: any) => c._id === selectedCategory)?.color || "#6b7280"}
+                      onScrollBack={scrollBackToTop}
+                    />
+                  </div>
                 ))}
               </div>
             ) : (
@@ -532,7 +682,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Tickets grid */}
-        <div className="grid grid-cols-1 gap-6">
+        <div ref={ticketListRef} className="grid grid-cols-1 gap-6">
           {fullyFiltered.map((t: any) => {
             const cat = categories.find((c: any) => c.name.toLowerCase() === (t.category || "").toLowerCase());
             return (
@@ -541,6 +691,7 @@ export default function DashboardPage() {
                 ticket={t}
                 onStatusChange={() => mutate()}
                 categoryColor={cat?.color}
+                onScrollBack={scrollBackToTop}
               />
             );
           })}

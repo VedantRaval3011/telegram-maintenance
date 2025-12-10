@@ -63,7 +63,7 @@ function darkenColor(hex: string, percent: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-export default function TicketCard({ ticket, onStatusChange, categoryColor }: { ticket: any; onStatusChange?: () => void; categoryColor?: string }) {
+export default function TicketCard({ ticket, onStatusChange, categoryColor, onScrollBack }: { ticket: any; onStatusChange?: () => void; categoryColor?: string; onScrollBack?: () => void }) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -103,7 +103,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
       case "high":
         return "#ef4444"; // Red
       case "medium":
-        return "#f59e0b"; // Orange
+        return "#eab308"; // Yellow
       case "low":
         return "#10b981"; // Green
       default:
@@ -241,12 +241,32 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor }: { 
               </span>
 
               {/* Status */}
-              <span
-                className={statusClass()}
-                style={ticket.status === "PENDING" ? { backgroundColor: colors.accent, borderColor: colors.borderDark } : {}}
-              >
-                {ticket.status}
-              </span>
+              <div className="flex items-center gap-1">
+                <span
+                  className={statusClass()}
+                  style={ticket.status === "PENDING" ? { backgroundColor: colors.accent, borderColor: colors.borderDark } : {}}
+                >
+                  {ticket.status}
+                </span>
+                {ticket.status === "PENDING" && onStatusChange && (
+                  <button
+                    onClick={() => onScrollBack ? onScrollBack() : window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    className="p-1 rounded-full hover:bg-black/10 transition-colors"
+                    title="Scroll back to category"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-7 w-7"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      style={{ color: colors.textDark }}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Action Buttons */}

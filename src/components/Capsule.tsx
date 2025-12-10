@@ -51,6 +51,7 @@ interface CapsuleProps {
   onPriorityClick?: (priority: string) => void;
   selectedPriority?: string;
   color?: string;
+  onScrollBack?: () => void;
 }
 
 export default function Capsule({
@@ -65,6 +66,7 @@ export default function Capsule({
   onPriorityClick,
   selectedPriority,
   color,
+  onScrollBack,
 }: CapsuleProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -81,6 +83,20 @@ export default function Capsule({
   // Text colors based on the base color
   const textColor = isLight ? "#1f2937" : "#111827";
   const labelColor = isLight ? "#4b5563" : "#374151";
+
+  // Priority color mapping
+  const getPriorityColor = (priority: string) => {
+    switch (priority.toLowerCase()) {
+      case "high":
+        return "#ef4444"; // Red
+      case "medium":
+        return "#eab308"; // Yellow
+      case "low":
+        return "#10b981"; // Green
+      default:
+        return labelColor;
+    }
+  };
 
   return (
     <div
@@ -103,62 +119,31 @@ export default function Capsule({
         style={{ backgroundColor: priorityBg }}
       >
         <div
-          className="text-[10px] font-semibold uppercase tracking-wide mb-2 flex justify-between items-center"
+          className="text-[10px] font-semibold uppercase tracking-wide mb-2"
           style={{ color: labelColor }}
         >
-          <span>Priority</span>
-          {selectedPriority && onPriorityClick && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onPriorityClick("");
-              }}
-              className="hover:opacity-70 font-bold text-sm px-1 rounded transition-colors"
-              style={{ color: labelColor }}
-              title="Reset Priority"
-            >
-              ×
-            </button>
-          )}
+          Priority
         </div>
         <div className="space-y-1">
-          <div
-            onClick={(e) => {
-              if (onPriorityClick) {
-                e.stopPropagation();
-                onPriorityClick("high");
-              }
-            }}
-            className={`flex justify-between items-center text-xs ${onPriorityClick ? "cursor-pointer hover:opacity-70" : ""
-              } ${selectedPriority === "high" ? "font-semibold" : ""}`}
+          <div 
+            onClick={() => onPriorityClick?.("high")}
+            className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
-            <span style={{ color: labelColor }}>High</span>
+            <span style={{ color: getPriorityColor("high") }} className="font-semibold">High</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.high})</span>
           </div>
-          <div
-            onClick={(e) => {
-              if (onPriorityClick) {
-                e.stopPropagation();
-                onPriorityClick("medium");
-              }
-            }}
-            className={`flex justify-between items-center text-xs ${onPriorityClick ? "cursor-pointer hover:opacity-70" : ""
-              } ${selectedPriority === "medium" ? "font-semibold" : ""}`}
+          <div 
+            onClick={() => onPriorityClick?.("medium")}
+            className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
-            <span style={{ color: labelColor }}>Medium</span>
+            <span style={{ color: getPriorityColor("medium") }} className="font-semibold">Medium</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.medium})</span>
           </div>
-          <div
-            onClick={(e) => {
-              if (onPriorityClick) {
-                e.stopPropagation();
-                onPriorityClick("low");
-              }
-            }}
-            className={`flex justify-between items-center text-xs ${onPriorityClick ? "cursor-pointer hover:opacity-70" : ""
-              } ${selectedPriority === "low" ? "font-semibold" : ""}`}
+          <div 
+            onClick={() => onPriorityClick?.("low")}
+            className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
-            <span style={{ color: labelColor }}>Low</span>
+            <span style={{ color: getPriorityColor("low") }} className="font-semibold">Low</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.low})</span>
           </div>
         </div>
@@ -166,10 +151,10 @@ export default function Capsule({
 
       {/* Middle Section: Total */}
       <div
-        className="flex-1 px-4 py-3 flex flex-col justify-center items-center transition-colors duration-200"
+        className="flex-1 px-4 py-3 flex flex-col justify-center items-center transition-colors duration-200 relative"
         style={{ backgroundColor: middleBg }}
       >
-        <div className="text-xs font-medium mb-1" style={{ color: labelColor }}>{title}</div>
+          <div className="text-xs font-medium mb-1" style={{ color: labelColor }}>{title}</div>
         <div className="text-4xl font-bold" style={{ color: textColor }}>{total}</div>
       </div>
 
