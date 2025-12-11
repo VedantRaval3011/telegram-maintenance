@@ -1646,19 +1646,20 @@ if (assignAgencyMatch && !msg.reply_to_message) {
   return NextResponse.json({ ok: true });
 }
 
-// Check for reply to ticket message (Reopen, Completion, or Agency Assignment)
+// Check for reply to ticket message (Reopen, Edit, Completion, or Agency Assignment)
 if (msg.reply_to_message) {
   const replyId = msg.reply_to_message.message_id;
   const lowerText = incomingText.toLowerCase();
   
-  // Check for reopen command in reply
-  const reopenKeywords = ["/open", "open", "/reopen", "reopen", "/edit", "edit"];
+  // Check for REOPEN command in reply (different from edit)
+  const reopenKeywords = ["/open", "open", "/reopen", "reopen"];
   if (reopenKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
     // Find ticket by message ID
     const ticket = await Ticket.findOne({
       $or: [
         { telegramMessageId: replyId },
-        { originalMessageId: replyId }
+        { originalMessageId: replyId },
+        { completionMessageId: replyId }
       ]
     });
     
@@ -1703,6 +1704,86 @@ if (msg.reply_to_message) {
         msg.message_id
       );
       
+      return NextResponse.json({ ok: true });
+    } else {
+      // Ticket not found - send error and return (don't create new ticket)
+      await telegramSendMessage(
+        chat.id,
+        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/open T-123</code>",
+        msg.message_id
+      );
+      return NextResponse.json({ ok: true });
+    }
+  }
+  
+  // Check for EDIT command in reply (allows updating ticket data)
+  const editKeywords = ["/edit", "edit"];
+  if (editKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
+    // Find ticket by message ID
+    const ticket = await Ticket.findOne({
+      $or: [
+        { telegramMessageId: replyId },
+        { originalMessageId: replyId },
+        { completionMessageId: replyId }
+      ]
+    });
+    
+    if (ticket) {
+      // Create a new wizard session pre-populated with existing ticket data for editing
+      const editedBy = msg.from?.username || 
+                      `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
+                      "Unknown";
+      
+      // Find category by name to get ID
+      const categoryDoc = await Category.findOne({ name: ticket.category }).lean();
+      const categoryId = categoryDoc ? String(categoryDoc._id) : null;
+      
+      // Create edit wizard message
+      const editMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n\n` +
+                     `📝 ${ticket.description}\n\n` +
+                     `Current values:\n` +
+                     `📂 Category: ${ticket.category || "—"}\n` +
+                     `⚡ Priority: ${ticket.priority || "—"}\n` +
+                     `📍 Location: ${ticket.location || "—"}\n` +
+                     (ticket.agencyName ? `👷 Agency: ${ticket.agencyName}\n` : "") +
+                     `\n👇 Select what to update:`;
+      
+      // Build edit keyboard
+      const editKeyboard: any[][] = [
+        [
+          { text: "📂 Category", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_category` },
+          { text: "⚡ Priority", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_priority` }
+        ],
+        [
+          { text: "📍 Location", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_location` }
+        ]
+      ];
+      
+      if (ticket.agencyName) {
+        editKeyboard.push([
+          { text: "👷 Agency", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_agency` }
+        ]);
+      }
+      
+      editKeyboard.push([
+        { text: "❌ Cancel", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_cancel` }
+      ]);
+      
+      await telegramSendMessage(
+        chat.id,
+        editMsg,
+        msg.message_id,
+        editKeyboard
+      );
+      
+      return NextResponse.json({ ok: true });
+    } else {
+      // Ticket not found - send error and return (don't create new ticket)
+      await telegramSendMessage(
+        chat.id,
+        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/edit T-123</code>",
+        msg.message_id
+      );
       return NextResponse.json({ ok: true });
     }
   }
@@ -1841,11 +1922,19 @@ if (msg.reply_to_message) {
         completionMsg += `\n🎬 After-fix video attached`;
       }
 
-      await telegramSendMessage(
+      // Send completion message and store its ID
+      const completionMsgResult = await telegramSendMessage(
         chat.id,
         completionMsg,
         msg.message_id
       );
+      
+      // Store completion message ID so user can reply to it with /edit or /open
+      if (completionMsgResult.ok && completionMsgResult.result?.message_id) {
+        ticket.completionMessageId = completionMsgResult.result.message_id;
+        await ticket.save();
+      }
+      
       return NextResponse.json({ ok: true });
     }
   }

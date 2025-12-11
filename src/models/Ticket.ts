@@ -19,6 +19,7 @@ export interface ITicket extends Document {
   completedAt?: Date | null;
   telegramMessageId?: number | null; // Ticket confirmation message
   originalMessageId?: number | null; // Original user message that created the ticket
+  completionMessageId?: number | null; // Completion confirmation message
   telegramChatId?: number | null;
   agencyName?: string | null; // Selected agency name
   agencyTime?: string | null; // Agency arrival time (e.g., "10:30 AM")
@@ -56,6 +57,7 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   completedAt: { type: Date, default: null },
   telegramMessageId: { type: Number, default: null },
   originalMessageId: { type: Number, default: null },
+  completionMessageId: { type: Number, default: null },
   telegramChatId: { type: Number, default: null },
   agencyName: { type: String, default: null },
   agencyTime: { type: String, default: null },
