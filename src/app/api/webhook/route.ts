@@ -1141,6 +1141,276 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      // === TICKET EDIT CALLBACK HANDLING ===
+      if (action === "edit") {
+        const originalMsgId = parseInt(parts[1]);
+        const ticketId = parts[2];
+        const editField = parts[3];
+        const editValue = parts.slice(4).join("_");
+        
+        // Find the ticket
+        const ticket = await Ticket.findOne({ ticketId });
+        
+        if (!ticket) {
+          await editMessageText(chatId, messageId, "❌ Ticket not found.", []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "cancel") {
+          await editMessageText(chatId, messageId, "❌ Edit cancelled.", []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        // Handle field selection (show options for that field)
+        if (editField === "category" && !editValue) {
+          // Show category options
+          const categories = await getCached(
+            'categories:active',
+            () => Category.find({ isActive: true }).sort({ displayName: 1 }).lean()
+          );
+          
+          const keyboard: any[][] = [];
+          // 2-column layout
+          for (let i = 0; i < categories.length; i += 2) {
+            const row: any[] = [];
+            row.push({
+              text: categories[i].displayName,
+              callback_data: `edit_${originalMsgId}_${ticketId}_category_${categories[i]._id}`
+            });
+            if (i + 1 < categories.length) {
+              row.push({
+                text: categories[i + 1].displayName,
+                callback_data: `edit_${originalMsgId}_${ticketId}_category_${categories[i + 1]._id}`
+              });
+            }
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]);
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n📂 Select new category:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "category" && editValue) {
+          // Update category
+          const categoryDoc = await Category.findById(editValue).lean();
+          if (categoryDoc) {
+            ticket.category = categoryDoc.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `📂 Category changed to: ${categoryDoc.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "priority" && !editValue) {
+          // Show priority options
+          const keyboard = [
+            [
+              { text: "🔴 High", callback_data: `edit_${originalMsgId}_${ticketId}_priority_high` },
+              { text: "🟡 Medium", callback_data: `edit_${originalMsgId}_${ticketId}_priority_medium` },
+              { text: "🟢 Low", callback_data: `edit_${originalMsgId}_${ticketId}_priority_low` },
+            ],
+            [{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]
+          ];
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n⚡ Select new priority:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "priority" && editValue) {
+          // Update priority
+          ticket.priority = editValue as "low" | "medium" | "high";
+          await ticket.save();
+          
+          const priorityDisplay = editValue === "high" ? "🔴 High" : editValue === "medium" ? "🟡 Medium" : "🟢 Low";
+          const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                     `⚡ Priority changed to: ${priorityDisplay}`;
+          await editMessageText(chatId, messageId, msg, []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "location" && !editValue) {
+          // Show root locations
+          const locations = await getCached(
+            'locations:root',
+            () => Location.find({ parentLocationId: null, isActive: true }).sort({ name: 1 }).lean()
+          );
+          
+          const keyboard: any[][] = [];
+          // 2-column layout
+          for (let i = 0; i < locations.length; i += 2) {
+            const row: any[] = [];
+            row.push({
+              text: locations[i].name,
+              callback_data: `edit_${originalMsgId}_${ticketId}_loc_${locations[i]._id}`
+            });
+            if (i + 1 < locations.length) {
+              row.push({
+                text: locations[i + 1].name,
+                callback_data: `edit_${originalMsgId}_${ticketId}_loc_${locations[i + 1]._id}`
+              });
+            }
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]);
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n📍 Select new location:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "loc" && editValue) {
+          // Check if location has children
+          const [location, childCount] = await Promise.all([
+            Location.findById(editValue).lean(),
+            Location.countDocuments({ parentLocationId: editValue, isActive: true })
+          ]);
+          
+          if (!location) {
+            return NextResponse.json({ ok: true });
+          }
+          
+          if (childCount > 0) {
+            // Show children
+            const children = await Location.find({ parentLocationId: editValue, isActive: true }).sort({ name: 1 }).lean();
+            
+            const keyboard: any[][] = [];
+            // 2-column layout
+            for (let i = 0; i < children.length; i += 2) {
+              const row: any[] = [];
+              row.push({
+                text: children[i].name,
+                callback_data: `edit_${originalMsgId}_${ticketId}_loc_${children[i]._id}`
+              });
+              if (i + 1 < children.length) {
+                row.push({
+                  text: children[i + 1].name,
+                  callback_data: `edit_${originalMsgId}_${ticketId}_loc_${children[i + 1]._id}`
+                });
+              }
+              keyboard.push(row);
+            }
+            // Add select this option and back button
+            keyboard.push([{ text: `✅ Select "${location.name}"`, callback_data: `edit_${originalMsgId}_${ticketId}_setloc_${editValue}` }]);
+            keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_location` }]);
+            
+            const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n📍 ${location.name} - Select sublocation or confirm:`;
+            await editMessageText(chatId, messageId, msg, keyboard);
+          } else {
+            // Leaf node - update location
+            ticket.location = location.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `📍 Location changed to: ${location.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "setloc" && editValue) {
+          // Force set location to this value (even if it has children)
+          const location = await Location.findById(editValue).lean();
+          if (location) {
+            ticket.location = location.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `📍 Location changed to: ${location.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "agency" && !editValue) {
+          // Show agency options
+          const agencies = await getCached(
+            'agencies:active',
+            () => Agency.find({ isActive: true }).sort({ name: 1 }).lean()
+          );
+          
+          const keyboard: any[][] = [];
+          // 2-column layout
+          for (let i = 0; i < agencies.length; i += 2) {
+            const row: any[] = [];
+            row.push({
+              text: `👷 ${agencies[i].name}`,
+              callback_data: `edit_${originalMsgId}_${ticketId}_agency_${agencies[i]._id}`
+            });
+            if (i + 1 < agencies.length) {
+              row.push({
+                text: `👷 ${agencies[i + 1].name}`,
+                callback_data: `edit_${originalMsgId}_${ticketId}_agency_${agencies[i + 1]._id}`
+              });
+            }
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]);
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n👷 Select new agency:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "agency" && editValue) {
+          // Update agency
+          const agency = await Agency.findById(editValue).lean();
+          if (agency) {
+            ticket.agencyName = agency.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `👷 Agency changed to: ${agency.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "back") {
+          // Go back to main edit menu
+          const categoryDoc = await Category.findOne({ name: ticket.category }).lean();
+          
+          const editMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n\n` +
+                         `📝 ${ticket.description}\n\n` +
+                         `Current values:\n` +
+                         `📂 Category: ${ticket.category || "—"}\n` +
+                         `⚡ Priority: ${ticket.priority || "—"}\n` +
+                         `📍 Location: ${ticket.location || "—"}\n` +
+                         (ticket.agencyName ? `👷 Agency: ${ticket.agencyName}\n` : "") +
+                         `\n👇 Select what to update:`;
+          
+          const editKeyboard: any[][] = [
+            [
+              { text: "📂 Category", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_category` },
+              { text: "⚡ Priority", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_priority` }
+            ],
+            [
+              { text: "📍 Location", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_location` }
+            ]
+          ];
+          
+          if (ticket.agencyName) {
+            editKeyboard.push([
+              { text: "👷 Agency", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_agency` }
+            ]);
+          }
+          
+          editKeyboard.push([
+            { text: "❌ Done", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_cancel` }
+          ]);
+          
+          await editMessageText(chatId, messageId, editMsg, editKeyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        return NextResponse.json({ ok: true });
+      }
+
       // ⚡ OPTIMIZATION: Use lean() for faster session query
       const session = await WizardSession.findOne({ botMessageId });
       if (!session) {
