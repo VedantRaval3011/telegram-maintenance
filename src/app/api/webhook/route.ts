@@ -157,7 +157,7 @@ interface WizardField {
 async function buildFieldsFromRule(categoryId: string | null): Promise<WizardField[]> {
   const fields: WizardField[] = [];
 
-  // Always include category and priority
+  // Always include category first
   fields.push({
     key: "category",
     label: "📂 Category",
@@ -166,13 +166,7 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
     completed: false,
   });
 
-  fields.push({
-    key: "priority",
-    label: "⚡ Priority",
-    type: "priority",
-    required: true,
-    completed: false,
-  });
+  // Priority will be added later, before agency
 
   // If category selected, load workflow rule
   if (categoryId) {
@@ -236,6 +230,15 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
         });
       }
 
+      // Priority (comes after locations, before agency)
+      fields.push({
+        key: "priority",
+        label: "⚡ Priority",
+        type: "priority",
+        required: true,
+        completed: false,
+      });
+
       // Agency - Directly show agency list
       if (rule.requiresAgency) {
         // Show agency list directly (removed Yes/No confirmation step)
@@ -282,7 +285,25 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
           });
         }
       }
+    } else {
+      // No rule found - add priority as fallback
+      fields.push({
+        key: "priority",
+        label: "⚡ Priority",
+        type: "priority",
+        required: true,
+        completed: false,
+      });
     }
+  } else {
+    // No category selected yet - add priority for initial display
+    fields.push({
+      key: "priority",
+      label: "⚡ Priority",
+      type: "priority",
+      required: true,
+      completed: false,
+    });
   }
 
   return fields;
@@ -433,11 +454,20 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
           `subcategories:${session.category}`,
           () => SubCategory.find({ categoryId: session.category, isActive: true }).sort({ name: 1 }).lean()
         );
-        for (const sub of subcats) {
-          keyboard.push([{
-            text: sub.name,
-            callback_data: `select_${botMessageId}_subcategory_${sub._id}`
-          }]);
+        // 2-column layout
+        for (let i = 0; i < subcats.length; i += 2) {
+          const row: any[] = [];
+          row.push({
+            text: subcats[i].name,
+            callback_data: `select_${botMessageId}_subcategory_${subcats[i]._id}`
+          });
+          if (i + 1 < subcats.length) {
+            row.push({
+              text: subcats[i + 1].name,
+              callback_data: `select_${botMessageId}_subcategory_${subcats[i + 1]._id}`
+            });
+          }
+          keyboard.push(row);
         }
       }
       break;
@@ -480,11 +510,20 @@ case "target_location": {
     }).sort({ name: 1 }).lean()
   );
 
-  for (const loc of locations) {
-    keyboard.push([{
-      text: loc.name,
-      callback_data: `select_${botMessageId}_${field.type}_${loc._id}`
-    }]);
+  // 2-column layout for locations
+  for (let i = 0; i < locations.length; i += 2) {
+    const row: any[] = [];
+    row.push({
+      text: locations[i].name,
+      callback_data: `select_${botMessageId}_${field.type}_${locations[i]._id}`
+    });
+    if (i + 1 < locations.length) {
+      row.push({
+        text: locations[i + 1].name,
+        callback_data: `select_${botMessageId}_${field.type}_${locations[i + 1]._id}`
+      });
+    }
+    keyboard.push(row);
   }
 
   // Back button if we're not at root
@@ -536,11 +575,20 @@ case "target_location": {
         );
       }
       
-      for (const agency of agencies) {
-        keyboard.push([{
-          text: `👷 ${agency.name}`,
-          callback_data: `select_${botMessageId}_agency_${agency._id}`
-        }]);
+      // 2-column layout for agencies
+      for (let i = 0; i < agencies.length; i += 2) {
+        const row: any[] = [];
+        row.push({
+          text: `👷 ${agencies[i].name}`,
+          callback_data: `select_${botMessageId}_agency_${agencies[i]._id}`
+        });
+        if (i + 1 < agencies.length) {
+          row.push({
+            text: `👷 ${agencies[i + 1].name}`,
+            callback_data: `select_${botMessageId}_agency_${agencies[i + 1]._id}`
+          });
+        }
+        keyboard.push(row);
       }
       break;
     }
@@ -883,12 +931,12 @@ async function createTicketFromSession(session: any, createdBy: string) {
   const lastTicket = await Ticket.findOne().sort({ createdAt: -1 }).lean();
   let nextTicketNumber = 1;
   if (lastTicket && lastTicket.ticketId) {
-    const match = lastTicket.ticketId.match(/TCK-(\d+)/);
+    const match = lastTicket.ticketId.match(/T-(\d+)/);
     if (match) {
       nextTicketNumber = parseInt(match[1]) + 1;
     }
   }
-  const nextTicketId = `TCK-${String(nextTicketNumber).padStart(3, '0')}`;
+  const nextTicketId = `T-${nextTicketNumber}`;
 
   const ticketData: any = {
     ticketId: nextTicketId,
@@ -1439,23 +1487,23 @@ if (incomingText.toLowerCase().startsWith("/info ")) {
 }
 
 // ========== REOPEN TICKET COMMAND HANDLING ==========
-// Supports: "open TCK-123" or "/open TCK-123" or "reopen TCK-123"
-const reopenMatch = incomingText.match(/^(?:open|reopen|\/open|\/reopen)\s*(tck-?\d+)?/i);
+// Supports: "open T-123" or "/open T-123" or "reopen T-123"
+const reopenMatch = incomingText.match(/^(?:open|reopen|\/open|\/reopen)\s*(t-?\d+)?/i);
 if (reopenMatch && !msg.reply_to_message) {
   // Extract ticket number from message
-  const ticketMatch = incomingText.match(/TCK-?(\d+)/i);
+  const ticketMatch = incomingText.match(/T-?(\d+)/i);
   
   if (!ticketMatch) {
     // Ask for ticket number
     await telegramSendMessage(
       chat.id,
-      "📝 Please provide the ticket number.\n\nExample: <code>open TCK-123</code>",
+      "📝 Please provide the ticket number.\n\nExample: <code>open T-123</code>",
       msg.message_id
     );
     return NextResponse.json({ ok: true });
   }
   
-  const ticketId = `TCK-${ticketMatch[1]}`;
+  const ticketId = `T-${ticketMatch[1]}`;
   const ticket = await Ticket.findOne({ ticketId });
   
   if (!ticket) {
@@ -1503,24 +1551,24 @@ if (reopenMatch && !msg.reply_to_message) {
 }
 
 // ========== ASSIGN AGENCY COMMAND HANDLING ==========
-// Supports: "assign agency TCK-123" or "/agency TCK-123"
+// Supports: "assign agency T-123" or "/agency T-123"
 // Skip if this is a reply to a message (will be handled by reply handler below)
-const assignAgencyMatch = incomingText.match(/^(?:assign\s*agency|\/agency)\s*(tck-?\d+)?/i);
+const assignAgencyMatch = incomingText.match(/^(?:assign\s*agency|\/agency)\s*(t-?\d+)?/i);
 if (assignAgencyMatch && !msg.reply_to_message) {
   // Extract ticket number from message
-  const ticketMatch = incomingText.match(/TCK-?(\d+)/i);
+  const ticketMatch = incomingText.match(/T-?(\d+)/i);
   
   if (!ticketMatch) {
     // Ask for ticket number
     await telegramSendMessage(
       chat.id,
-      "📝 Please provide the ticket number.\n\nExample: <code>assign agency TCK-123</code>",
+      "📝 Please provide the ticket number.\n\nExample: <code>assign agency T-123</code>",
       msg.message_id
     );
     return NextResponse.json({ ok: true });
   }
   
-  const ticketId = `TCK-${ticketMatch[1]}`;
+  const ticketId = `T-${ticketMatch[1]}`;
   const ticket = await Ticket.findOne({ ticketId });
   
   if (!ticket) {
