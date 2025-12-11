@@ -369,8 +369,11 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
       case "agency_date":
         // Required if agency was selected
         required = !!session.agencyName;
-        completed = !!session.agencyDate;
-        if (completed && session.agencyDate) {
+        // Complete if date is set OR date was intentionally skipped
+        completed = !!session.agencyDate || !!session.agencyDateSkipped;
+        if (session.agencyDateSkipped) {
+          value = "❌ No Date Given";
+        } else if (session.agencyDate) {
           const date = new Date(session.agencyDate);
           const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -632,6 +635,12 @@ case "target_location": {
         }
         keyboard.push(row);
       }
+      
+      // Add "No Date Given" option for when agency hasn't provided a date
+      keyboard.push([{
+        text: "❌ No Date Given",
+        callback_data: `select_${botMessageId}_agency_date_no_date`
+      }]);
       break;
     }
 
@@ -1226,8 +1235,15 @@ export async function POST(req: NextRequest) {
           }
 
           case "agency_date": {
-            // Value is an ISO date string
-            session.agencyDate = new Date(value);
+            // Value is an ISO date string OR "no_date"
+            if (value === "no_date") {
+              // Mark as "no date provided" - we use a special marker
+              session.agencyDate = null;
+              session.agencyDateSkipped = true; // Mark that date was intentionally skipped
+            } else {
+              session.agencyDate = new Date(value);
+              session.agencyDateSkipped = false;
+            }
             await session.save();
             break;
           }
@@ -1299,12 +1315,14 @@ export async function POST(req: NextRequest) {
             // Clear agency name and dependent fields
             session.agencyName = null;
             session.agencyDate = null;
+            session.agencyDateSkipped = false;
             session.agencyTimeSlot = null;
             break;
 
           case "agency_date":
             // Clear date and time slot fields
             session.agencyDate = null;
+            session.agencyDateSkipped = false;
             session.agencyTimeSlot = null;
             break;
           case "agency_time_slot":
@@ -1487,8 +1505,8 @@ if (incomingText.toLowerCase().startsWith("/info ")) {
 }
 
 // ========== REOPEN TICKET COMMAND HANDLING ==========
-// Supports: "open T-123" or "/open T-123" or "reopen T-123"
-const reopenMatch = incomingText.match(/^(?:open|reopen|\/open|\/reopen)\s*(t-?\d+)?/i);
+// Supports: "open T-123" or "/open T-123" or "reopen T-123" or "/edit T-123"
+const reopenMatch = incomingText.match(/^(?:open|reopen|edit|\/open|\/reopen|\/edit)\s*(t-?\d+)?/i);
 if (reopenMatch && !msg.reply_to_message) {
   // Extract ticket number from message
   const ticketMatch = incomingText.match(/T-?(\d+)/i);
