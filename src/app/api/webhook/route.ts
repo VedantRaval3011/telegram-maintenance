@@ -144,7 +144,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency_confirm" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -236,23 +236,14 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
         });
       }
 
-      // Agency - First ask Yes/No, then show agency list if Yes
+      // Agency - Directly show agency list
       if (rule.requiresAgency) {
-        // Step 1: Ask if agency is required (Yes/No)
-        fields.push({
-          key: "agency_confirm",
-          label: "🧾 Agency Required?",
-          type: "agency_confirm",
-          required: true,
-          completed: false,
-        });
-
-        // Step 2: Show agency list only if user selected "Yes"
+        // Show agency list directly (removed Yes/No confirmation step)
         fields.push({
           key: "agency",
           label: "👷 Select Agency",
           type: "agency",
-          required: false, // Will be required dynamically when agency_confirm is "yes"
+          required: true,
           completed: false,
         });
 
@@ -310,9 +301,6 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
  * Mark fields as completed based on session data
  */
 function updateFieldCompletion(fields: WizardField[], session: any): WizardField[] {
-  // Check if agency was selected (not "No Agency")
-  const agencySelected = session.agencyRequired === true && session.agencyName;
-  
   return fields.map(field => {
     let completed = false;
     let value: any = undefined;
@@ -351,28 +339,22 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         value = deduplicateLocationPath(session.targetLocationPath).map((n: any) => n.name).join(" → ") || "Selected";
         break;
       
-      case "agency_confirm":
-        // Yes/No confirmation for agency
-        completed = session.agencyRequired === true || session.agencyRequired === false;
-        value = session.agencyRequired === true ? "✅ Yes" : session.agencyRequired === false ? "❌ No" : undefined;
-        break;
       
       case "agency":
-        // Only required if agency_confirm is "yes"
-        required = session.agencyRequired === true;
-        completed = session.agencyRequired === true ? !!session.agencyName : true;
-        value = session.agencyName || (session.agencyRequired === false ? "Skipped" : undefined);
+        // Agency is required when this field is present
+        completed = !!session.agencyName;
+        value = session.agencyName || undefined;
         break;
       
       case "agency_time_slot":
         // Only required if an agency was selected
-        required = agencySelected;
+        required = !!session.agencyName;
         completed = !!session.agencyTimeSlot;
         value = session.agencyTimeSlot === "first_half" ? "🌅 First Half" : session.agencyTimeSlot === "second_half" ? "🌆 Second Half" : undefined;
         break;
       
       case "agency_month":
-        required = agencySelected;
+        required = !!session.agencyName;
         completed = session.agencyMonth !== null && session.agencyMonth !== undefined;
         if (completed) {
           const monthNames = ["January", "February", "March", "April", "May", "June", 
@@ -383,7 +365,7 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
       
       case "agency_date":
         // Only required if agency was selected AND month was selected
-        required = agencySelected && session.agencyMonth !== null;
+        required = !!session.agencyName && session.agencyMonth !== null;
         completed = !!session.agencyDate;
         if (completed && session.agencyDate) {
           const date = new Date(session.agencyDate);
@@ -531,14 +513,6 @@ case "target_location": {
   break;
 }
 
-    case "agency_confirm": {
-      // Yes/No confirmation for agency
-      keyboard.push([
-        { text: "✅ Yes", callback_data: `select_${botMessageId}_agency_confirm_yes` },
-        { text: "❌ No", callback_data: `select_${botMessageId}_agency_confirm_no` },
-      ]);
-      break;
-    }
 
     case "agency": {
       // ✅ Fetch agencies linked to the selected subcategory OR category (fallback)
@@ -1238,26 +1212,12 @@ export async function POST(req: NextRequest) {
             break;
           }
 
-          case "agency_confirm": {
-            if (value === "yes") {
-              session.agencyRequired = true;
-              // Don't set agencyName yet - user will select from list
-            } else {
-              session.agencyRequired = false;
-              session.agencyName = null;
-              session.agencyMonth = null;
-              session.agencyYear = null;
-              session.agencyDate = null;
-              session.agencyTimeSlot = null;
-            }
-            await session.save();
-            break;
-          }
 
           case "agency": {
             // Lookup agency by ID from AgencyMaster
             const agency = await Agency.findById(value).lean();
             session.agencyName = agency?.name || value;
+            session.agencyRequired = true; // Mark agency as required when selected
             await session.save();
             break;
           }
@@ -1348,15 +1308,7 @@ export async function POST(req: NextRequest) {
           case "target_location":
             session.targetLocationComplete = false;
             break;
-          case "agency_confirm":
-            // Clear agency confirmation and all dependent fields
-            session.agencyRequired = null;
-            session.agencyName = null;
-            session.agencyMonth = null;
-            session.agencyYear = null;
-            session.agencyDate = null;
-            session.agencyTimeSlot = null;
-            break;
+
           case "agency":
             // Clear agency name only (keep agencyRequired as true)
             session.agencyName = null;
