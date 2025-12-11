@@ -1,5 +1,7 @@
 "use client";
 
+// Last updated: 2025-12-10 16:24 - Added sorting, highlighting, and Others option
+
 import { useState, useEffect, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import {
@@ -49,6 +51,7 @@ export default function AgenciesPage() {
     const [allSubCategories, setAllSubCategories] = useState<ISubCategory[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
+    const [subCategorySearchTerm, setSubCategorySearchTerm] = useState(""); // Search for subcategories in modal
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -645,7 +648,7 @@ export default function AgenciesPage() {
                                     <FolderTree className="w-6 h-6 text-yellow-400" />
                                     <div>
                                         <h2 className="text-lg font-bold text-white">
-                                            Select SubCategories
+                                            {formData.name || editingAgency?.name || "Agency"} - Subcategory
                                         </h2>
                                         <p className="text-gray-400 text-xs">
                                             Click on subcategories to select/deselect
@@ -660,6 +663,28 @@ export default function AgenciesPage() {
                                 </button>
                             </div>
 
+                            {/* Search Input */}
+                            <div className="p-4 border-b border-gray-200 bg-white">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search by category or subcategory name..."
+                                        value={subCategorySearchTerm}
+                                        onChange={(e) => setSubCategorySearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-500"
+                                    />
+                                    {subCategorySearchTerm && (
+                                        <button
+                                            onClick={() => setSubCategorySearchTerm("")}
+                                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Folder Tree Content */}
                             <div className="p-4 overflow-y-auto flex-1 bg-gray-50">
                                 {categoryTree.length === 0 ? (
@@ -670,6 +695,22 @@ export default function AgenciesPage() {
                                 ) : (
                                     <div className="space-y-1 font-mono text-sm">
                                         {categoryTree.map((cat, catIndex) => {
+                                            // Simple filter: show category if it matches search OR has matching subcategories
+                                            const categoryMatches = cat.displayName.toLowerCase().includes(subCategorySearchTerm.toLowerCase());
+                                            const matchingSubCategories = cat.subCategories.filter(sub =>
+                                                sub.name.toLowerCase().includes(subCategorySearchTerm.toLowerCase())
+                                            );
+                                            
+                                            // Hide category if search is active and neither category nor subcategories match
+                                            if (subCategorySearchTerm && !categoryMatches && matchingSubCategories.length === 0) {
+                                                return null;
+                                            }
+                                            
+                                            // Determine which subcategories to show
+                                            const subsToShow = subCategorySearchTerm && !categoryMatches 
+                                                ? matchingSubCategories  // If searching and category doesn't match, show only matching subs
+                                                : cat.subCategories;      // Otherwise show all subs
+                                            
                                             const selectedCount = cat.subCategories.filter(s => formData.subCategories.includes(s._id)).length;
                                             const isCategoryDirectlySelected = formData.categories.includes(cat._id);
                                             const isLast = catIndex === categoryTree.length - 1;
@@ -750,11 +791,11 @@ export default function AgenciesPage() {
                                                     </div>
 
                                                     {/* SubCategories as items inside folder */}
-                                                    {cat.subCategories.length > 0 && (
+                                                    {subsToShow.length > 0 && (
                                                         <div className="ml-6">
-                                                            {cat.subCategories.map((sub, subIndex) => {
+                                                            {subsToShow.map((sub: any, subIndex: number) => {
                                                                 const isSelected = formData.subCategories.includes(sub._id);
-                                                                const isSubLast = subIndex === cat.subCategories.length - 1;
+                                                                const isSubLast = subIndex === subsToShow.length - 1;
 
                                                                 return (
                                                                     <button
@@ -763,9 +804,11 @@ export default function AgenciesPage() {
                                                                         onClick={() => toggleSubCategorySelection(sub._id)}
                                                                         className={`
                                                                             w-full flex items-center gap-2 py-2 px-3 rounded-lg transition-all text-left
-                                                                            ${isSelected
-                                                                                ? 'bg-indigo-100 hover:bg-indigo-200'
-                                                                                : 'hover:bg-gray-100'
+                                                                            ${subCategorySearchTerm
+                                                                                ? 'bg-yellow-100 border-2 border-yellow-400 hover:bg-yellow-200'
+                                                                                : isSelected
+                                                                                    ? 'bg-indigo-100 hover:bg-indigo-200'
+                                                                                    : 'hover:bg-gray-100'
                                                                             }
                                                                         `}
                                                                     >
@@ -796,9 +839,60 @@ export default function AgenciesPage() {
                                                                         >
                                                                             {sub.name}
                                                                         </span>
-                                                                    </button>
+                                                                </button>
                                                                 );
                                                             })}
+                                                            
+                                                            {/* "Others" option for this category */}
+                                                            <div className="mt-1 pt-1 border-t border-gray-200">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        // Create a virtual "Others" ID for this category
+                                                                        const othersId = `others_${cat._id}`;
+                                                                        setFormData(prev => {
+                                                                            const isSelected = prev.categories.includes(othersId);
+                                                                            return {
+                                                                                ...prev,
+                                                                                categories: isSelected
+                                                                                    ? prev.categories.filter(id => id !== othersId)
+                                                                                    : [...prev.categories, othersId]
+                                                                            };
+                                                                        });
+                                                                    }}
+                                                                    className={`
+                                                                        w-full flex items-center gap-2 py-2 px-3 rounded-lg transition-all text-left
+                                                                        ${formData.categories.includes(`others_${cat._id}`)
+                                                                            ? 'bg-gray-200 hover:bg-gray-300'
+                                                                            : 'hover:bg-gray-100'
+                                                                        }
+                                                                    `}
+                                                                >
+                                                                    <span className="text-gray-300 w-4">└</span>
+                                                                    
+                                                                    {/* Checkbox */}
+                                                                    <div
+                                                                        className={`
+                                                                            w-4 h-4 rounded border-2 flex items-center justify-center transition-all flex-shrink-0
+                                                                            ${formData.categories.includes(`others_${cat._id}`)
+                                                                                ? 'border-gray-600 bg-gray-600'
+                                                                                : 'border-gray-400 bg-white'
+                                                                            }
+                                                                        `}
+                                                                    >
+                                                                        {formData.categories.includes(`others_${cat._id}`) && (
+                                                                            <svg className="w-3 h-3 text-white" viewBox="0 0 14 14" fill="none">
+                                                                                <path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                            </svg>
+                                                                        )}
+                                                                    </div>
+                                                                    
+                                                                    {/* "Others" label */}
+                                                                    <span className="font-medium text-gray-500 italic">
+                                                                        Others
+                                                                    </span>
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     )}
 

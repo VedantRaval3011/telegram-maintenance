@@ -16,13 +16,18 @@ export default function DashboardPage() {
   const { data: usersData } = useSWR("/api/masters/users?limit=100", fetcher);
   const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
   const { data: subCategoriesData } = useSWR("/api/masters/subcategories?limit=100", fetcher);
+  const { data: agenciesData } = useSWR("/api/masters/agencies?limit=100", fetcher);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false); // Track if showing completed view
   const [showUpArrow, setShowUpArrow] = useState(false); // Track if up arrow should be shown
+  const [subCategorySearch, setSubCategorySearch] = useState(""); // Search term for subcategories
+  const [agencySearch, setAgencySearch] = useState(""); // Search term for agencies
+  const [showSubCategoryModal, setShowSubCategoryModal] = useState(false); // Show subcategory selection modal
   const scrollPosition = useRef<number>(0); // Store scroll position before jumping
   const clickedElementRef = useRef<HTMLElement | null>(null); // Store reference to clicked category element
   const ticketListRef = useRef<HTMLDivElement>(null); // Ref for ticket list section
+  const [showUserCapsules, setShowUserCapsules] = useState(true); // Toggle user capsules visibility
 
 
   const [filters, setFiltersState] = useState({
@@ -132,6 +137,7 @@ export default function DashboardPage() {
   const users = usersData?.data || [];
   const categories = categoriesData?.data || [];
   const subCategories = subCategoriesData?.data || [];
+  const agencies = agenciesData?.data || [];
 
   // Helper to calculate stats
   const calculateStats = useCallback((subset: any[]) => {
@@ -556,48 +562,72 @@ export default function DashboardPage() {
               <h2 className="text-lg font-semibold text-gray-900">
                 Subcategories for {categories.find((c: any) => c._id === selectedCategory)?.displayName}
               </h2>
-              <button
-                onClick={() => setSelectedCategory(null)}
-                className="text-sm text-gray-600 hover:text-gray-900 underline font-medium"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowSubCategoryModal(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Select SubCategories
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    setSubCategorySearch(""); // Clear search when closing
+                  }}
+                  className="text-sm text-gray-600 hover:text-gray-900 underline font-medium"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
-            {stats.subCategoryStats.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stats.subCategoryStats.map((sub: any) => (
-                  <div key={sub.id} id={`subcategory-${sub.id}`}>
-                    <Capsule
-                      title={sub.name}
-                      {...sub.stats}
-                      onClick={() => {
-                        // Save reference to clicked subcategory element
-                        const subDiv = document.getElementById(`subcategory-${sub.id}`);
-                        if (subDiv) {
-                          clickedElementRef.current = subDiv;
-                        }
-                        
-                        // Filter by this subcategory and scroll to ticket list
-                        const cat = categories.find((c: any) => c._id === selectedCategory);
-                        setFilters({
-                          category: cat ? cat.name : "",
-                          subCategory: sub.name
-                        });
-                        scrollToTicketList();
-                      }}
-                      className={filters.subCategory === sub.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-                      onPriorityClick={(p) => setFilters({ priority: p })}
-                      selectedPriority={filters.priority}
-                      color={categories.find((c: any) => c._id === selectedCategory)?.color || "#6b7280"}
-                      onScrollBack={scrollBackToTop}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-gray-500 italic px-4">No tickets found for subcategories in this category.</div>
-            )}
+            {(() => {
+              // Filter subcategories: by search term AND exclude those with 0 total tickets
+              const filteredSubCategories = stats.subCategoryStats.filter((sub: any) =>
+                sub.name.toLowerCase().includes(subCategorySearch.toLowerCase()) &&
+                (sub.stats.total > 0) // Only show subcategories with at least 1 ticket
+              );
+
+              return filteredSubCategories.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredSubCategories.map((sub: any) => (
+                    <div key={sub.id} id={`subcategory-${sub.id}`}>
+                      <Capsule
+                        title={sub.name}
+                        {...sub.stats}
+                        onClick={() => {
+                          // Save reference to clicked subcategory element
+                          const subDiv = document.getElementById(`subcategory-${sub.id}`);
+                          if (subDiv) {
+                            clickedElementRef.current = subDiv;
+                          }
+                          
+                          // Filter by this subcategory and scroll to ticket list
+                          const cat = categories.find((c: any) => c._id === selectedCategory);
+                          setFilters({
+                            category: cat ? cat.name : "",
+                            subCategory: sub.name
+                          });
+                          scrollToTicketList();
+                        }}
+                        className={filters.subCategory === sub.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
+                        onPriorityClick={(p) => setFilters({ priority: p })}
+                        selectedPriority={filters.priority}
+                        color={categories.find((c: any) => c._id === selectedCategory)?.color || "#6b7280"}
+                        onScrollBack={scrollBackToTop}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-gray-500 italic px-4">
+                  {subCategorySearch ? `No subcategories found matching "${subCategorySearch}"` : "No tickets found for subcategories in this category."}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -674,8 +704,28 @@ export default function DashboardPage() {
                   </button>
                 </div>
               </div>
-              <div className="text-sm text-gray-600 font-medium">
-                Showing <span className="text-gray-900 font-bold">{fullyFiltered.length}</span> ticket{fullyFiltered.length !== 1 ? 's' : ''}
+              <div className="flex items-center gap-3">
+                {/* Toggle User Capsules Button */}
+                <button
+                  onClick={() => setShowUserCapsules(!showUserCapsules)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${
+                    showUserCapsules
+                      ? "bg-blue-500 text-white border-blue-500 shadow-md"
+                      : "bg-gray-100 text-gray-600 border-gray-300 hover:border-gray-400"
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {showUserCapsules ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    )}
+                  </svg>
+                  {showUserCapsules ? "Hide Users" : "Show Users"}
+                </button>
+                <div className="text-sm text-gray-600 font-medium">
+                  Showing <span className="text-gray-900 font-bold">{fullyFiltered.length}</span> ticket{fullyFiltered.length !== 1 ? 's' : ''}
+                </div>
               </div>
             </div>
           </div>
@@ -701,6 +751,201 @@ export default function DashboardPage() {
           <div className="mt-6 text-center text-gray-500">No tickets match the current filters.</div>
         )}
       </div>
+
+      {/* Subcategory Selection Modal */}
+      {showSubCategoryModal && selectedCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowSubCategoryModal(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative max-w-2xl w-full rounded-2xl shadow-2xl bg-gradient-to-br from-gray-800 to-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-white">Select SubCategories</h2>
+                    {(() => {
+                      // Find the selected subcategory and its associated agency
+                      if (filters.subCategory) {
+                        const selectedSub = subCategories.find((s: any) => s.name === filters.subCategory);
+                        if (selectedSub && selectedSub.agencies && selectedSub.agencies.length > 0) {
+                          const agency = agencies.find((a: any) => selectedSub.agencies.includes(a._id));
+                          if (agency) {
+                            return (
+                              <span className="px-3 py-1 bg-yellow-600 text-white text-sm font-medium rounded-lg">
+                                {agency.name}
+                              </span>
+                            );
+                          }
+                        }
+                      }
+                      return null;
+                    })()}
+                  </div>
+                  <p className="text-sm text-gray-400">Click on subcategories to select/deselect</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSubCategoryModal(false)}
+                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <svg className="w-6 h-6 text-gray-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="p-6 pb-2">
+              <div className="relative mb-3">
+                <input
+                  type="text"
+                  placeholder="Search subcategories..."
+                  value={subCategorySearch}
+                  onChange={(e) => setSubCategorySearch(e.target.value)}
+                  className="w-full px-4 py-3 pl-10 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder-gray-400"
+                />
+                <svg
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              
+              {/* Agency Search Filter */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search by agency (Open Chart)..."
+                  value={agencySearch}
+                  onChange={(e) => setAgencySearch(e.target.value)}
+                  className="w-full px-4 py-3 pl-10 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all placeholder-gray-400"
+                />
+                <svg
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-yellow-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Subcategory List */}
+            <div className="px-6 pb-4 max-h-96 overflow-y-auto">
+              {(() => {
+                // Filter by subcategory name and agency name
+                const filteredSubs = stats.subCategoryStats.filter((sub: any) => {
+                  const matchesSubName = sub.name.toLowerCase().includes(subCategorySearch.toLowerCase());
+                  
+                  // Check if agency search is active
+                  if (agencySearch) {
+                    const subData = subCategories.find((s: any) => s.name === sub.name);
+                    if (subData && subData.agencies && subData.agencies.length > 0) {
+                      const hasMatchingAgency = subData.agencies.some((agencyId: string) => {
+                        const agency = agencies.find((a: any) => a._id === agencyId);
+                        return agency && agency.name.toLowerCase().includes(agencySearch.toLowerCase());
+                      });
+                      return matchesSubName && hasMatchingAgency;
+                    }
+                    return false; // If agency search is active but sub has no agencies, exclude it
+                  }
+                  
+                  return matchesSubName;
+                });
+
+                return filteredSubs.length > 0 ? (
+                  <div className="space-y-2">
+                    {/* Category Header */}
+                    <div className="flex items-center gap-2 py-2">
+                      <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                      </svg>
+                      <span className="font-semibold text-white">
+                        {categories.find((c: any) => c._id === selectedCategory)?.displayName}
+                      </span>
+                    </div>
+
+                    {/* Subcategory Items */}
+                    {filteredSubs.map((sub: any) => (
+                      <button
+                        key={sub.id}
+                        onClick={() => {
+                          const cat = categories.find((c: any) => c._id === selectedCategory);
+                          setFilters({
+                            category: cat ? cat.name : "",
+                            subCategory: filters.subCategory === sub.name ? "" : sub.name
+                          });
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-700 rounded-lg transition-colors group"
+                      >
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                          filters.subCategory === sub.name
+                            ? 'bg-blue-600 border-blue-600'
+                            : 'border-gray-500 group-hover:border-gray-400'
+                        }`}>
+                          {filters.subCategory === sub.name && (
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-gray-300 group-hover:text-white transition-colors flex-1 text-left">
+                          {sub.name}
+                        </span>
+                        <span className="text-xs text-gray-500">({sub.stats.total})</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    No subcategories found matching "{subCategorySearch}"
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-6 border-t border-gray-700">
+              <span className="text-sm text-gray-400">
+                {filters.subCategory ? '1 item selected' : '0 items selected'}
+              </span>
+              <div className="flex items-center gap-3">
+                {filters.subCategory && (
+                  <button
+                    onClick={() => setFilters({ subCategory: "" })}
+                    className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                  >
+                    Clear All
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowSubCategoryModal(false);
+                    if (filters.subCategory) {
+                      scrollToTicketList();
+                    }
+                  }}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all shadow-lg"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
