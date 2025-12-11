@@ -1652,7 +1652,7 @@ if (msg.reply_to_message) {
   const lowerText = incomingText.toLowerCase();
   
   // Check for reopen command in reply
-  const reopenKeywords = ["/open", "open", "/reopen", "reopen"];
+  const reopenKeywords = ["/open", "open", "/reopen", "reopen", "/edit", "edit"];
   if (reopenKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
     // Find ticket by message ID
     const ticket = await Ticket.findOne({
