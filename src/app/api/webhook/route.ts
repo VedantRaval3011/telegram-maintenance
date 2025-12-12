@@ -20,6 +20,7 @@ import {
 } from "@/lib/telegram";
 import { uploadBufferToCloudinary } from "@/lib/uploadBufferToCloudinary";
 import { fastProcessTelegramPhoto, fastProcessTelegramVideo } from "@/lib/fastImageUpload";
+import { triggerTicketCreatedNotification } from "@/lib/notificationScheduler";
 
 /**
  * DYNAMIC WORKFLOW-CONTROLLED TELEGRAM WEBHOOK
@@ -144,7 +145,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency_confirm" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -157,7 +158,7 @@ interface WizardField {
 async function buildFieldsFromRule(categoryId: string | null): Promise<WizardField[]> {
   const fields: WizardField[] = [];
 
-  // Always include category and priority
+  // Always include category first
   fields.push({
     key: "category",
     label: "📂 Category",
@@ -166,13 +167,7 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
     completed: false,
   });
 
-  fields.push({
-    key: "priority",
-    label: "⚡ Priority",
-    type: "priority",
-    required: true,
-    completed: false,
-  });
+  // Priority will be added later, before agency
 
   // If category selected, load workflow rule
   if (categoryId) {
@@ -236,41 +231,41 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
         });
       }
 
-      // Agency - First ask Yes/No, then show agency list if Yes
-      if (rule.requiresAgency) {
-        // Step 1: Ask if agency is required (Yes/No)
-        fields.push({
-          key: "agency_confirm",
-          label: "🧾 Agency Required?",
-          type: "agency_confirm",
-          required: true,
-          completed: false,
-        });
+      // Priority (comes after locations, before agency)
+      fields.push({
+        key: "priority",
+        label: "⚡ Priority",
+        type: "priority",
+        required: true,
+        completed: false,
+      });
 
-        // Step 2: Show agency list only if user selected "Yes"
+      // Agency - Directly show agency list
+      if (rule.requiresAgency) {
+        // Show agency list directly (removed Yes/No confirmation step)
         fields.push({
           key: "agency",
           label: "👷 Select Agency",
           type: "agency",
-          required: false, // Will be required dynamically when agency_confirm is "yes"
+          required: true,
           completed: false,
         });
 
         // Date and Time picker - only add if requiresAgencyDate is true
         if (rule.requiresAgencyDate) {
-          // Month picker first
+          // Month picker (current month + next 3 months)
           fields.push({
             key: "agency_month",
-            label: "📆 Agency Month",
+            label: "📆 Select Month",
             type: "agency_month",
             required: false, // Will be required dynamically when agency is selected
             completed: false,
           });
 
-          // Day picker (1-31 based on selected month)
+          // Day picker (uses selected month)
           fields.push({
             key: "agency_date",
-            label: "📅 Agency Day",
+            label: "📅 Agency Date",
             type: "agency_date",
             required: false, // Will be required dynamically when agency is selected
             completed: false,
@@ -300,7 +295,25 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
           });
         }
       }
+    } else {
+      // No rule found - add priority as fallback
+      fields.push({
+        key: "priority",
+        label: "⚡ Priority",
+        type: "priority",
+        required: true,
+        completed: false,
+      });
     }
+  } else {
+    // No category selected yet - add priority for initial display
+    fields.push({
+      key: "priority",
+      label: "⚡ Priority",
+      type: "priority",
+      required: true,
+      completed: false,
+    });
   }
 
   return fields;
@@ -310,9 +323,6 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
  * Mark fields as completed based on session data
  */
 function updateFieldCompletion(fields: WizardField[], session: any): WizardField[] {
-  // Check if agency was selected (not "No Agency")
-  const agencySelected = session.agencyRequired === true && session.agencyName;
-  
   return fields.map(field => {
     let completed = false;
     let value: any = undefined;
@@ -351,43 +361,44 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         value = deduplicateLocationPath(session.targetLocationPath).map((n: any) => n.name).join(" → ") || "Selected";
         break;
       
-      case "agency_confirm":
-        // Yes/No confirmation for agency
-        completed = session.agencyRequired === true || session.agencyRequired === false;
-        value = session.agencyRequired === true ? "✅ Yes" : session.agencyRequired === false ? "❌ No" : undefined;
-        break;
       
       case "agency":
-        // Only required if agency_confirm is "yes"
-        required = session.agencyRequired === true;
-        completed = session.agencyRequired === true ? !!session.agencyName : true;
-        value = session.agencyName || (session.agencyRequired === false ? "Skipped" : undefined);
+        // Agency is required when this field is present
+        completed = !!session.agencyName;
+        value = session.agencyName || undefined;
         break;
       
       case "agency_time_slot":
         // Only required if an agency was selected
-        required = agencySelected;
+        required = !!session.agencyName;
         completed = !!session.agencyTimeSlot;
         value = session.agencyTimeSlot === "first_half" ? "🌅 First Half" : session.agencyTimeSlot === "second_half" ? "🌆 Second Half" : undefined;
         break;
       
+      
       case "agency_month":
-        required = agencySelected;
+        // Only required if an agency was selected
+        required = !!session.agencyName;
         completed = session.agencyMonth !== null && session.agencyMonth !== undefined;
         if (completed) {
-          const monthNames = ["January", "February", "March", "April", "May", "June", 
-                              "July", "August", "September", "October", "November", "December"];
-          value = monthNames[session.agencyMonth] || `Month ${session.agencyMonth + 1}`;
+          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          value = `${monthNames[session.agencyMonth]} ${session.agencyYear}`;
         }
         break;
       
       case "agency_date":
-        // Only required if agency was selected AND month was selected
-        required = agencySelected && session.agencyMonth !== null;
-        completed = !!session.agencyDate;
-        if (completed && session.agencyDate) {
+        // Required if agency was selected AND month was selected
+        required = !!session.agencyName && session.agencyMonth !== null;
+        // Complete if date is set OR date was intentionally skipped
+        completed = !!session.agencyDate || !!session.agencyDateSkipped;
+        if (session.agencyDateSkipped) {
+          value = "❌ No Date Given";
+        } else if (session.agencyDate) {
           const date = new Date(session.agencyDate);
-          value = `Day ${date.getDate()}`;
+          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          value = `${monthNames[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
         }
         break;
       
@@ -467,11 +478,20 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
           `subcategories:${session.category}`,
           () => SubCategory.find({ categoryId: session.category, isActive: true }).sort({ name: 1 }).lean()
         );
-        for (const sub of subcats) {
-          keyboard.push([{
-            text: sub.name,
-            callback_data: `select_${botMessageId}_subcategory_${sub._id}`
-          }]);
+        // 2-column layout
+        for (let i = 0; i < subcats.length; i += 2) {
+          const row: any[] = [];
+          row.push({
+            text: subcats[i].name,
+            callback_data: `select_${botMessageId}_subcategory_${subcats[i]._id}`
+          });
+          if (i + 1 < subcats.length) {
+            row.push({
+              text: subcats[i + 1].name,
+              callback_data: `select_${botMessageId}_subcategory_${subcats[i + 1]._id}`
+            });
+          }
+          keyboard.push(row);
         }
       }
       break;
@@ -514,11 +534,20 @@ case "target_location": {
     }).sort({ name: 1 }).lean()
   );
 
-  for (const loc of locations) {
-    keyboard.push([{
-      text: loc.name,
-      callback_data: `select_${botMessageId}_${field.type}_${loc._id}`
-    }]);
+  // 2-column layout for locations
+  for (let i = 0; i < locations.length; i += 2) {
+    const row: any[] = [];
+    row.push({
+      text: locations[i].name,
+      callback_data: `select_${botMessageId}_${field.type}_${locations[i]._id}`
+    });
+    if (i + 1 < locations.length) {
+      row.push({
+        text: locations[i + 1].name,
+        callback_data: `select_${botMessageId}_${field.type}_${locations[i + 1]._id}`
+      });
+    }
+    keyboard.push(row);
   }
 
   // Back button if we're not at root
@@ -531,14 +560,6 @@ case "target_location": {
   break;
 }
 
-    case "agency_confirm": {
-      // Yes/No confirmation for agency
-      keyboard.push([
-        { text: "✅ Yes", callback_data: `select_${botMessageId}_agency_confirm_yes` },
-        { text: "❌ No", callback_data: `select_${botMessageId}_agency_confirm_no` },
-      ]);
-      break;
-    }
 
     case "agency": {
       // ✅ Fetch agencies linked to the selected subcategory OR category (fallback)
@@ -578,11 +599,20 @@ case "target_location": {
         );
       }
       
-      for (const agency of agencies) {
-        keyboard.push([{
-          text: `👷 ${agency.name}`,
-          callback_data: `select_${botMessageId}_agency_${agency._id}`
-        }]);
+      // 2-column layout for agencies
+      for (let i = 0; i < agencies.length; i += 2) {
+        const row: any[] = [];
+        row.push({
+          text: `👷 ${agencies[i].name}`,
+          callback_data: `select_${botMessageId}_agency_${agencies[i]._id}`
+        });
+        if (i + 1 < agencies.length) {
+          row.push({
+            text: `👷 ${agencies[i + 1].name}`,
+            callback_data: `select_${botMessageId}_agency_${agencies[i + 1]._id}`
+          });
+        }
+        keyboard.push(row);
       }
       break;
     }
@@ -597,60 +627,58 @@ case "target_location": {
     }
 
     case "agency_month": {
-      // Month picker - show current month and next 3 months
+      // Month picker - current month + next 3 months
       const currentDate = new Date();
-      const currentMonth = currentDate.getMonth();
-      const currentYear = currentDate.getFullYear();
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       
-      // Show current month and next 3 months (4 months total)
-      const monthOptions: { text: string; monthValue: number; year: number }[] = [];
+      // Create 4 month buttons (current + next 3)
+      const monthButtons: any[] = [];
       for (let i = 0; i < 4; i++) {
-        const monthIndex = (currentMonth + i) % 12;
-        const year = currentYear + Math.floor((currentMonth + i) / 12);
-        monthOptions.push({
-          text: `📆 ${monthNames[monthIndex]} ${year}`,
-          monthValue: monthIndex,
-          year: year
+        const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + i, 1);
+        const month = targetDate.getMonth();
+        const year = targetDate.getFullYear();
+        
+        monthButtons.push({
+          text: `📆 ${monthNames[month]} ${year}`,
+          callback_data: `select_${botMessageId}_agency_month_${month}_${year}`
         });
       }
       
-      // 2 columns
-      for (let i = 0; i < monthOptions.length; i += 2) {
-        const row: any[] = [];
-        const opt1 = monthOptions[i];
-        row.push({
-          text: opt1.text,
-          callback_data: `select_${botMessageId}_agency_month_${opt1.monthValue}_${opt1.year}`
-        });
-        
-        if (i + 1 < monthOptions.length) {
-          const opt2 = monthOptions[i + 1];
-          row.push({
-            text: opt2.text,
-            callback_data: `select_${botMessageId}_agency_month_${opt2.monthValue}_${opt2.year}`
-          });
-        }
-        keyboard.push(row);
-      }
+      // Arrange in 2x2 grid
+      keyboard.push([monthButtons[0], monthButtons[1]]);
+      keyboard.push([monthButtons[2], monthButtons[3]]);
       break;
     }
 
     case "agency_date": {
-      // Day picker - show days 1-31 based on selected month
-      const selectedMonth = session.agencyMonth ?? new Date().getMonth();
-      const selectedYear = session.agencyYear ?? new Date().getFullYear();
+      // Day picker - use selected month from session
+      const selectedMonth = session.agencyMonth;
+      const selectedYear = session.agencyYear;
+      
+      // Fallback to current month if not set (shouldn't happen)
+      const now = new Date();
+      const month = selectedMonth !== null && selectedMonth !== undefined ? selectedMonth : now.getMonth();
+      const year = selectedYear !== null && selectedYear !== undefined ? selectedYear : now.getFullYear();
+      
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       
       // Get the number of days in the selected month
-      const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      
+      // Add a header row showing selected month
+      keyboard.push([{
+        text: `📅 ${monthNames[month]} ${year}`,
+        callback_data: `noop_${botMessageId}` // Non-interactive header
+      }]);
       
       // Create day buttons (7 columns)
       for (let day = 1; day <= daysInMonth; day += 7) {
         const row: any[] = [];
         for (let d = day; d < day + 7 && d <= daysInMonth; d++) {
           // Create the full date string
-          const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
           row.push({
             text: `${d}`,
             callback_data: `select_${botMessageId}_agency_date_${dateStr}`
@@ -658,6 +686,12 @@ case "target_location": {
         }
         keyboard.push(row);
       }
+      
+      // Add "No Date Given" option for when agency hasn't provided a date
+      keyboard.push([{
+        text: "❌ No Date Given",
+        callback_data: `select_${botMessageId}_agency_date_no_date`
+      }]);
       break;
     }
 
@@ -700,8 +734,10 @@ case "target_location": {
  * Format the complete wizard message
  */
 async function formatWizardMessage(session: any, fields: WizardField[], currentField: WizardField | null): Promise<string> {
-  let message = "🛠 <b>Ticket Wizard</b>\n";
-  message += `📝 ${session.originalText || "New Ticket"}\n\n`;
+  // Show different header for edit mode
+  let message = session.editingTicketId 
+    ? `✏️ <b>Edit Ticket #${session.editingTicketId}</b>\n📝 Fill out all fields to update the ticket\n\n`
+    : `🛠 <b>Ticket Wizard</b>\n📝 ${session.originalText || "New Ticket"}\n\n`;
 
   // Completed fields section
 const completedFields = fields.filter(f =>
@@ -957,12 +993,12 @@ async function createTicketFromSession(session: any, createdBy: string) {
   const lastTicket = await Ticket.findOne().sort({ createdAt: -1 }).lean();
   let nextTicketNumber = 1;
   if (lastTicket && lastTicket.ticketId) {
-    const match = lastTicket.ticketId.match(/TCK-(\d+)/);
+    const match = lastTicket.ticketId.match(/T(\d+)/);
     if (match) {
       nextTicketNumber = parseInt(match[1]) + 1;
     }
   }
-  const nextTicketId = `TCK-${String(nextTicketNumber).padStart(3, '0')}`;
+  const nextTicketId = `T${nextTicketNumber}`;
 
   const ticketData: any = {
     ticketId: nextTicketId,
@@ -1006,6 +1042,15 @@ async function createTicketFromSession(session: any, createdBy: string) {
   }
 
   const ticket = await Ticket.create(ticketData);
+
+  // ✅ Trigger WhatsApp notification to users assigned to this sub-category
+  try {
+    await triggerTicketCreatedNotification(ticket);
+  } catch (notifyError) {
+    console.error("[Webhook] Failed to trigger notification:", notifyError);
+    // Don't fail ticket creation if notification fails
+  }
+
   return ticket;
 }
 
@@ -1158,6 +1203,276 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      // === TICKET EDIT CALLBACK HANDLING ===
+      if (action === "edit") {
+        const originalMsgId = parseInt(parts[1]);
+        const ticketId = parts[2];
+        const editField = parts[3];
+        const editValue = parts.slice(4).join("_");
+        
+        // Find the ticket
+        const ticket = await Ticket.findOne({ ticketId });
+        
+        if (!ticket) {
+          await editMessageText(chatId, messageId, "❌ Ticket not found.", []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "cancel") {
+          await editMessageText(chatId, messageId, "❌ Edit cancelled.", []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        // Handle field selection (show options for that field)
+        if (editField === "category" && !editValue) {
+          // Show category options
+          const categories = await getCached(
+            'categories:active',
+            () => Category.find({ isActive: true }).sort({ displayName: 1 }).lean()
+          );
+          
+          const keyboard: any[][] = [];
+          // 2-column layout
+          for (let i = 0; i < categories.length; i += 2) {
+            const row: any[] = [];
+            row.push({
+              text: categories[i].displayName,
+              callback_data: `edit_${originalMsgId}_${ticketId}_category_${categories[i]._id}`
+            });
+            if (i + 1 < categories.length) {
+              row.push({
+                text: categories[i + 1].displayName,
+                callback_data: `edit_${originalMsgId}_${ticketId}_category_${categories[i + 1]._id}`
+              });
+            }
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]);
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n📂 Select new category:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "category" && editValue) {
+          // Update category
+          const categoryDoc = await Category.findById(editValue).lean();
+          if (categoryDoc) {
+            ticket.category = categoryDoc.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `📂 Category changed to: ${categoryDoc.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "priority" && !editValue) {
+          // Show priority options
+          const keyboard = [
+            [
+              { text: "🔴 High", callback_data: `edit_${originalMsgId}_${ticketId}_priority_high` },
+              { text: "🟡 Medium", callback_data: `edit_${originalMsgId}_${ticketId}_priority_medium` },
+              { text: "🟢 Low", callback_data: `edit_${originalMsgId}_${ticketId}_priority_low` },
+            ],
+            [{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]
+          ];
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n⚡ Select new priority:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "priority" && editValue) {
+          // Update priority
+          ticket.priority = editValue as "low" | "medium" | "high";
+          await ticket.save();
+          
+          const priorityDisplay = editValue === "high" ? "🔴 High" : editValue === "medium" ? "🟡 Medium" : "🟢 Low";
+          const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                     `⚡ Priority changed to: ${priorityDisplay}`;
+          await editMessageText(chatId, messageId, msg, []);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "location" && !editValue) {
+          // Show root locations
+          const locations = await getCached(
+            'locations:root',
+            () => Location.find({ parentLocationId: null, isActive: true }).sort({ name: 1 }).lean()
+          );
+          
+          const keyboard: any[][] = [];
+          // 2-column layout
+          for (let i = 0; i < locations.length; i += 2) {
+            const row: any[] = [];
+            row.push({
+              text: locations[i].name,
+              callback_data: `edit_${originalMsgId}_${ticketId}_loc_${locations[i]._id}`
+            });
+            if (i + 1 < locations.length) {
+              row.push({
+                text: locations[i + 1].name,
+                callback_data: `edit_${originalMsgId}_${ticketId}_loc_${locations[i + 1]._id}`
+              });
+            }
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]);
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n📍 Select new location:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "loc" && editValue) {
+          // Check if location has children
+          const [location, childCount] = await Promise.all([
+            Location.findById(editValue).lean(),
+            Location.countDocuments({ parentLocationId: editValue, isActive: true })
+          ]);
+          
+          if (!location) {
+            return NextResponse.json({ ok: true });
+          }
+          
+          if (childCount > 0) {
+            // Show children
+            const children = await Location.find({ parentLocationId: editValue, isActive: true }).sort({ name: 1 }).lean();
+            
+            const keyboard: any[][] = [];
+            // 2-column layout
+            for (let i = 0; i < children.length; i += 2) {
+              const row: any[] = [];
+              row.push({
+                text: children[i].name,
+                callback_data: `edit_${originalMsgId}_${ticketId}_loc_${children[i]._id}`
+              });
+              if (i + 1 < children.length) {
+                row.push({
+                  text: children[i + 1].name,
+                  callback_data: `edit_${originalMsgId}_${ticketId}_loc_${children[i + 1]._id}`
+                });
+              }
+              keyboard.push(row);
+            }
+            // Add select this option and back button
+            keyboard.push([{ text: `✅ Select "${location.name}"`, callback_data: `edit_${originalMsgId}_${ticketId}_setloc_${editValue}` }]);
+            keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_location` }]);
+            
+            const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n📍 ${location.name} - Select sublocation or confirm:`;
+            await editMessageText(chatId, messageId, msg, keyboard);
+          } else {
+            // Leaf node - update location
+            ticket.location = location.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `📍 Location changed to: ${location.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "setloc" && editValue) {
+          // Force set location to this value (even if it has children)
+          const location = await Location.findById(editValue).lean();
+          if (location) {
+            ticket.location = location.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `📍 Location changed to: ${location.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "agency" && !editValue) {
+          // Show agency options
+          const agencies = await getCached(
+            'agencies:active',
+            () => Agency.find({ isActive: true }).sort({ name: 1 }).lean()
+          );
+          
+          const keyboard: any[][] = [];
+          // 2-column layout
+          for (let i = 0; i < agencies.length; i += 2) {
+            const row: any[] = [];
+            row.push({
+              text: `👷 ${agencies[i].name}`,
+              callback_data: `edit_${originalMsgId}_${ticketId}_agency_${agencies[i]._id}`
+            });
+            if (i + 1 < agencies.length) {
+              row.push({
+                text: `👷 ${agencies[i + 1].name}`,
+                callback_data: `edit_${originalMsgId}_${ticketId}_agency_${agencies[i + 1]._id}`
+              });
+            }
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]);
+          
+          const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n👷 Select new agency:`;
+          await editMessageText(chatId, messageId, msg, keyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "agency" && editValue) {
+          // Update agency
+          const agency = await Agency.findById(editValue).lean();
+          if (agency) {
+            ticket.agencyName = agency.name;
+            await ticket.save();
+            
+            const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                       `👷 Agency changed to: ${agency.name}`;
+            await editMessageText(chatId, messageId, msg, []);
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        if (editField === "back") {
+          // Go back to main edit menu
+          const categoryDoc = await Category.findOne({ name: ticket.category }).lean();
+          
+          const editMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n\n` +
+                         `📝 ${ticket.description}\n\n` +
+                         `Current values:\n` +
+                         `📂 Category: ${ticket.category || "—"}\n` +
+                         `⚡ Priority: ${ticket.priority || "—"}\n` +
+                         `📍 Location: ${ticket.location || "—"}\n` +
+                         (ticket.agencyName ? `👷 Agency: ${ticket.agencyName}\n` : "") +
+                         `\n👇 Select what to update:`;
+          
+          const editKeyboard: any[][] = [
+            [
+              { text: "📂 Category", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_category` },
+              { text: "⚡ Priority", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_priority` }
+            ],
+            [
+              { text: "📍 Location", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_location` }
+            ]
+          ];
+          
+          if (ticket.agencyName) {
+            editKeyboard.push([
+              { text: "👷 Agency", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_agency` }
+            ]);
+          }
+          
+          editKeyboard.push([
+            { text: "❌ Done", callback_data: `edit_${originalMsgId}_${ticket.ticketId}_cancel` }
+          ]);
+          
+          await editMessageText(chatId, messageId, editMsg, editKeyboard);
+          return NextResponse.json({ ok: true });
+        }
+        
+        return NextResponse.json({ ok: true });
+      }
+
       // ⚡ OPTIMIZATION: Use lean() for faster session query
       const session = await WizardSession.findOne({ botMessageId });
       if (!session) {
@@ -1238,26 +1553,24 @@ export async function POST(req: NextRequest) {
             break;
           }
 
-          case "agency_confirm": {
-            if (value === "yes") {
-              session.agencyRequired = true;
-              // Don't set agencyName yet - user will select from list
-            } else {
-              session.agencyRequired = false;
-              session.agencyName = null;
-              session.agencyMonth = null;
-              session.agencyYear = null;
-              session.agencyDate = null;
-              session.agencyTimeSlot = null;
-            }
-            await session.save();
-            break;
-          }
 
           case "agency": {
             // Lookup agency by ID from AgencyMaster
             const agency = await Agency.findById(value).lean();
             session.agencyName = agency?.name || value;
+            session.agencyRequired = true; // Mark agency as required when selected
+            await session.save();
+            break;
+          }
+
+          case "agency_month": {
+            // Value is "month_year" format like "0_2025" or just "0" if year follows
+            const [monthStr, yearStr] = value.split("_");
+            session.agencyMonth = parseInt(monthStr);
+            session.agencyYear = parseInt(yearStr);
+            // Clear date when month changes (user needs to re-select day)
+            session.agencyDate = null;
+            session.agencyDateSkipped = false;
             await session.save();
             break;
           }
@@ -1268,20 +1581,16 @@ export async function POST(req: NextRequest) {
             break;
           }
 
-          case "agency_month": {
-            // Value format: "0_2025" (month_year)
-            const [monthStr, yearStr] = value.split("_");
-            session.agencyMonth = parseInt(monthStr, 10);
-            session.agencyYear = parseInt(yearStr, 10);
-            // Clear the date since month changed
-            session.agencyDate = null;
-            await session.save();
-            break;
-          }
-
           case "agency_date": {
-            // Value is an ISO date string
-            session.agencyDate = new Date(value);
+            // Value is an ISO date string OR "no_date"
+            if (value === "no_date") {
+              // Mark as "no date provided" - we use a special marker
+              session.agencyDate = null;
+              session.agencyDateSkipped = true; // Mark that date was intentionally skipped
+            } else {
+              session.agencyDate = new Date(value);
+              session.agencyDateSkipped = false;
+            }
             await session.save();
             break;
           }
@@ -1328,9 +1637,29 @@ export async function POST(req: NextRequest) {
           case "category":
             session.category = null;
             session.categoryDisplay = null;
-            // Also clear dependent fields
+            // Clear ALL dependent fields when category changes
             session.subCategoryId = null;
             session.subCategoryDisplay = null;
+            session.priority = null;
+            // Clear location fields
+            session.locationPath = [];
+            session.locationComplete = false;
+            session.sourceLocationPath = [];
+            session.sourceLocationComplete = false;
+            session.targetLocationPath = [];
+            session.targetLocationComplete = false;
+            // Clear agency fields
+            session.agencyRequired = null;
+            session.agencyName = null;
+            session.agencyMonth = null;
+            session.agencyYear = null;
+            session.agencyDate = null;
+            session.agencyDateSkipped = false;
+            session.agencyTimeSlot = null;
+            // Clear add or repair choice
+            session.addOrRepairChoice = null;
+            // Clear additional fields
+            session.additionalFieldValues = {};
             break;
           case "priority":
             session.priority = null;
@@ -1348,33 +1677,30 @@ export async function POST(req: NextRequest) {
           case "target_location":
             session.targetLocationComplete = false;
             break;
-          case "agency_confirm":
-            // Clear agency confirmation and all dependent fields
-            session.agencyRequired = null;
-            session.agencyName = null;
-            session.agencyMonth = null;
-            session.agencyYear = null;
-            session.agencyDate = null;
-            session.agencyTimeSlot = null;
-            break;
+
           case "agency":
-            // Clear agency name only (keep agencyRequired as true)
+            // Clear agency name and all dependent fields
             session.agencyName = null;
             session.agencyMonth = null;
             session.agencyYear = null;
             session.agencyDate = null;
+            session.agencyDateSkipped = false;
             session.agencyTimeSlot = null;
             break;
+
           case "agency_month":
-            // Clear month and all dependent fields
+            // Clear month and dependent fields (date, time)
             session.agencyMonth = null;
             session.agencyYear = null;
             session.agencyDate = null;
+            session.agencyDateSkipped = false;
             session.agencyTimeSlot = null;
             break;
+
           case "agency_date":
             // Clear date and time slot fields
             session.agencyDate = null;
+            session.agencyDateSkipped = false;
             session.agencyTimeSlot = null;
             break;
           case "agency_time_slot":
@@ -1427,10 +1753,97 @@ export async function POST(req: NextRequest) {
         await WizardSession.deleteOne({ botMessageId });
 
         try {
-          // Create ticket using session data
-          const ticket = await createTicketFromSession(sessionData, createdBy);
+          let ticket: any;
+          let isEditing = false;
+          
+          // Check if we're editing an existing ticket
+          if (sessionData.editingTicketId) {
+            isEditing = true;
+            // Update existing ticket instead of creating new one
+            const category = await Category.findById(sessionData.category).lean();
+            const subcategory = sessionData.subCategoryId ? await SubCategory.findById(sessionData.subCategoryId).lean() : null;
 
-          let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
+            // Build location string
+            let locationStr = "Not specified";
+            const dedupedPath = deduplicateLocationPath(sessionData.locationPath);
+            if (dedupedPath.length > 0) {
+              locationStr = dedupedPath.map((n: any) => n.name).join(" → ");
+            }
+
+            const updateData: any = {
+              description: sessionData.originalText || "No description",
+              category: category?.name || "unknown",
+              subCategory: subcategory?.name,
+              priority: sessionData.priority || "medium",
+              location: locationStr,
+              photos: sessionData.photos || [],
+              videos: sessionData.videos || [],
+            };
+
+            // Add agency info if present
+            if (sessionData.agencyRequired) {
+              updateData.agencyName = sessionData.agencyName || null;
+              if (sessionData.agencyTimeSlot) {
+                updateData.agencyTime = sessionData.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
+              }
+              if (sessionData.agencyDate) {
+                updateData.agencyDate = sessionData.agencyDate;
+              }
+            }
+
+            // Add source/target locations if transfer
+            if (sessionData.sourceLocationPath) {
+              updateData.sourceLocation = deduplicateLocationPath(sessionData.sourceLocationPath).map((n: any) => n.name).join(" → ");
+            }
+            if (sessionData.targetLocationPath) {
+              updateData.targetLocation = deduplicateLocationPath(sessionData.targetLocationPath).map((n: any) => n.name).join(" → ");
+            }
+
+            // Add or Repair choice
+            if (sessionData.addOrRepairChoice) {
+              updateData.addOrRepairChoice = sessionData.addOrRepairChoice;
+            }
+
+            ticket = await Ticket.findOneAndUpdate(
+              { ticketId: sessionData.editingTicketId },
+              updateData,
+              { new: true }
+            );
+          } else {
+            // Check if category is "information" - save to Information model instead of creating ticket
+            const categoryDoc = await Category.findById(sessionData.category).lean();
+            const categoryName = categoryDoc?.name?.toLowerCase() || "";
+            
+            if (categoryName === "information") {
+              // Save to Information model instead of creating a ticket
+              const informationData = {
+                content: sessionData.originalText || "No content",
+                createdBy,
+                telegramMessageId: sessionData.originalMessageId,
+                telegramChatId: chatId,
+              };
+              
+              await Information.create(informationData);
+              
+              // Send confirmation message for information saved
+              let infoMsg = `ℹ️ <b>Information Saved</b>\n\n` +
+                           `📝 ${informationData.content}\n` +
+                           `👤 ${createdBy}`;
+              
+              // Reply to the original message
+              const replyToMessageId = sessionData.originalMessageId;
+              await telegramSendMessage(chatId, infoMsg, replyToMessageId);
+              await telegramDeleteMessage(chatId, botMessageId);
+              await answerCallbackQuery(callback.id, "Information saved!");
+              
+              return NextResponse.json({ ok: true });
+            }
+            
+            // Create new ticket (for non-information categories)
+            ticket = await createTicketFromSession(sessionData, createdBy);
+          }
+
+          let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} ${isEditing ? 'Updated' : 'Created'}</b>\n\n` +
                            `📝 ${ticket.description}\n` +
                            `📂 ${ticket.category}\n` +
                            `⚡ ${ticket.priority}\n`;
@@ -1467,21 +1880,27 @@ export async function POST(req: NextRequest) {
           
           ticketMsg += `👤 ${createdBy}`;
 
-          // ✅ CRITICAL: Reply to the original message (the image) so users know which image the ticket was created for
-          const replyToMessageId = sessionData.originalMessageId;
-          const sentMsg = await telegramSendMessage(chatId, ticketMsg, replyToMessageId);
-          
-          if (sentMsg.ok && sentMsg.result) {
-            await Ticket.findByIdAndUpdate(ticket._id, {
-              telegramMessageId: sentMsg.result.message_id,
-              telegramChatId: chatId
-            });
+          // For editing, just show the message - no need to reply to original message
+          if (isEditing) {
+            await editMessageText(chatId, botMessageId, ticketMsg, []);
+            await answerCallbackQuery(callback.id, "Ticket updated!");
+          } else {
+            // CRITICAL: Reply to the original message (the image) so users know which image the ticket was created for
+            const replyToMessageId = sessionData.originalMessageId;
+            const sentMsg = await telegramSendMessage(chatId, ticketMsg, replyToMessageId);
+            
+            if (sentMsg.ok && sentMsg.result) {
+              await Ticket.findByIdAndUpdate(ticket._id, {
+                telegramMessageId: sentMsg.result.message_id,
+                telegramChatId: chatId
+              });
+            }
+            await telegramDeleteMessage(chatId, botMessageId);
+            await answerCallbackQuery(callback.id, "Ticket created!");
           }
-          await telegramDeleteMessage(chatId, botMessageId);
-          await answerCallbackQuery(callback.id, "Ticket created!");
         } catch (err) {
-          console.error("Ticket creation error:", err);
-          await answerCallbackQuery(callback.id, "Error creating ticket", true);
+          console.error("Ticket creation/update error:", err);
+          await answerCallbackQuery(callback.id, "Error processing ticket", true);
         }
         
         return NextResponse.json({ ok: true });
@@ -1557,23 +1976,23 @@ if (incomingText.toLowerCase().startsWith("/info ")) {
 }
 
 // ========== REOPEN TICKET COMMAND HANDLING ==========
-// Supports: "open TCK-123" or "/open TCK-123" or "reopen TCK-123"
-const reopenMatch = incomingText.match(/^(?:open|reopen|\/open|\/reopen)\s*(tck-?\d+)?/i);
+// Supports: "open T123" or "/open T123" or "reopen T123" or "/edit T123"
+const reopenMatch = incomingText.match(/^(?:open|reopen|edit|\/open|\/reopen|\/edit)\s*(t\d+)?/i);
 if (reopenMatch && !msg.reply_to_message) {
   // Extract ticket number from message
-  const ticketMatch = incomingText.match(/TCK-?(\d+)/i);
+  const ticketMatch = incomingText.match(/T(\d+)/i);
   
   if (!ticketMatch) {
     // Ask for ticket number
     await telegramSendMessage(
       chat.id,
-      "📝 Please provide the ticket number.\n\nExample: <code>open TCK-123</code>",
+      "📝 Please provide the ticket number.\n\nExample: <code>open T123</code>",
       msg.message_id
     );
     return NextResponse.json({ ok: true });
   }
   
-  const ticketId = `TCK-${ticketMatch[1]}`;
+  const ticketId = `T${ticketMatch[1]}`;
   const ticket = await Ticket.findOne({ ticketId });
   
   if (!ticket) {
@@ -1621,24 +2040,23 @@ if (reopenMatch && !msg.reply_to_message) {
 }
 
 // ========== ASSIGN AGENCY COMMAND HANDLING ==========
-// Supports: "assign agency TCK-123" or "/agency TCK-123"
-// Skip if this is a reply to a message (will be handled by reply handler below)
-const assignAgencyMatch = incomingText.match(/^(?:assign\s*agency|\/agency)\s*(tck-?\d+)?/i);
-if (assignAgencyMatch && !msg.reply_to_message) {
+// Supports: "assign agency T123" or "/agency T123"
+const agencyAssignMatch = incomingText.match(/^(?:assign\s+agency|\/agency)\s*(t\d+)?/i);
+if (agencyAssignMatch && !msg.reply_to_message) {
   // Extract ticket number from message
-  const ticketMatch = incomingText.match(/TCK-?(\d+)/i);
+  const ticketMatch = incomingText.match(/T(\d+)/i);
   
   if (!ticketMatch) {
     // Ask for ticket number
     await telegramSendMessage(
       chat.id,
-      "📝 Please provide the ticket number.\n\nExample: <code>assign agency TCK-123</code>",
+      "📝 Please provide the ticket number.\n\nExample: <code>assign agency T123</code>",
       msg.message_id
     );
     return NextResponse.json({ ok: true });
   }
   
-  const ticketId = `TCK-${ticketMatch[1]}`;
+  const ticketId = `T${ticketMatch[1]}`;
   const ticket = await Ticket.findOne({ ticketId });
   
   if (!ticket) {
@@ -1698,19 +2116,20 @@ if (assignAgencyMatch && !msg.reply_to_message) {
   return NextResponse.json({ ok: true });
 }
 
-// Check for reply to ticket message (Reopen, Completion, or Agency Assignment)
+// Check for reply to ticket message (Reopen, Edit, Completion, or Agency Assignment)
 if (msg.reply_to_message) {
   const replyId = msg.reply_to_message.message_id;
   const lowerText = incomingText.toLowerCase();
   
-  // Check for reopen command in reply
+  // Check for REOPEN command in reply (different from edit)
   const reopenKeywords = ["/open", "open", "/reopen", "reopen"];
   if (reopenKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
     // Find ticket by message ID
     const ticket = await Ticket.findOne({
       $or: [
         { telegramMessageId: replyId },
-        { originalMessageId: replyId }
+        { originalMessageId: replyId },
+        { completionMessageId: replyId }
       ]
     });
     
@@ -1755,6 +2174,91 @@ if (msg.reply_to_message) {
         msg.message_id
       );
       
+      return NextResponse.json({ ok: true });
+    } else {
+      // Ticket not found - send error and return (don't create new ticket)
+      await telegramSendMessage(
+        chat.id,
+        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/open T123</code>",
+        msg.message_id
+      );
+      return NextResponse.json({ ok: true });
+    }
+  }
+  
+  // Check for EDIT command in reply (allows updating ticket data)
+  // Also triggered by "not ok" / "not okay" to allow corrections
+  const editKeywords = ["/edit", "edit", "not ok", "not okay"];
+  if (editKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
+    // Find ticket by message ID
+    const ticket = await Ticket.findOne({
+      $or: [
+        { telegramMessageId: replyId },
+        { originalMessageId: replyId },
+        { completionMessageId: replyId }
+      ]
+    });
+    
+    if (ticket) {
+      // Create a fresh wizard session - NO pre-populated data
+      // When submitted, this will completely overwrite the existing ticket
+      
+      // Send initial "Processing" message
+      const initialMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n⚡ Loading wizard...\n\n📝 Fill out the form to replace all ticket data.`;
+      const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
+      
+      const botMessageId = (botRes as any)?.result?.message_id;
+      
+      if (botMessageId) {
+        // Create BLANK wizard session - user starts from scratch
+        // Only editingTicketId is set to track which ticket to update
+        const newSession = await WizardSession.create({
+          chatId: chat.id,
+          userId: msg.from.id,
+          botMessageId,
+          originalMessageId: msg.message_id,
+          originalText: "New entry", // Don't use old ticket description - start fresh
+          editingTicketId: ticket.ticketId, // Track that we're editing this ticket
+          
+          // ALL fields start blank - no pre-population
+          category: null,
+          categoryDisplay: null,
+          subCategoryId: null,
+          subCategoryDisplay: null,
+          priority: null,
+          locationComplete: false,
+          locationPath: [],
+          sourceLocationComplete: false,
+          sourceLocationPath: [],
+          targetLocationComplete: false,
+          targetLocationPath: [],
+          agencyRequired: null,
+          agencyName: null,
+          agencyDate: null,
+          agencyTimeSlot: null,
+          addOrRepairChoice: null,
+          
+          // Start with no media - user can add new ones
+          photos: [],
+          videos: [],
+          
+          additionalFieldValues: {},
+          
+          createdAt: new Date(),
+        });
+        
+        // Refresh UI with the fresh wizard
+        await refreshWizardUI(newSession, chat.id, botMessageId);
+      }
+      
+      return NextResponse.json({ ok: true });
+    } else {
+      // Ticket not found - send error and return (don't create new ticket)
+      await telegramSendMessage(
+        chat.id,
+        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/edit T123</code>",
+        msg.message_id
+      );
       return NextResponse.json({ ok: true });
     }
   }
@@ -1893,11 +2397,19 @@ if (msg.reply_to_message) {
         completionMsg += `\n🎬 After-fix video attached`;
       }
 
-      await telegramSendMessage(
+      // Send completion message and store its ID
+      const completionMsgResult = await telegramSendMessage(
         chat.id,
         completionMsg,
         msg.message_id
       );
+      
+      // Store completion message ID so user can reply to it with /edit or /open
+      if (completionMsgResult.ok && completionMsgResult.result?.message_id) {
+        ticket.completionMessageId = completionMsgResult.result.message_id;
+        await ticket.save();
+      }
+      
       return NextResponse.json({ ok: true });
     }
   }

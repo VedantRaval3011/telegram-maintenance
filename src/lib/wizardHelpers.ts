@@ -132,12 +132,10 @@ export async function isWizardComplete(session: IWizardSession): Promise<boolean
       if (!session.locationComplete && !session.customLocation) return false;
     }
 
-    // Agency checks
+    // Agency checks - now we check directly for agencyName (removed Yes/No step)
     if (rule.requiresAgency) {
-      if (session.agencyRequired === null || session.agencyRequired === undefined) return false;
-      if (session.agencyRequired && rule.requiresAgencyDate) {
-        if (!session.agencyDate) return false;
-      }
+      if (!session.agencyName) return false;
+      if (rule.requiresAgencyDate && !session.agencyDate) return false;
     }
 
     // Additional fields
@@ -189,12 +187,12 @@ export async function resolveNextStep(session: IWizardSession): Promise<string> 
     return "location";
   }
 
-  // agency
-  if (rule && rule.requiresAgency && (session.agencyRequired === null || session.agencyRequired === undefined)) {
+  // agency - now we check directly for agencyName (removed Yes/No step)
+  if (rule && rule.requiresAgency && !session.agencyName) {
     return "agency";
   }
 
-  if (rule && rule.requiresAgency && session.agencyRequired && rule.requiresAgencyDate && !session.agencyDate) {
+  if (rule && rule.requiresAgency && session.agencyName && rule.requiresAgencyDate && !session.agencyDate) {
     return "agency_date";
   }
 

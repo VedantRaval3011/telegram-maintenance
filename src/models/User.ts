@@ -15,7 +15,9 @@ export interface IUser extends Document {
 
   // Metadata
   bio?: string;
+  phone?: string; // User phone number
   locationId?: mongoose.Types.ObjectId; // Reference to Location
+  subCategories: mongoose.Types.ObjectId[]; // Subcategories assigned to this user
 
   // Tracking
   firstSeenAt: Date;
@@ -44,7 +46,9 @@ const UserSchema = new Schema<IUser>(
     },
 
     bio: { type: String, default: null },
+    phone: { type: String, default: null },
     locationId: { type: Schema.Types.ObjectId, ref: "Location", default: null },
+    subCategories: [{ type: Schema.Types.ObjectId, ref: "SubCategory" }],
 
     firstSeenAt: { type: Date, required: true, default: () => new Date() },
     lastSeenAt: { type: Date, required: true, default: () => new Date() },

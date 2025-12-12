@@ -4,7 +4,7 @@ export interface IAgencyAssignmentSession extends Document {
   chatId: number;
   userId: number;
   botMessageId: number;
-  ticketId: string; // The ticket being updated (e.g., "TCK-123")
+  ticketId: string; // The ticket being updated (e.g., "T123")
   ticketObjectId: mongoose.Types.ObjectId; // MongoDB ObjectId of the ticket
 
   // Agency details

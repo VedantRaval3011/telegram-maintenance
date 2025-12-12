@@ -192,11 +192,11 @@ export async function generateTicketId(): Promise<string> {
   try {
     const count = await Ticket.countDocuments();
     const id = count + 1;
-    return `TCK-${String(id).padStart(3, "0")}`;
+    return `T${id}`;
   } catch (err) {
     console.error("generateTicketId error:", err);
     const fallback = Math.floor(Math.random() * 100000);
-    return `TCK-${String(fallback).padStart(3, "0")}`;
+    return `T${fallback}`;
   }
 }
 

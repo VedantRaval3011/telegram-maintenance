@@ -40,10 +40,14 @@ export interface IWizardSession extends Document {
   agencyMonth: number | null;    // Month number (0-11)
   agencyYear: number | null;     // Year for the selected month
   agencyDate: Date | null;
+  agencyDateSkipped: boolean;  // True when user selects "No Date Given"
   agencyTimeSlot: string | null;  // "first_half" or "second_half"
 
   /** Add or Repair Choice */
   addOrRepairChoice: "add" | "repair" | null;
+
+  /** Editing existing ticket (null if creating new) */
+  editingTicketId: string | null;
 
   /** Dynamic Additional Fields */
   additionalFieldValues: Record<string, any>;
@@ -133,10 +137,14 @@ const WizardSessionSchema = new Schema<IWizardSession>(
     agencyMonth: { type: Number, default: null },
     agencyYear: { type: Number, default: null },
     agencyDate: { type: Date, default: null },
+    agencyDateSkipped: { type: Boolean, default: false },  // True when user selects "No Date Given"
     agencyTimeSlot: { type: String, enum: ["first_half", "second_half", null], default: null },
 
     /** Add or Repair choice */
     addOrRepairChoice: { type: String, enum: ["add", "repair", null], default: null },
+
+    /** Editing existing ticket (null if creating new) */
+    editingTicketId: { type: String, default: null },
 
     /** Additional dynamic fields */
     additionalFieldValues: { type: Object, default: {} },
