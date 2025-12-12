@@ -2,7 +2,7 @@
 import mongoose, { Document, Model } from "mongoose";
 
 export interface ITicket extends Document {
-  ticketId: string; // T-1
+  ticketId: string; // T1
   description: string;
   category: string | null;
   subCategory?: string | null;

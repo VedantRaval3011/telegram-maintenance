@@ -942,12 +942,12 @@ async function createTicketFromSession(session: any, createdBy: string) {
   const lastTicket = await Ticket.findOne().sort({ createdAt: -1 }).lean();
   let nextTicketNumber = 1;
   if (lastTicket && lastTicket.ticketId) {
-    const match = lastTicket.ticketId.match(/T-(\d+)/);
+    const match = lastTicket.ticketId.match(/T(\d+)/);
     if (match) {
       nextTicketNumber = parseInt(match[1]) + 1;
     }
   }
-  const nextTicketId = `T-${nextTicketNumber}`;
+  const nextTicketId = `T${nextTicketNumber}`;
 
   const ticketData: any = {
     ticketId: nextTicketId,
@@ -1562,9 +1562,27 @@ export async function POST(req: NextRequest) {
           case "category":
             session.category = null;
             session.categoryDisplay = null;
-            // Also clear dependent fields
+            // Clear ALL dependent fields when category changes
             session.subCategoryId = null;
             session.subCategoryDisplay = null;
+            session.priority = null;
+            // Clear location fields
+            session.locationPath = [];
+            session.locationComplete = false;
+            session.sourceLocationPath = [];
+            session.sourceLocationComplete = false;
+            session.targetLocationPath = [];
+            session.targetLocationComplete = false;
+            // Clear agency fields
+            session.agencyRequired = null;
+            session.agencyName = null;
+            session.agencyDate = null;
+            session.agencyDateSkipped = false;
+            session.agencyTimeSlot = null;
+            // Clear add or repair choice
+            session.addOrRepairChoice = null;
+            // Clear additional fields
+            session.additionalFieldValues = {};
             break;
           case "priority":
             session.priority = null;
@@ -1841,23 +1859,23 @@ if (incomingText.toLowerCase().startsWith("/info ")) {
 }
 
 // ========== REOPEN TICKET COMMAND HANDLING ==========
-// Supports: "open T-123" or "/open T-123" or "reopen T-123" or "/edit T-123"
-const reopenMatch = incomingText.match(/^(?:open|reopen|edit|\/open|\/reopen|\/edit)\s*(t-?\d+)?/i);
+// Supports: "open T123" or "/open T123" or "reopen T123" or "/edit T123"
+const reopenMatch = incomingText.match(/^(?:open|reopen|edit|\/open|\/reopen|\/edit)\s*(t\d+)?/i);
 if (reopenMatch && !msg.reply_to_message) {
   // Extract ticket number from message
-  const ticketMatch = incomingText.match(/T-?(\d+)/i);
+  const ticketMatch = incomingText.match(/T(\d+)/i);
   
   if (!ticketMatch) {
     // Ask for ticket number
     await telegramSendMessage(
       chat.id,
-      "📝 Please provide the ticket number.\n\nExample: <code>open T-123</code>",
+      "📝 Please provide the ticket number.\n\nExample: <code>open T123</code>",
       msg.message_id
     );
     return NextResponse.json({ ok: true });
   }
   
-  const ticketId = `T-${ticketMatch[1]}`;
+  const ticketId = `T${ticketMatch[1]}`;
   const ticket = await Ticket.findOne({ ticketId });
   
   if (!ticket) {
@@ -1905,24 +1923,23 @@ if (reopenMatch && !msg.reply_to_message) {
 }
 
 // ========== ASSIGN AGENCY COMMAND HANDLING ==========
-// Supports: "assign agency T-123" or "/agency T-123"
-// Skip if this is a reply to a message (will be handled by reply handler below)
-const assignAgencyMatch = incomingText.match(/^(?:assign\s*agency|\/agency)\s*(t-?\d+)?/i);
-if (assignAgencyMatch && !msg.reply_to_message) {
+// Supports: "assign agency T123" or "/agency T123"
+const agencyAssignMatch = incomingText.match(/^(?:assign\s+agency|\/agency)\s*(t\d+)?/i);
+if (agencyAssignMatch && !msg.reply_to_message) {
   // Extract ticket number from message
-  const ticketMatch = incomingText.match(/T-?(\d+)/i);
+  const ticketMatch = incomingText.match(/T(\d+)/i);
   
   if (!ticketMatch) {
     // Ask for ticket number
     await telegramSendMessage(
       chat.id,
-      "📝 Please provide the ticket number.\n\nExample: <code>assign agency T-123</code>",
+      "📝 Please provide the ticket number.\n\nExample: <code>assign agency T123</code>",
       msg.message_id
     );
     return NextResponse.json({ ok: true });
   }
   
-  const ticketId = `T-${ticketMatch[1]}`;
+  const ticketId = `T${ticketMatch[1]}`;
   const ticket = await Ticket.findOne({ ticketId });
   
   if (!ticket) {
@@ -2045,7 +2062,7 @@ if (msg.reply_to_message) {
       // Ticket not found - send error and return (don't create new ticket)
       await telegramSendMessage(
         chat.id,
-        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/open T-123</code>",
+        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/open T123</code>",
         msg.message_id
       );
       return NextResponse.json({ ok: true });
@@ -2122,7 +2139,7 @@ if (msg.reply_to_message) {
       // Ticket not found - send error and return (don't create new ticket)
       await telegramSendMessage(
         chat.id,
-        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/edit T-123</code>",
+        "❌ Could not find a ticket associated with this message.\n\nPlease reply to the original ticket message or use: <code>/edit T123</code>",
         msg.message_id
       );
       return NextResponse.json({ ok: true });
