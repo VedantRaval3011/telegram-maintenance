@@ -683,7 +683,10 @@ case "target_location": {
  * Format the complete wizard message
  */
 async function formatWizardMessage(session: any, fields: WizardField[], currentField: WizardField | null): Promise<string> {
-  let message = "🛠 <b>Ticket Wizard</b>\n";
+  // Show different header for edit mode
+  let message = session.editingTicketId 
+    ? `✏️ <b>Edit Ticket #${session.editingTicketId}</b>\n`
+    : "🛠 <b>Ticket Wizard</b>\n";
   message += `📝 ${session.originalText || "New Ticket"}\n\n`;
 
   // Completed fields section
@@ -1645,10 +1648,68 @@ export async function POST(req: NextRequest) {
         await WizardSession.deleteOne({ botMessageId });
 
         try {
-          // Create ticket using session data
-          const ticket = await createTicketFromSession(sessionData, createdBy);
+          let ticket: any;
+          let isEditing = false;
+          
+          // Check if we're editing an existing ticket
+          if (sessionData.editingTicketId) {
+            isEditing = true;
+            // Update existing ticket instead of creating new one
+            const category = await Category.findById(sessionData.category).lean();
+            const subcategory = sessionData.subCategoryId ? await SubCategory.findById(sessionData.subCategoryId).lean() : null;
 
-          let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} Created</b>\n\n` +
+            // Build location string
+            let locationStr = "Not specified";
+            const dedupedPath = deduplicateLocationPath(sessionData.locationPath);
+            if (dedupedPath.length > 0) {
+              locationStr = dedupedPath.map((n: any) => n.name).join(" → ");
+            }
+
+            const updateData: any = {
+              description: sessionData.originalText || "No description",
+              category: category?.name || "unknown",
+              subCategory: subcategory?.name,
+              priority: sessionData.priority || "medium",
+              location: locationStr,
+              photos: sessionData.photos || [],
+              videos: sessionData.videos || [],
+            };
+
+            // Add agency info if present
+            if (sessionData.agencyRequired) {
+              updateData.agencyName = sessionData.agencyName || null;
+              if (sessionData.agencyTimeSlot) {
+                updateData.agencyTime = sessionData.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
+              }
+              if (sessionData.agencyDate) {
+                updateData.agencyDate = sessionData.agencyDate;
+              }
+            }
+
+            // Add source/target locations if transfer
+            if (sessionData.sourceLocationPath) {
+              updateData.sourceLocation = deduplicateLocationPath(sessionData.sourceLocationPath).map((n: any) => n.name).join(" → ");
+            }
+            if (sessionData.targetLocationPath) {
+              updateData.targetLocation = deduplicateLocationPath(sessionData.targetLocationPath).map((n: any) => n.name).join(" → ");
+            }
+
+            // Add or Repair choice
+            if (sessionData.addOrRepairChoice) {
+              updateData.addOrRepairChoice = sessionData.addOrRepairChoice;
+            }
+
+            ticket = await Ticket.findOneAndUpdate(
+              { ticketId: sessionData.editingTicketId },
+              updateData,
+              { new: true }
+            );
+          } else {
+            // Create new ticket
+            ticket = await createTicketFromSession(sessionData, createdBy);
+          }
+
+          let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} ${isEditing ? 'Updated' : 'Created'}</b>\n\n` +
                            `📝 ${ticket.description}\n` +
                            `📂 ${ticket.category}\n` +
                            `⚡ ${ticket.priority}\n`;
@@ -1685,21 +1746,27 @@ export async function POST(req: NextRequest) {
           
           ticketMsg += `👤 ${createdBy}`;
 
-          // ✅ CRITICAL: Reply to the original message (the image) so users know which image the ticket was created for
-          const replyToMessageId = sessionData.originalMessageId;
-          const sentMsg = await telegramSendMessage(chatId, ticketMsg, replyToMessageId);
-          
-          if (sentMsg.ok && sentMsg.result) {
-            await Ticket.findByIdAndUpdate(ticket._id, {
-              telegramMessageId: sentMsg.result.message_id,
-              telegramChatId: chatId
-            });
+          // For editing, just show the message - no need to reply to original message
+          if (isEditing) {
+            await editMessageText(chatId, botMessageId, ticketMsg, []);
+            await answerCallbackQuery(callback.id, "Ticket updated!");
+          } else {
+            // CRITICAL: Reply to the original message (the image) so users know which image the ticket was created for
+            const replyToMessageId = sessionData.originalMessageId;
+            const sentMsg = await telegramSendMessage(chatId, ticketMsg, replyToMessageId);
+            
+            if (sentMsg.ok && sentMsg.result) {
+              await Ticket.findByIdAndUpdate(ticket._id, {
+                telegramMessageId: sentMsg.result.message_id,
+                telegramChatId: chatId
+              });
+            }
+            await telegramDeleteMessage(chatId, botMessageId);
+            await answerCallbackQuery(callback.id, "Ticket created!");
           }
-          await telegramDeleteMessage(chatId, botMessageId);
-          await answerCallbackQuery(callback.id, "Ticket created!");
         } catch (err) {
-          console.error("Ticket creation error:", err);
-          await answerCallbackQuery(callback.id, "Error creating ticket", true);
+          console.error("Ticket creation/update error:", err);
+          await answerCallbackQuery(callback.id, "Error processing ticket", true);
         }
         
         return NextResponse.json({ ok: true });
@@ -1987,7 +2054,8 @@ if (msg.reply_to_message) {
   }
   
   // Check for EDIT command in reply (allows updating ticket data)
-  const editKeywords = ["/edit", "edit"];
+  // Also triggered by "not ok" / "not okay" to allow corrections
+  const editKeywords = ["/edit", "edit", "not ok", "not okay"];
   if (editKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
     // Find ticket by message ID
     const ticket = await Ticket.findOne({
@@ -1999,7 +2067,7 @@ if (msg.reply_to_message) {
     });
     
     if (ticket) {
-      // Create a new wizard session pre-populated with existing ticket data for editing
+      // Create a new wizard session pre-populated with existing ticket data
       const editedBy = msg.from?.username || 
                       `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
                       "Unknown";
@@ -2008,43 +2076,71 @@ if (msg.reply_to_message) {
       const categoryDoc = await Category.findOne({ name: ticket.category }).lean();
       const categoryId = categoryDoc ? String(categoryDoc._id) : null;
       
-      // Create edit wizard message
-      const editMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n\n` +
-                     `📝 ${ticket.description}\n\n` +
-                     `Current values:\n` +
-                     `📂 Category: ${ticket.category || "—"}\n` +
-                     `⚡ Priority: ${ticket.priority || "—"}\n` +
-                     `📍 Location: ${ticket.location || "—"}\n` +
-                     (ticket.agencyName ? `👷 Agency: ${ticket.agencyName}\n` : "") +
-                     `\n👇 Select what to update:`;
-      
-      // Build edit keyboard
-      const editKeyboard: any[][] = [
-        [
-          { text: "📂 Category", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_category` },
-          { text: "⚡ Priority", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_priority` }
-        ],
-        [
-          { text: "📍 Location", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_location` }
-        ]
-      ];
-      
-      if (ticket.agencyName) {
-        editKeyboard.push([
-          { text: "👷 Agency", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_agency` }
-        ]);
+      // Find subcategory by name if exists
+      let subCategoryId: string | null = null;
+      let subCategoryDisplay: string | null = null;
+      if (ticket.subCategory && categoryId) {
+        const subCatDoc = await SubCategory.findOne({ 
+          name: ticket.subCategory, 
+          categoryId: categoryId 
+        }).lean();
+        if (subCatDoc) {
+          subCategoryId = String(subCatDoc._id);
+          subCategoryDisplay = subCatDoc.name;
+        }
       }
       
-      editKeyboard.push([
-        { text: "❌ Cancel", callback_data: `edit_${msg.message_id}_${ticket.ticketId}_cancel` }
-      ]);
+      // Send initial "Processing" message
+      const initialMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n⚡ Loading wizard...`;
+      const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
       
-      await telegramSendMessage(
-        chat.id,
-        editMsg,
-        msg.message_id,
-        editKeyboard
-      );
+      const botMessageId = (botRes as any)?.result?.message_id;
+      
+      if (botMessageId) {
+        // Create wizard session with pre-populated data from ticket
+        const newSession = await WizardSession.create({
+          chatId: chat.id,
+          userId: msg.from.id,
+          botMessageId,
+          originalMessageId: ticket.originalMessageId || msg.message_id,
+          originalText: ticket.description || "Editing ticket",
+          editingTicketId: ticket.ticketId, // Track that we're editing this ticket
+          
+          // Pre-populate with existing ticket data
+          category: categoryId,
+          categoryDisplay: categoryDoc?.displayName || ticket.category || null,
+          subCategoryId: subCategoryId,
+          subCategoryDisplay: subCategoryDisplay,
+          priority: ticket.priority || null,
+          // Location is stored as string in ticket, but wizard needs path
+          // We can't reconstruct the path from string, so user must re-select
+          // This ensures proper hierarchy is maintained
+          locationComplete: false,
+          locationPath: [],
+          
+          // Agency info
+          agencyRequired: !!ticket.agencyName,
+          agencyName: ticket.agencyName || null,
+          agencyDate: ticket.agencyDate || null,
+          agencyTimeSlot: ticket.agencyTime === "First Half" ? "first_half" : 
+                          ticket.agencyTime === "Second Half" ? "second_half" : null,
+          
+          // Add or Repair choice
+          addOrRepairChoice: ticket.addOrRepairChoice || null,
+          
+          // Media
+          photos: ticket.photos || [],
+          videos: ticket.videos || [],
+          
+          // Additional fields (not stored in ticket, start fresh)
+          additionalFieldValues: {},
+          
+          createdAt: new Date(),
+        });
+        
+        // Refresh UI with the full wizard
+        await refreshWizardUI(newSession, chat.id, botMessageId);
+      }
       
       return NextResponse.json({ ok: true });
     } else {

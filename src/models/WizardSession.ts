@@ -46,6 +46,9 @@ export interface IWizardSession extends Document {
   /** Add or Repair Choice */
   addOrRepairChoice: "add" | "repair" | null;
 
+  /** Editing existing ticket (null if creating new) */
+  editingTicketId: string | null;
+
   /** Dynamic Additional Fields */
   additionalFieldValues: Record<string, any>;
 
@@ -139,6 +142,9 @@ const WizardSessionSchema = new Schema<IWizardSession>(
 
     /** Add or Repair choice */
     addOrRepairChoice: { type: String, enum: ["add", "repair", null], default: null },
+
+    /** Editing existing ticket (null if creating new) */
+    editingTicketId: { type: String, default: null },
 
     /** Additional dynamic fields */
     additionalFieldValues: { type: Object, default: {} },
