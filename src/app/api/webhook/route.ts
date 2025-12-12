@@ -685,9 +685,8 @@ case "target_location": {
 async function formatWizardMessage(session: any, fields: WizardField[], currentField: WizardField | null): Promise<string> {
   // Show different header for edit mode
   let message = session.editingTicketId 
-    ? `✏️ <b>Edit Ticket #${session.editingTicketId}</b>\n`
-    : "🛠 <b>Ticket Wizard</b>\n";
-  message += `📝 ${session.originalText || "New Ticket"}\n\n`;
+    ? `✏️ <b>Edit Ticket #${session.editingTicketId}</b>\n📝 Fill out all fields to update the ticket\n\n`
+    : `🛠 <b>Ticket Wizard</b>\n📝 ${session.originalText || "New Ticket"}\n\n`;
 
   // Completed fields section
 const completedFields = fields.filter(f =>
@@ -2084,7 +2083,7 @@ if (msg.reply_to_message) {
           userId: msg.from.id,
           botMessageId,
           originalMessageId: msg.message_id,
-          originalText: ticket.description || "Editing ticket", // Keep original description as reference
+          originalText: "New entry", // Don't use old ticket description - start fresh
           editingTicketId: ticket.ticketId, // Track that we're editing this ticket
           
           // ALL fields start blank - no pre-population
