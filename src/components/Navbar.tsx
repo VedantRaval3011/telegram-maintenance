@@ -26,12 +26,13 @@ export default function Navbar() {
             <div className="hidden lg:flex items-center gap-1">
               {[
                 { name: "Dashboard", path: "/dashboard" },
+                { name: "Building Map", path: "/dashboard/building-map" },
                 { name: "Categories", path: "/masters/categories" },
                 { name: "Users", path: "/masters/users" },
                 { name: "Locations", path: "/masters/locations" },
                 { name: "Workflows", path: "/masters/workflow-rules" },
                 { name: "Informations", path: "/masters/informations" },
-                { name: "Agencies", path:"/masters/agencies" },
+                { name: "Agencies", path: "/masters/agencies" },
                 { name: "Summary", path: "/summary" },
               ].map((link) => (
                 <Link

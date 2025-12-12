@@ -1810,7 +1810,36 @@ export async function POST(req: NextRequest) {
               { new: true }
             );
           } else {
-            // Create new ticket
+            // Check if category is "information" - save to Information model instead of creating ticket
+            const categoryDoc = await Category.findById(sessionData.category).lean();
+            const categoryName = categoryDoc?.name?.toLowerCase() || "";
+            
+            if (categoryName === "information") {
+              // Save to Information model instead of creating a ticket
+              const informationData = {
+                content: sessionData.originalText || "No content",
+                createdBy,
+                telegramMessageId: sessionData.originalMessageId,
+                telegramChatId: chatId,
+              };
+              
+              await Information.create(informationData);
+              
+              // Send confirmation message for information saved
+              let infoMsg = `ℹ️ <b>Information Saved</b>\n\n` +
+                           `📝 ${informationData.content}\n` +
+                           `👤 ${createdBy}`;
+              
+              // Reply to the original message
+              const replyToMessageId = sessionData.originalMessageId;
+              await telegramSendMessage(chatId, infoMsg, replyToMessageId);
+              await telegramDeleteMessage(chatId, botMessageId);
+              await answerCallbackQuery(callback.id, "Information saved!");
+              
+              return NextResponse.json({ ok: true });
+            }
+            
+            // Create new ticket (for non-information categories)
             ticket = await createTicketFromSession(sessionData, createdBy);
           }
 
