@@ -144,7 +144,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
+  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -252,7 +252,16 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
 
         // Date and Time picker - only add if requiresAgencyDate is true
         if (rule.requiresAgencyDate) {
-          // Day picker (uses current month automatically)
+          // Month picker (current month + next 3 months)
+          fields.push({
+            key: "agency_month",
+            label: "📆 Select Month",
+            type: "agency_month",
+            required: false, // Will be required dynamically when agency is selected
+            completed: false,
+          });
+
+          // Day picker (uses selected month)
           fields.push({
             key: "agency_date",
             label: "📅 Agency Date",
@@ -366,9 +375,20 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         break;
       
       
-      case "agency_date":
-        // Required if agency was selected
+      case "agency_month":
+        // Only required if an agency was selected
         required = !!session.agencyName;
+        completed = session.agencyMonth !== null && session.agencyMonth !== undefined;
+        if (completed) {
+          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          value = `${monthNames[session.agencyMonth]} ${session.agencyYear}`;
+        }
+        break;
+      
+      case "agency_date":
+        // Required if agency was selected AND month was selected
+        required = !!session.agencyName && session.agencyMonth !== null;
         // Complete if date is set OR date was intentionally skipped
         completed = !!session.agencyDate || !!session.agencyDateSkipped;
         if (session.agencyDateSkipped) {
@@ -605,20 +625,50 @@ case "target_location": {
       break;
     }
 
-    case "agency_date": {
-      // Day picker - automatically use current month
+    case "agency_month": {
+      // Month picker - current month + next 3 months
       const currentDate = new Date();
-      const currentMonth = currentDate.getMonth();
-      const currentYear = currentDate.getFullYear();
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       
-      // Get the number of days in the current month
-      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      // Create 4 month buttons (current + next 3)
+      const monthButtons: any[] = [];
+      for (let i = 0; i < 4; i++) {
+        const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + i, 1);
+        const month = targetDate.getMonth();
+        const year = targetDate.getFullYear();
+        
+        monthButtons.push({
+          text: `📆 ${monthNames[month]} ${year}`,
+          callback_data: `select_${botMessageId}_agency_month_${month}_${year}`
+        });
+      }
       
-      // Add a header row showing current month
+      // Arrange in 2x2 grid
+      keyboard.push([monthButtons[0], monthButtons[1]]);
+      keyboard.push([monthButtons[2], monthButtons[3]]);
+      break;
+    }
+
+    case "agency_date": {
+      // Day picker - use selected month from session
+      const selectedMonth = session.agencyMonth;
+      const selectedYear = session.agencyYear;
+      
+      // Fallback to current month if not set (shouldn't happen)
+      const now = new Date();
+      const month = selectedMonth !== null && selectedMonth !== undefined ? selectedMonth : now.getMonth();
+      const year = selectedYear !== null && selectedYear !== undefined ? selectedYear : now.getFullYear();
+      
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      
+      // Get the number of days in the selected month
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      
+      // Add a header row showing selected month
       keyboard.push([{
-        text: `📅 ${monthNames[currentMonth]} ${currentYear}`,
+        text: `📅 ${monthNames[month]} ${year}`,
         callback_data: `noop_${botMessageId}` // Non-interactive header
       }]);
       
@@ -627,7 +677,7 @@ case "target_location": {
         const row: any[] = [];
         for (let d = day; d < day + 7 && d <= daysInMonth; d++) {
           // Create the full date string
-          const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
           row.push({
             text: `${d}`,
             callback_data: `select_${botMessageId}_agency_date_${dateStr}`
@@ -1439,6 +1489,9 @@ export async function POST(req: NextRequest) {
           } else if (value.startsWith("date_")) {
             fieldType = "agency_date";
             value = value.replace("date_", "");
+          } else if (value.startsWith("month_")) {
+            fieldType = "agency_month";
+            value = value.replace("month_", ""); // Format: "0_2025" (month_year)
           }
         } else if (fieldType === "source") {
           fieldType = "source_location";
@@ -1496,6 +1549,18 @@ export async function POST(req: NextRequest) {
             const agency = await Agency.findById(value).lean();
             session.agencyName = agency?.name || value;
             session.agencyRequired = true; // Mark agency as required when selected
+            await session.save();
+            break;
+          }
+
+          case "agency_month": {
+            // Value is "month_year" format like "0_2025" or just "0" if year follows
+            const [monthStr, yearStr] = value.split("_");
+            session.agencyMonth = parseInt(monthStr);
+            session.agencyYear = parseInt(yearStr);
+            // Clear date when month changes (user needs to re-select day)
+            session.agencyDate = null;
+            session.agencyDateSkipped = false;
             await session.save();
             break;
           }
@@ -1576,6 +1641,8 @@ export async function POST(req: NextRequest) {
             // Clear agency fields
             session.agencyRequired = null;
             session.agencyName = null;
+            session.agencyMonth = null;
+            session.agencyYear = null;
             session.agencyDate = null;
             session.agencyDateSkipped = false;
             session.agencyTimeSlot = null;
@@ -1602,8 +1669,19 @@ export async function POST(req: NextRequest) {
             break;
 
           case "agency":
-            // Clear agency name and dependent fields
+            // Clear agency name and all dependent fields
             session.agencyName = null;
+            session.agencyMonth = null;
+            session.agencyYear = null;
+            session.agencyDate = null;
+            session.agencyDateSkipped = false;
+            session.agencyTimeSlot = null;
+            break;
+
+          case "agency_month":
+            // Clear month and dependent fields (date, time)
+            session.agencyMonth = null;
+            session.agencyYear = null;
             session.agencyDate = null;
             session.agencyDateSkipped = false;
             session.agencyTimeSlot = null;
