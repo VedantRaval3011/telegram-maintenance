@@ -20,6 +20,7 @@ import {
 } from "@/lib/telegram";
 import { uploadBufferToCloudinary } from "@/lib/uploadBufferToCloudinary";
 import { fastProcessTelegramPhoto, fastProcessTelegramVideo } from "@/lib/fastImageUpload";
+import { triggerTicketCreatedNotification } from "@/lib/notificationScheduler";
 
 /**
  * DYNAMIC WORKFLOW-CONTROLLED TELEGRAM WEBHOOK
@@ -1041,6 +1042,15 @@ async function createTicketFromSession(session: any, createdBy: string) {
   }
 
   const ticket = await Ticket.create(ticketData);
+
+  // ✅ Trigger WhatsApp notification to users assigned to this sub-category
+  try {
+    await triggerTicketCreatedNotification(ticket);
+  } catch (notifyError) {
+    console.error("[Webhook] Failed to trigger notification:", notifyError);
+    // Don't fail ticket creation if notification fails
+  }
+
   return ticket;
 }
 

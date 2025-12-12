@@ -1,11 +1,25 @@
 // app/masters/users/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
+import { toast } from "react-hot-toast";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+interface ICategory {
+  _id: string;
+  displayName: string;
+  color: string | null;
+}
+
+interface ISubCategory {
+  _id: string;
+  name: string;
+  icon?: string | null;
+  categoryId: ICategory | string | null;
+}
 
 interface User {
   _id: string;
@@ -13,9 +27,11 @@ interface User {
   username?: string;
   firstName?: string;
   lastName?: string;
+  phone?: string;
   role?: string;
   source: string;
   locationId?: any;
+  subCategories?: ISubCategory[];
   lastSeenAt: string;
   lastSyncedAt: string;
 }
@@ -228,6 +244,58 @@ export default function UserMasterPage() {
   // Sync from Telegram state
   const [syncing, setSyncing] = useState(false);
 
+  // Edit modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isChartPopupOpen, setIsChartPopupOpen] = useState(false);
+  const [subCategorySearchTerm, setSubCategorySearchTerm] = useState("");
+
+  // Categories and subcategories
+  const [categories, setCategories] = useState<ICategory[]>([]);
+  const [allSubCategories, setAllSubCategories] = useState<ISubCategory[]>([]);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    phone: "",
+    subCategories: [] as string[],
+    categories: [] as string[],
+  });
+
+  // Fetch categories and subcategories
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [catRes, subRes] = await Promise.all([
+          fetch("/api/masters/categories"),
+          fetch("/api/masters/subcategories"),
+        ]);
+        const catData = await catRes.json();
+        const subData = await subRes.json();
+        if (catData.success) setCategories(catData.data);
+        if (subData.success) setAllSubCategories(subData.data);
+      } catch (err) {
+        console.error("Failed to fetch categories/subcategories", err);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Build hierarchical structure
+  const categoryTree = useMemo(() => {
+    return categories.map(cat => ({
+      ...cat,
+      subCategories: allSubCategories.filter(sub => {
+        let subCatId: string | null = null;
+        if (typeof sub.categoryId === 'string') {
+          subCatId = sub.categoryId;
+        } else if (sub.categoryId && typeof sub.categoryId === 'object') {
+          subCatId = (sub.categoryId as ICategory)._id;
+        }
+        return subCatId === cat._id;
+      })
+    }));
+  }, [categories, allSubCategories]);
+
   const queryParams = new URLSearchParams({
     page: page.toString(),
     limit: "20",
@@ -240,6 +308,91 @@ export default function UserMasterPage() {
     `/api/masters/users?${queryParams}`,
     fetcher
   );
+
+  const handleOpenModal = (user: User) => {
+    setEditingUser(user);
+    setFormData({
+      phone: user.phone || "",
+      subCategories: user.subCategories?.map(s => s._id) || [],
+      categories: [],
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!editingUser) return;
+
+    try {
+      const res = await fetch("/api/masters/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          _id: editingUser._id,
+          phone: formData.phone,
+          subCategories: formData.subCategories,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        toast.success("User updated successfully");
+        setIsModalOpen(false);
+        setIsChartPopupOpen(false);
+        mutate();
+      } else {
+        toast.error(data.error || "Failed to update user");
+      }
+    } catch (err) {
+      console.error("Error saving user", err);
+      toast.error("An error occurred");
+    }
+  };
+
+  const toggleSubCategorySelection = (subId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      subCategories: prev.subCategories.includes(subId)
+        ? prev.subCategories.filter(id => id !== subId)
+        : [...prev.subCategories, subId]
+    }));
+  };
+
+  const toggleCategorySelection = (catId: string) => {
+    const subsInCategory = allSubCategories
+      .filter(sub => {
+        let subCatId: string | null = null;
+        if (typeof sub.categoryId === 'string') {
+          subCatId = sub.categoryId;
+        } else if (sub.categoryId && typeof sub.categoryId === 'object') {
+          subCatId = (sub.categoryId as ICategory)._id;
+        }
+        return subCatId === catId;
+      })
+      .map(sub => sub._id);
+
+    if (subsInCategory.length === 0) {
+      setFormData(prev => ({
+        ...prev,
+        categories: prev.categories.includes(catId)
+          ? prev.categories.filter(id => id !== catId)
+          : [...prev.categories, catId]
+      }));
+      return;
+    }
+
+    setFormData(prev => {
+      const allSelected = subsInCategory.every(subId => prev.subCategories.includes(subId));
+      if (allSelected) {
+        return { ...prev, subCategories: prev.subCategories.filter(id => !subsInCategory.includes(id)) };
+      } else {
+        const newSelection = [...prev.subCategories];
+        subsInCategory.forEach(subId => {
+          if (!newSelection.includes(subId)) newSelection.push(subId);
+        });
+        return { ...prev, subCategories: newSelection };
+      }
+    });
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
@@ -605,6 +758,12 @@ export default function UserMasterPage() {
                     Telegram ID
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Phone
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    SubCategories
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Role
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -649,6 +808,47 @@ export default function UserMasterPage() {
                       <code className="text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded-md font-mono">
                         {user.telegramId}
                       </code>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {user.phone ? (
+                        <span className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                          {user.phone}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">Not set</span>
+                      )}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {user.subCategories && user.subCategories.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {user.subCategories.slice(0, 3).map((sub) => {
+                            const cat = typeof sub.categoryId === 'object' ? sub.categoryId as ICategory : null;
+                            return (
+                              <span
+                                key={sub._id}
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                                style={{
+                                  backgroundColor: cat?.color ? `${cat.color}15` : '#f3f4f6',
+                                  color: cat?.color || '#6b7280',
+                                  border: `1px solid ${cat?.color ? `${cat.color}30` : '#e5e7eb'}`
+                                }}
+                              >
+                                {sub.name}
+                              </span>
+                            );
+                          })}
+                          {user.subCategories.length > 3 && (
+                            <span className="text-xs text-gray-500">+{user.subCategories.length - 3} more</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">None</span>
+                      )}
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -706,20 +906,31 @@ export default function UserMasterPage() {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <button
-                        onClick={() => handleDelete(user._id)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-red-600 hover:text-white hover:bg-red-500 rounded-lg text-sm font-medium transition-all opacity-0 group-hover:opacity-100"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                        Delete
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenModal(user)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-blue-600 hover:text-white hover:bg-blue-500 rounded-lg text-sm font-medium transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(user._id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-red-600 hover:text-white hover:bg-red-500 rounded-lg text-sm font-medium transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -807,6 +1018,148 @@ export default function UserMasterPage() {
             </div>
           </div>
         </div>
+
+        {/* Edit User Modal */}
+        {isModalOpen && editingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200 max-h-[90vh] flex flex-col">
+              <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h2 className="text-lg font-bold text-gray-900">
+                  Edit User - {editingUser.firstName || editingUser.username || "User"}
+                </h2>
+                <button onClick={() => setIsModalOpen(false)} className="text-gray-600 hover:text-gray-900 transition-colors">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                {/* Phone Number */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Phone Number</label>
+                  <input
+                    type="text"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="Enter phone number"
+                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-gray-400 focus:border-gray-400 outline-none transition-all"
+                  />
+                </div>
+
+                {/* Link SubCategories Button */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                    <svg className="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                    Assign SubCategories
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsChartPopupOpen(true)}
+                    className="w-full p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-700 hover:border-indigo-400 hover:from-indigo-100 hover:to-purple-100 transition-all flex items-center justify-center gap-3 group"
+                  >
+                    <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                    <span className="font-semibold">
+                      {formData.subCategories.length > 0
+                        ? `${formData.subCategories.length} SubCategor${formData.subCategories.length === 1 ? 'y' : 'ies'} Selected`
+                        : "Select SubCategories"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 flex-shrink-0">
+                <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition-colors">Cancel</button>
+                <button onClick={handleSave} className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl shadow-lg shadow-gray-900/20 transition-all flex items-center gap-2 active:scale-95">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chart Popup - Subcategory Selection */}
+        {isChartPopupOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden border border-gray-200 max-h-[90vh] flex flex-col">
+              <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-800">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Assign SubCategories</h2>
+                    <p className="text-gray-400 text-xs">Click on subcategories to select/deselect</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsChartPopupOpen(false)} className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-gray-700 rounded-lg">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              <div className="p-4 border-b border-gray-200 bg-white">
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={subCategorySearchTerm}
+                    onChange={(e) => setSubCategorySearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 overflow-y-auto flex-1 bg-gray-50">
+                <div className="space-y-1 font-mono text-sm">
+                  {categoryTree.map((cat, catIndex) => {
+                    const categoryMatches = cat.displayName.toLowerCase().includes(subCategorySearchTerm.toLowerCase());
+                    const matchingSubs = cat.subCategories.filter(sub => sub.name.toLowerCase().includes(subCategorySearchTerm.toLowerCase()));
+                    if (subCategorySearchTerm && !categoryMatches && matchingSubs.length === 0) return null;
+                    const subsToShow = subCategorySearchTerm && !categoryMatches ? matchingSubs : cat.subCategories;
+                    const selectedCount = cat.subCategories.filter(s => formData.subCategories.includes(s._id)).length;
+                    const isLast = catIndex === categoryTree.length - 1;
+
+                    return (
+                      <div key={cat._id} className="select-none">
+                        <div className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-gray-100">
+                          <span className="text-gray-400 w-4">{isLast ? '└' : '├'}</span>
+                          <button type="button" onClick={() => toggleCategorySelection(cat._id)} className={`w-4 h-4 rounded border-2 flex items-center justify-center ${selectedCount === cat.subCategories.length && selectedCount > 0 ? 'border-indigo-600 bg-indigo-600' : selectedCount > 0 ? 'border-indigo-400 bg-indigo-200' : 'border-gray-400 bg-white'}`}>
+                            {selectedCount === cat.subCategories.length && selectedCount > 0 && <svg className="w-3 h-3 text-white" viewBox="0 0 14 14" fill="none"><path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                          </button>
+                          <span className="text-yellow-500 text-lg">📁</span>
+                          <span className="font-semibold" style={{ color: cat.color || '#374151' }}>{cat.displayName}</span>
+                          {selectedCount > 0 && <span className="ml-auto px-2 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: cat.color ? `${cat.color}20` : '#e5e7eb', color: cat.color || '#374151' }}>{selectedCount}/{cat.subCategories.length}</span>}
+                        </div>
+                        {subsToShow.length > 0 && (
+                          <div className="ml-6">
+                            {subsToShow.map((sub, subIndex) => {
+                              const isSelected = formData.subCategories.includes(sub._id);
+                              return (
+                                <button key={sub._id} type="button" onClick={() => toggleSubCategorySelection(sub._id)} className={`w-full flex items-center gap-2 py-2 px-3 rounded-lg transition-all text-left ${isSelected ? 'bg-indigo-100 hover:bg-indigo-200' : 'hover:bg-gray-100'}`}>
+                                  <span className="text-gray-300 w-4">{subIndex === subsToShow.length - 1 ? '└' : '├'}</span>
+                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-400 bg-white'}`}>
+                                    {isSelected && <svg className="w-3 h-3 text-white" viewBox="0 0 14 14" fill="none"><path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                                  </div>
+                                  <span className={`font-medium ${isSelected ? 'text-indigo-700' : 'text-gray-700'}`}>{sub.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-200 bg-white flex items-center justify-between">
+                <span className="text-gray-600 text-sm font-medium">{formData.subCategories.length} item{formData.subCategories.length !== 1 ? 's' : ''} selected</span>
+                <div className="flex gap-3">
+                  <button onClick={() => setFormData(prev => ({ ...prev, subCategories: [] }))} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">Clear All</button>
+                  <button onClick={() => setIsChartPopupOpen(false)} className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-lg shadow-lg active:scale-95">Done</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
