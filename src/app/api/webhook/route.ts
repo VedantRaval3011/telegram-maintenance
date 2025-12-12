@@ -2067,78 +2067,54 @@ if (msg.reply_to_message) {
     });
     
     if (ticket) {
-      // Create a new wizard session pre-populated with existing ticket data
-      const editedBy = msg.from?.username || 
-                      `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
-                      "Unknown";
-      
-      // Find category by name to get ID
-      const categoryDoc = await Category.findOne({ name: ticket.category }).lean();
-      const categoryId = categoryDoc ? String(categoryDoc._id) : null;
-      
-      // Find subcategory by name if exists
-      let subCategoryId: string | null = null;
-      let subCategoryDisplay: string | null = null;
-      if (ticket.subCategory && categoryId) {
-        const subCatDoc = await SubCategory.findOne({ 
-          name: ticket.subCategory, 
-          categoryId: categoryId 
-        }).lean();
-        if (subCatDoc) {
-          subCategoryId = String(subCatDoc._id);
-          subCategoryDisplay = subCatDoc.name;
-        }
-      }
+      // Create a fresh wizard session - NO pre-populated data
+      // When submitted, this will completely overwrite the existing ticket
       
       // Send initial "Processing" message
-      const initialMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n⚡ Loading wizard...`;
+      const initialMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n⚡ Loading wizard...\n\n📝 Fill out the form to replace all ticket data.`;
       const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
       
       const botMessageId = (botRes as any)?.result?.message_id;
       
       if (botMessageId) {
-        // Create wizard session with pre-populated data from ticket
+        // Create BLANK wizard session - user starts from scratch
+        // Only editingTicketId is set to track which ticket to update
         const newSession = await WizardSession.create({
           chatId: chat.id,
           userId: msg.from.id,
           botMessageId,
-          originalMessageId: ticket.originalMessageId || msg.message_id,
-          originalText: ticket.description || "Editing ticket",
+          originalMessageId: msg.message_id,
+          originalText: ticket.description || "Editing ticket", // Keep original description as reference
           editingTicketId: ticket.ticketId, // Track that we're editing this ticket
           
-          // Pre-populate with existing ticket data
-          category: categoryId,
-          categoryDisplay: categoryDoc?.displayName || ticket.category || null,
-          subCategoryId: subCategoryId,
-          subCategoryDisplay: subCategoryDisplay,
-          priority: ticket.priority || null,
-          // Location is stored as string in ticket, but wizard needs path
-          // We can't reconstruct the path from string, so user must re-select
-          // This ensures proper hierarchy is maintained
+          // ALL fields start blank - no pre-population
+          category: null,
+          categoryDisplay: null,
+          subCategoryId: null,
+          subCategoryDisplay: null,
+          priority: null,
           locationComplete: false,
           locationPath: [],
+          sourceLocationComplete: false,
+          sourceLocationPath: [],
+          targetLocationComplete: false,
+          targetLocationPath: [],
+          agencyRequired: null,
+          agencyName: null,
+          agencyDate: null,
+          agencyTimeSlot: null,
+          addOrRepairChoice: null,
           
-          // Agency info
-          agencyRequired: !!ticket.agencyName,
-          agencyName: ticket.agencyName || null,
-          agencyDate: ticket.agencyDate || null,
-          agencyTimeSlot: ticket.agencyTime === "First Half" ? "first_half" : 
-                          ticket.agencyTime === "Second Half" ? "second_half" : null,
+          // Start with no media - user can add new ones
+          photos: [],
+          videos: [],
           
-          // Add or Repair choice
-          addOrRepairChoice: ticket.addOrRepairChoice || null,
-          
-          // Media
-          photos: ticket.photos || [],
-          videos: ticket.videos || [],
-          
-          // Additional fields (not stored in ticket, start fresh)
           additionalFieldValues: {},
           
           createdAt: new Date(),
         });
         
-        // Refresh UI with the full wizard
+        // Refresh UI with the fresh wizard
         await refreshWizardUI(newSession, chat.id, botMessageId);
       }
       
