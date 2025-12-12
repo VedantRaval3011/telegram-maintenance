@@ -248,9 +248,9 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                 >
                   {ticket.status}
                 </span>
-                {ticket.status === "PENDING" && onStatusChange && (
+                {onScrollBack && (
                   <button
-                    onClick={() => onScrollBack ? onScrollBack() : window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    onClick={() => onScrollBack()}
                     className="p-1 rounded-full hover:bg-black/10 transition-colors"
                     title="Scroll back to category"
                   >
