@@ -145,7 +145,7 @@ function deduplicateLocationPath(path: { id: string; name: string }[] | null | u
 interface WizardField {
   key: string;
   label: string;
-  type: "category" | "priority" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
+  type: "category" | "priority" | "info_type" | "subcategory" | "location" | "source_location" | "target_location" | "agency" | "agency_month" | "agency_date" | "agency_time_slot" | "add_or_repair" | "additional";
   required: boolean;
   completed: boolean;
   value?: any;
@@ -171,6 +171,25 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
 
   // If category selected, load workflow rule
   if (categoryId) {
+    // Check if this is "information" category - special handling
+    const categoryDoc = await getCached(
+      `category:doc:${categoryId}`,
+      () => Category.findById(categoryId).lean()
+    );
+    const isInformationCategory = categoryDoc?.name?.toLowerCase() === "information";
+    
+    // For information category, only show info_type (General/Audit), nothing else
+    if (isInformationCategory) {
+      fields.push({
+        key: "info_type",
+        label: "📋 Type",
+        type: "info_type",
+        required: true,
+        completed: false,
+      });
+      return fields; // Skip all other fields for information
+    }
+    
     // ✅ OPTIMIZED: Cache workflow rule query
     const rule = await getCached(
       `workflow:${categoryId}`,
@@ -341,6 +360,11 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         value = session.priority;
         break;
       
+      case "info_type":
+        completed = !!session.infoType;
+        value = session.infoType === "general" ? "📄 General" : session.infoType === "audit" ? "🔍 Audit" : undefined;
+        break;
+      
       case "subcategory":
         completed = !!session.subCategoryId;
         value = session.subCategoryDisplay || "Selected";
@@ -467,6 +491,14 @@ async function buildFieldKeyboard(field: WizardField, session: any, botMessageId
         { text: "🔴 High", callback_data: `select_${botMessageId}_priority_high` },
         { text: "🟡 Medium", callback_data: `select_${botMessageId}_priority_medium` },
         { text: "🟢 Low", callback_data: `select_${botMessageId}_priority_low` },
+      ]);
+      break;
+    }
+
+    case "info_type": {
+      keyboard.push([
+        { text: "📄 General", callback_data: `select_${botMessageId}_info_type_general` },
+        { text: "🔍 Audit", callback_data: `select_${botMessageId}_info_type_audit` },
       ]);
       break;
     }
@@ -1516,6 +1548,13 @@ export async function POST(req: NextRequest) {
             fieldType = "add_or_repair";
             value = value.replace("or_repair_", ""); // "add" or "repair"
           }
+        } else if (fieldType === "info") {
+          // Handle info_type multi-part field type
+          // Callback data: select_123_info_type_general or select_123_info_type_audit
+          if (value.startsWith("type_")) {
+            fieldType = "info_type";
+            value = value.replace("type_", ""); // "general" or "audit"
+          }
         }
 
         switch (fieldType) {
@@ -1531,6 +1570,12 @@ export async function POST(req: NextRequest) {
 
           case "priority": {
             session.priority = value as "low" | "medium" | "high";
+            await session.save();
+            break;
+          }
+
+          case "info_type": {
+            session.infoType = value as "general" | "audit";
             await session.save();
             break;
           }
@@ -1641,6 +1686,7 @@ export async function POST(req: NextRequest) {
             session.subCategoryId = null;
             session.subCategoryDisplay = null;
             session.priority = null;
+            session.infoType = null; // Clear info type for information category
             // Clear location fields
             session.locationPath = [];
             session.locationComplete = false;
@@ -1663,6 +1709,9 @@ export async function POST(req: NextRequest) {
             break;
           case "priority":
             session.priority = null;
+            break;
+          case "info_type":
+            session.infoType = null;
             break;
           case "subcategory":
             session.subCategoryId = null;
@@ -1816,9 +1865,11 @@ export async function POST(req: NextRequest) {
             
             if (categoryName === "information") {
               // Save to Information model instead of creating a ticket
+              const infoType = sessionData.infoType || "general";
               const informationData = {
                 content: sessionData.originalText || "No content",
                 createdBy,
+                type: infoType,
                 telegramMessageId: sessionData.originalMessageId,
                 telegramChatId: chatId,
               };
@@ -1826,8 +1877,10 @@ export async function POST(req: NextRequest) {
               await Information.create(informationData);
               
               // Send confirmation message for information saved
+              const typeDisplay = infoType === "general" ? "📄 General" : "🔍 Audit";
               let infoMsg = `ℹ️ <b>Information Saved</b>\n\n` +
                            `📝 ${informationData.content}\n` +
+                           `${typeDisplay}\n` +
                            `👤 ${createdBy}`;
               
               // Reply to the original message
