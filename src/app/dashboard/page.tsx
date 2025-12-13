@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const scrollPosition = useRef<number>(0); // Store scroll position before jumping
   const clickedElementRef = useRef<HTMLElement | null>(null); // Store reference to clicked category element
   const ticketListRef = useRef<HTMLDivElement>(null); // Ref for ticket list section
-  const [showUserCapsules, setShowUserCapsules] = useState(true); // Toggle user capsules visibility
+  const [showAgencyCapsules, setShowAgencyCapsules] = useState(false); // Toggle agency capsules visibility
 
 
   const [filters, setFiltersState] = useState({
@@ -37,6 +37,7 @@ export default function DashboardPage() {
     status: "", // Default to show all (both PENDING and COMPLETED)
     priority: "", // Priority filter
     user: "", // User filter
+    agency: "", // Agency filter
     name: "",
     dateFrom: "",
     dateTo: "",
@@ -57,6 +58,7 @@ export default function DashboardPage() {
       status: "", // Reset to show all items
       priority: "",
       user: "",
+      agency: "",
       name: "",
       dateFrom: "",
       dateTo: "",
@@ -311,10 +313,24 @@ export default function DashboardPage() {
 
   const fullyFiltered = useMemo(() => {
     let out = baseFiltered.slice();
-    const { category, subCategory, sortBy } = filters;
+    const { category, subCategory, agency, sortBy } = filters;
 
     if (category) out = out.filter((t: any) => (t.category || "").toString().toLowerCase() === category.toLowerCase());
     if (subCategory) out = out.filter((t: any) => (t.subCategory || "").toString().toLowerCase() === subCategory.toLowerCase());
+    
+    // Filter by agency - show tickets whose subcategories are linked to this agency
+    if (agency) {
+      const agencyData = agencies.find((a: any) => a._id === agency);
+      if (agencyData && agencyData.subCategories) {
+        const linkedSubCategoryIds = agencyData.subCategories.map((s: any) => s._id || s);
+        out = out.filter((t: any) => {
+          const ticketSubCategory = subCategories.find((s: any) => 
+            s.name.toLowerCase() === (t.subCategory || "").toLowerCase()
+          );
+          return ticketSubCategory && linkedSubCategoryIds.includes(ticketSubCategory._id);
+        });
+      }
+    }
 
     if (sortBy) {
       const parseTicketDate = (t: any) => {
@@ -341,7 +357,7 @@ export default function DashboardPage() {
     }
 
     return out;
-  }, [baseFiltered, filters]);
+  }, [baseFiltered, filters, agencies, subCategories]);
 
   const stats = useMemo(() => {
     // Global Stats - use globalStatsBase (ignores Category, respects Priority)
@@ -396,8 +412,28 @@ export default function DashboardPage() {
       }
     }
 
-    return { totalStats, pendingStats, completedStats, categoryStats, userStats, subCategoryStats };
-  }, [fullyFiltered, baseFiltered, categories, users, subCategories, selectedCategory, calculateStats]);
+    // Agency Stats - calculate pending work for each agency based on their linked subcategories
+    const agencyStats = agencies.map((agency: any) => {
+      // Get all subcategories linked to this agency
+      const linkedSubCategoryIds = agency.subCategories?.map((s: any) => s._id || s) || [];
+      
+      // Find tickets that match any of the linked subcategories
+      const agencyTickets = baseFiltered.filter((t: any) => {
+        const ticketSubCategory = subCategories.find((s: any) => 
+          s.name.toLowerCase() === (t.subCategory || "").toLowerCase()
+        );
+        return ticketSubCategory && linkedSubCategoryIds.includes(ticketSubCategory._id);
+      });
+
+      return {
+        id: agency._id,
+        name: agency.name,
+        stats: calculateStats(agencyTickets),
+      };
+    }).filter((a: any) => a.stats.total > 0); // Only show agencies with pending work
+
+    return { totalStats, pendingStats, completedStats, categoryStats, userStats, subCategoryStats, agencyStats };
+  }, [fullyFiltered, baseFiltered, categories, users, subCategories, selectedCategory, calculateStats, agencies]);
 
   if (error)
     return <div className="p-10 text-center text-red-500">Failed to load</div>;
@@ -442,7 +478,7 @@ export default function DashboardPage() {
             >
               {showCompleted ? "Show Pending" : "Completed"}
             </button>
-            {(filters.category || filters.location || filters.priority || filters.user || filters.name || filters.dateFrom || filters.dateTo) && (
+            {(filters.category || filters.location || filters.priority || filters.user || filters.agency || filters.name || filters.dateFrom || filters.dateTo) && (
               <button
                 onClick={resetFilters}
                 className="px-4 py-2.5 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-all shadow-sm"
@@ -633,26 +669,64 @@ export default function DashboardPage() {
 
 
 
-        {/* User Stats Capsules */}
-        {stats.userStats.length > 0 && (
+
+        {/* Agency Stats Capsules - Agency-wise Pending Work (Collapsible) */}
+        {stats.agencyStats && stats.agencyStats.length > 0 && (
           <div className="mb-12">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">By User</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {stats.userStats.map((u: any) => (
-                <Capsule
-                  key={u.id}
-                  title={u.name}
-                  {...u.stats}
-                  onClick={() => setFilters({ user: u.name })}
-                  onPriorityClick={(p) => setFilters({ priority: p })}
-                  selectedPriority={filters.priority}
-                  color="#06b6d4"
-                  className={filters.user === u.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-                />
-              ))}
+            {/* Collapsible Header */}
+            <div 
+              className="flex items-center justify-between mb-6 cursor-pointer group"
+              onClick={() => setShowAgencyCapsules(!showAgencyCapsules)}
+            >
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold text-gray-900">By Agency (Pending Work)</h2>
+                <span className="text-sm text-gray-500 font-medium">
+                  ({stats.agencyStats.length} {stats.agencyStats.length === 1 ? 'agency' : 'agencies'})
+                </span>
+              </div>
+              <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all shadow-sm">
+                <svg
+                  className={`w-5 h-5 text-gray-600 transition-transform duration-300 ${showAgencyCapsules ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700">
+                  {showAgencyCapsules ? 'Hide' : 'Show'}
+                </span>
+              </button>
             </div>
+
+            {/* Collapsible Content */}
+            {showAgencyCapsules && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadeIn">
+                {stats.agencyStats.map((agency: any) => (
+                  <Capsule
+                    key={agency.id}
+                    title={agency.name}
+                    {...agency.stats}
+                    onClick={() => {
+                      // Toggle agency filter
+                      if (filters.agency === agency.id) {
+                        setFilters({ agency: "" });
+                      } else {
+                        setFilters({ agency: agency.id });
+                        scrollToTicketList();
+                      }
+                    }}
+                    onPriorityClick={(p) => setFilters({ priority: p })}
+                    selectedPriority={filters.priority}
+                    color="#f59e0b"
+                    className={filters.agency === agency.id ? "ring-2 ring-gray-900 ring-offset-2" : ""}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
+
 
 
 
@@ -705,24 +779,6 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {/* Toggle User Capsules Button */}
-                <button
-                  onClick={() => setShowUserCapsules(!showUserCapsules)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${
-                    showUserCapsules
-                      ? "bg-blue-500 text-white border-blue-500 shadow-md"
-                      : "bg-gray-100 text-gray-600 border-gray-300 hover:border-gray-400"
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {showUserCapsules ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    )}
-                  </svg>
-                  {showUserCapsules ? "Hide Users" : "Show Users"}
-                </button>
                 <div className="text-sm text-gray-600 font-medium">
                   Showing <span className="text-gray-900 font-bold">{fullyFiltered.length}</span> ticket{fullyFiltered.length !== 1 ? 's' : ''}
                 </div>
