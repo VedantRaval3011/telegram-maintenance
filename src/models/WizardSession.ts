@@ -19,6 +19,9 @@ export interface IWizardSession extends Document {
 
   priority: "low" | "medium" | "high" | null;
 
+  /** Information type (for information category) */
+  infoType: "general" | "audit" | null;
+
   /** Dynamic Location Picker */
   locationPath: IWizardLocationNode[];
   selectedLocationId: string | null;
@@ -90,6 +93,9 @@ const WizardSessionSchema = new Schema<IWizardSession>(
     subCategoryDisplay: { type: String, default: null },
 
     priority: { type: String, enum: ["low", "medium", "high", null], default: null },
+
+    /** Information type (for information category) */
+    infoType: { type: String, enum: ["general", "audit", null], default: null },
 
     /** Main dynamic location path */
     locationPath: {
