@@ -64,11 +64,28 @@ const getLocationStyle = (name: string, hasChildren: boolean) => {
 };
 
 // Building card component
-function BuildingCard({ building, isSelected, onClick }: { building: LocationNode; isSelected: boolean; onClick: () => void }) {
+function BuildingCard({
+    building,
+    isSelected,
+    onClick,
+    selectedPriority,
+    onPrioritySelect
+}: {
+    building: LocationNode;
+    isSelected: boolean;
+    onClick: () => void;
+    selectedPriority: "high" | "medium" | "low" | null;
+    onPrioritySelect: (priority: "high" | "medium" | "low") => void;
+}) {
+    const handlePriorityClick = (e: React.MouseEvent, priority: "high" | "medium" | "low") => {
+        e.stopPropagation(); // Prevent building selection when clicking priority
+        onPrioritySelect(priority);
+    };
+
     return (
-        <button
+        <div
             onClick={onClick}
-            className={`relative p-4 rounded-2xl border-2 transition-all duration-300 text-left hover:shadow-lg hover:scale-[1.02] min-w-[160px]
+            className={`relative p-4 rounded-2xl border-2 transition-all duration-300 text-left hover:shadow-lg hover:scale-[1.02] min-w-[180px] cursor-pointer
                 ${isSelected ? "bg-gradient-to-br from-blue-600 to-indigo-700 border-blue-700 text-white shadow-xl scale-[1.02]" : "bg-white border-gray-200 hover:border-blue-300"}`}
         >
             <div className="flex items-center gap-2 mb-2">
@@ -76,23 +93,66 @@ function BuildingCard({ building, isSelected, onClick }: { building: LocationNod
                 <span className={`font-bold text-lg ${isSelected ? "text-white" : "text-gray-800"}`}>{building.name}</span>
             </div>
             {building.ticketCount > 0 ? (
-                <div className={`flex items-center gap-2 flex-wrap ${isSelected ? "text-blue-100" : "text-gray-600"}`}>
+                <div className={`flex flex-col gap-2 ${isSelected ? "text-blue-100" : "text-gray-600"}`}>
                     <span className="text-sm font-medium">{building.ticketCount} Pending</span>
-                    {building.highPriority > 0 && (
-                        <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${isSelected ? "bg-red-500 text-white" : "bg-red-100 text-red-700"}`}>
-                            {building.highPriority} High
-                        </span>
-                    )}
+                    {/* Priority Badges - Clickable */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {building.highPriority > 0 && (
+                            <button
+                                onClick={(e) => handlePriorityClick(e, "high")}
+                                className={`px-2 py-0.5 rounded text-xs font-bold transition-all duration-200 hover:scale-110 ${isSelected && selectedPriority === "high"
+                                    ? "bg-white text-red-600 ring-2 ring-white"
+                                    : isSelected
+                                        ? "bg-red-500 text-white hover:bg-red-400"
+                                        : selectedPriority === "high"
+                                            ? "bg-red-600 text-white ring-2 ring-red-400"
+                                            : "bg-red-100 text-red-700 hover:bg-red-200"
+                                    }`}
+                            >
+                                {building.highPriority} High
+                            </button>
+                        )}
+                        {building.mediumPriority > 0 && (
+                            <button
+                                onClick={(e) => handlePriorityClick(e, "medium")}
+                                className={`px-2 py-0.5 rounded text-xs font-bold transition-all duration-200 hover:scale-110 ${isSelected && selectedPriority === "medium"
+                                    ? "bg-white text-amber-600 ring-2 ring-white"
+                                    : isSelected
+                                        ? "bg-amber-500 text-white hover:bg-amber-400"
+                                        : selectedPriority === "medium"
+                                            ? "bg-amber-600 text-white ring-2 ring-amber-400"
+                                            : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                    }`}
+                            >
+                                {building.mediumPriority} Med
+                            </button>
+                        )}
+                        {building.lowPriority > 0 && (
+                            <button
+                                onClick={(e) => handlePriorityClick(e, "low")}
+                                className={`px-2 py-0.5 rounded text-xs font-bold transition-all duration-200 hover:scale-110 ${isSelected && selectedPriority === "low"
+                                    ? "bg-white text-blue-600 ring-2 ring-white"
+                                    : isSelected
+                                        ? "bg-blue-400 text-white hover:bg-blue-300"
+                                        : selectedPriority === "low"
+                                            ? "bg-blue-600 text-white ring-2 ring-blue-400"
+                                            : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                    }`}
+                            >
+                                {building.lowPriority} Low
+                            </button>
+                        )}
+                    </div>
                 </div>
             ) : (
                 <div className={`flex items-center gap-1 text-sm ${isSelected ? "text-green-200" : "text-green-600"}`}>
                     <CheckCircle2 className="w-4 h-4" /><span>All Clear</span>
                 </div>
             )}
-            <div className={`text-xs mt-1 ${isSelected ? "text-blue-200" : "text-gray-400"}`}>
+            <div className={`text-xs mt-2 ${isSelected ? "text-blue-200" : "text-gray-400"}`}>
                 {building.children.length} area{building.children.length !== 1 ? "s" : ""}
             </div>
-        </button>
+        </div>
     );
 }
 
@@ -259,6 +319,7 @@ export default function BuildingMapPage() {
     const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
     const [viewMode, setViewMode] = useState<"tree" | "building">("tree");
     const [highlightTickets, setHighlightTickets] = useState(false);
+    const [selectedPriority, setSelectedPriority] = useState<"high" | "medium" | "low" | null>(null);
 
     // Refs for scrolling
     const treeViewRef = useRef<HTMLDivElement>(null);
@@ -268,7 +329,26 @@ export default function BuildingMapPage() {
     const tickets = ticketsData?.data || [];
     const categories = categoriesData?.data || [];
 
+    // Sort buildings by ticketCount (highest problems first)
+    const sortedBuildings = useMemo(() => {
+        return [...buildings].sort((a, b) => b.ticketCount - a.ticketCount);
+    }, [buildings]);
+
     const currentBuilding = useMemo(() => buildings.find((b) => b._id === selectedBuilding) || null, [buildings, selectedBuilding]);
+
+    // Auto-select building with highest problems on initial load
+    useEffect(() => {
+        if (sortedBuildings.length > 0 && selectedBuilding === null) {
+            const buildingWithMostProblems = sortedBuildings[0];
+            setSelectedBuilding(buildingWithMostProblems._id);
+            // Also expand its children
+            const newExpanded = new Set<string>();
+            buildingWithMostProblems.children.forEach(child => {
+                if (child.children.length > 0) newExpanded.add(child._id);
+            });
+            setExpandedLocations(newExpanded);
+        }
+    }, [sortedBuildings, selectedBuilding]);
 
     const toggleExpand = (locationId: string) => {
         const newExpanded = new Set(expandedLocations);
@@ -294,20 +374,39 @@ export default function BuildingMapPage() {
             }
             return null;
         };
+
+        let locationFilteredTickets: any[] = [];
+
         if (selectedLocation) {
             const location = findLocation(buildings, selectedLocation);
-            if (location) return pendingTickets.filter((t: any) => getFullPaths(location).includes(t.location));
+            if (location) locationFilteredTickets = pendingTickets.filter((t: any) => getFullPaths(location).includes(t.location));
+        } else if (selectedBuilding && currentBuilding) {
+            // Plant-wise view: show all tickets for the building when no specific location is selected
+            locationFilteredTickets = pendingTickets.filter((t: any) => getFullPaths(currentBuilding).includes(t.location));
         }
-        if (selectedBuilding && currentBuilding) {
-            return pendingTickets.filter((t: any) => getFullPaths(currentBuilding).includes(t.location));
-        }
-        return [];
-    }, [tickets, selectedLocation, selectedBuilding, buildings, currentBuilding]);
 
-    // Handle building selection - scroll to tree view
+        // Apply priority filter if selected
+        if (selectedPriority) {
+            return locationFilteredTickets.filter((t: any) => t.priority?.toLowerCase() === selectedPriority);
+        }
+
+        return locationFilteredTickets;
+    }, [tickets, selectedLocation, selectedBuilding, buildings, currentBuilding, selectedPriority]);
+
+    // Handle building selection - toggle behavior (click again to deselect)
     const handleBuildingSelect = (buildingId: string) => {
+        // Toggle: if already selected, deselect it
+        if (selectedBuilding === buildingId) {
+            setSelectedBuilding(null);
+            setSelectedLocation(null);
+            setSelectedPriority(null);
+            setExpandedLocations(new Set());
+            return;
+        }
+
         setSelectedBuilding(buildingId);
         setSelectedLocation(null);
+        setSelectedPriority(null); // Clear priority filter when changing buildings
         const building = buildings.find(b => b._id === buildingId);
         if (building) {
             const newExpanded = new Set<string>();
@@ -323,6 +422,27 @@ export default function BuildingMapPage() {
     // Handle location/floor selection - scroll to tickets and highlight
     const handleLocationSelect = (locationId: string) => {
         setSelectedLocation(locationId);
+        setSelectedPriority(null); // Clear priority filter when selecting a location
+        // Trigger highlight animation
+        setHighlightTickets(true);
+        // Scroll to tickets panel after a short delay
+        setTimeout(() => {
+            ticketsPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+        // Remove highlight after animation
+        setTimeout(() => {
+            setHighlightTickets(false);
+        }, 1500);
+    };
+
+    // Handle priority selection - filter tickets by priority
+    const handlePrioritySelect = (priority: "high" | "medium" | "low") => {
+        // Toggle priority filter: clicking the same priority clears it
+        if (selectedPriority === priority) {
+            setSelectedPriority(null);
+        } else {
+            setSelectedPriority(priority);
+        }
         // Trigger highlight animation
         setHighlightTickets(true);
         // Scroll to tickets panel after a short delay
@@ -366,10 +486,21 @@ export default function BuildingMapPage() {
                 <div className="mb-8">
                     <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Select Building</h2>
                     <div className="flex flex-wrap gap-4 overflow-x-auto pb-4 no-scrollbar">
-                        {buildings.map((building) => (
+                        {sortedBuildings.map((building) => (
                             <BuildingCard
-                                key={building._id} building={building} isSelected={selectedBuilding === building._id}
+                                key={building._id}
+                                building={building}
+                                isSelected={selectedBuilding === building._id}
                                 onClick={() => handleBuildingSelect(building._id)}
+                                selectedPriority={selectedBuilding === building._id ? selectedPriority : null}
+                                onPrioritySelect={(priority) => {
+                                    // First select this building if not already selected
+                                    if (selectedBuilding !== building._id) {
+                                        setSelectedBuilding(building._id);
+                                        setSelectedLocation(null);
+                                    }
+                                    handlePrioritySelect(priority);
+                                }}
                             />
                         ))}
                     </div>
@@ -420,20 +551,50 @@ export default function BuildingMapPage() {
                                         <VisualBuilding building={currentBuilding} selectedLocation={selectedLocation} onSelectLocation={handleLocationSelect} />
                                     </div>
                                 )}
-                                {/* Stats */}
+                                {/* Stats - Clickable Priority Filters */}
                                 <div className="grid grid-cols-3 gap-3 mt-6 pt-4 border-t border-gray-200">
-                                    <div className="bg-red-50 rounded-xl p-3 text-center border border-red-100">
-                                        <div className="text-2xl font-bold text-red-600">{currentBuilding.highPriority}</div>
-                                        <div className="text-xs text-red-600 font-medium">High</div>
-                                    </div>
-                                    <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
-                                        <div className="text-2xl font-bold text-amber-600">{currentBuilding.mediumPriority}</div>
-                                        <div className="text-xs text-amber-600 font-medium">Medium</div>
-                                    </div>
-                                    <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
-                                        <div className="text-2xl font-bold text-blue-600">{currentBuilding.lowPriority}</div>
-                                        <div className="text-xs text-blue-600 font-medium">Low</div>
-                                    </div>
+                                    <button
+                                        onClick={() => handlePrioritySelect("high")}
+                                        className={`rounded-xl p-3 text-center border transition-all duration-200 cursor-pointer hover:scale-105 hover:shadow-md ${selectedPriority === "high"
+                                            ? "bg-red-500 border-red-600 ring-2 ring-red-400 ring-offset-2"
+                                            : "bg-red-50 border-red-100 hover:bg-red-100"
+                                            }`}
+                                    >
+                                        <div className={`text-2xl font-bold ${selectedPriority === "high" ? "text-white" : "text-red-600"}`}>
+                                            {currentBuilding.highPriority}
+                                        </div>
+                                        <div className={`text-xs font-medium ${selectedPriority === "high" ? "text-red-100" : "text-red-600"}`}>
+                                            High {selectedPriority === "high" && "✓"}
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => handlePrioritySelect("medium")}
+                                        className={`rounded-xl p-3 text-center border transition-all duration-200 cursor-pointer hover:scale-105 hover:shadow-md ${selectedPriority === "medium"
+                                            ? "bg-amber-500 border-amber-600 ring-2 ring-amber-400 ring-offset-2"
+                                            : "bg-amber-50 border-amber-100 hover:bg-amber-100"
+                                            }`}
+                                    >
+                                        <div className={`text-2xl font-bold ${selectedPriority === "medium" ? "text-white" : "text-amber-600"}`}>
+                                            {currentBuilding.mediumPriority}
+                                        </div>
+                                        <div className={`text-xs font-medium ${selectedPriority === "medium" ? "text-amber-100" : "text-amber-600"}`}>
+                                            Medium {selectedPriority === "medium" && "✓"}
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => handlePrioritySelect("low")}
+                                        className={`rounded-xl p-3 text-center border transition-all duration-200 cursor-pointer hover:scale-105 hover:shadow-md ${selectedPriority === "low"
+                                            ? "bg-blue-500 border-blue-600 ring-2 ring-blue-400 ring-offset-2"
+                                            : "bg-blue-50 border-blue-100 hover:bg-blue-100"
+                                            }`}
+                                    >
+                                        <div className={`text-2xl font-bold ${selectedPriority === "low" ? "text-white" : "text-blue-600"}`}>
+                                            {currentBuilding.lowPriority}
+                                        </div>
+                                        <div className={`text-xs font-medium ${selectedPriority === "low" ? "text-blue-100" : "text-blue-600"}`}>
+                                            Low {selectedPriority === "low" && "✓"}
+                                        </div>
+                                    </button>
                                 </div>
                             </div>
                         ) : (
@@ -447,11 +608,23 @@ export default function BuildingMapPage() {
                     {/* Tickets Panel */}
                     <div ref={ticketsPanelRef} className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 scroll-mt-4">
                         <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                                 <MapPin className="w-6 h-6 text-orange-500" />
                                 Pending Tickets
+                                {selectedPriority && (
+                                    <button
+                                        onClick={() => setSelectedPriority(null)}
+                                        className={`px-2 py-0.5 rounded-full text-sm font-bold flex items-center gap-1 transition-all hover:scale-105 ${selectedPriority === "high" ? "bg-red-500 text-white" :
+                                            selectedPriority === "medium" ? "bg-amber-500 text-white" :
+                                                "bg-blue-500 text-white"
+                                            }`}
+                                    >
+                                        {selectedPriority.charAt(0).toUpperCase() + selectedPriority.slice(1)} Priority
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
                                 {filteredTickets.length > 0 && (
-                                    <span className={`ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-sm font-bold transition-all ${highlightTickets ? "animate-pulse scale-125" : ""}`}>
+                                    <span className={`px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-sm font-bold transition-all ${highlightTickets ? "animate-pulse scale-125" : ""}`}>
                                         {filteredTickets.length}
                                     </span>
                                 )}

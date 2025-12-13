@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import React, { Suspense, useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
@@ -10,9 +10,18 @@ import Capsule from "@/components/Capsule";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
+// Loading fallback for Suspense
+function DashboardLoading() {
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20">
+      <Navbar />
+      <div className="p-10 text-center text-gray-500 animate-pulse">Loading dashboard…</div>
+    </div>
+  );
+}
 
-
-export default function DashboardPage() {
+// Main dashboard content component that uses useSearchParams
+function DashboardContent() {
   const searchParams = useSearchParams();
   const { data, error, mutate } = useSWR("/api/tickets", fetcher, { refreshInterval: 3000 });
   const { data: usersData } = useSWR("/api/masters/users?limit=100", fetcher);
@@ -104,18 +113,18 @@ export default function DashboardPage() {
   useEffect(() => {
     const handleDoubleClickReset = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      
+
       // Check if double-click is on the background (not on interactive elements)
       // Exclude clicks on buttons, capsules, tickets, inputs, etc.
       const isInteractiveElement = target.closest('button, a, input, textarea, select, [role="button"]');
       const isCapsule = target.closest('[class*="rounded-2xl"]') || target.closest('[class*="rounded-xl"]');
-      
+
       // Only reset if clicked on the background (body or main container divs)
-      const isBackground = target.tagName === 'BODY' || 
-                          target.classList.contains('min-h-screen') ||
-                          target.classList.contains('dashboard-content') ||
-                          (target.tagName === 'DIV' && !target.hasAttribute('id') && !isCapsule);
-      
+      const isBackground = target.tagName === 'BODY' ||
+        target.classList.contains('min-h-screen') ||
+        target.classList.contains('dashboard-content') ||
+        (target.tagName === 'DIV' && !target.hasAttribute('id') && !isCapsule);
+
       if (isBackground && !isInteractiveElement) {
         // Reset to show all pending data
         resetFilters();
@@ -123,7 +132,7 @@ export default function DashboardPage() {
         setShowSubCategoriesSection(false); // Hide subcategories section
         setShowUpArrow(false);
         clickedElementRef.current = null;
-        
+
         // Scroll to pending section
         setTimeout(() => {
           const pendingDiv = document.getElementById('pending-capsule');
@@ -147,10 +156,10 @@ export default function DashboardPage() {
       const category = searchParams.get('category');
       const priority = searchParams.get('priority');
       const status = searchParams.get('status');
-      
+
       if (category || priority || status) {
         const newFilters: Partial<typeof filters> = {};
-        
+
         if (category) {
           newFilters.category = category;
           // Find and set the selected category ID
@@ -159,11 +168,11 @@ export default function DashboardPage() {
             setSelectedCategory(cat._id);
           }
         }
-        
+
         if (priority) {
           newFilters.priority = priority;
         }
-        
+
         if (status) {
           newFilters.status = status;
           // Set showCompleted based on status
@@ -171,13 +180,13 @@ export default function DashboardPage() {
             setShowCompleted(true);
           }
         }
-        
+
         // Apply filters immediately
         setFilters(newFilters);
-        
+
         // Mark as initialized
         setFiltersInitialized(true);
-        
+
         // Scroll to ticket list after filters are applied and data is rendered
         setTimeout(() => {
           scrollToTicketList();
@@ -445,14 +454,14 @@ export default function DashboardPage() {
 
     if (category) out = out.filter((t: any) => (t.category || "").toString().toLowerCase() === category.toLowerCase());
     if (subCategory) out = out.filter((t: any) => (t.subCategory || "").toString().toLowerCase() === subCategory.toLowerCase());
-    
+
     // Filter by agency - show tickets whose subcategories are linked to this agency
     if (agency) {
       const agencyData = agencies.find((a: any) => a._id === agency);
       if (agencyData && agencyData.subCategories) {
         const linkedSubCategoryIds = agencyData.subCategories.map((s: any) => s._id || s);
         out = out.filter((t: any) => {
-          const ticketSubCategory = subCategories.find((s: any) => 
+          const ticketSubCategory = subCategories.find((s: any) =>
             s.name.toLowerCase() === (t.subCategory || "").toLowerCase()
           );
           return ticketSubCategory && linkedSubCategoryIds.includes(ticketSubCategory._id);
@@ -545,10 +554,10 @@ export default function DashboardPage() {
     const agencyStats = agencies.map((agency: any) => {
       // Get all subcategories linked to this agency
       const linkedSubCategoryIds = agency.subCategories?.map((s: any) => s._id || s) || [];
-      
+
       // Find tickets that match any of the linked subcategories
       const agencyTickets = categoryStatsBase.filter((t: any) => {
-        const ticketSubCategory = subCategories.find((s: any) => 
+        const ticketSubCategory = subCategories.find((s: any) =>
           s.name.toLowerCase() === (t.subCategory || "").toLowerCase()
         );
         return ticketSubCategory && linkedSubCategoryIds.includes(ticketSubCategory._id);
@@ -599,11 +608,10 @@ export default function DashboardPage() {
                   resetFilters();
                 }
               }}
-              className={`px-4 py-2.5 rounded-xl font-medium transition-all shadow-sm ${
-                showCompleted 
-                  ? "bg-teal-600 text-white hover:bg-teal-700" 
-                  : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-              }`}
+              className={`px-4 py-2.5 rounded-xl font-medium transition-all shadow-sm ${showCompleted
+                ? "bg-teal-600 text-white hover:bg-teal-700"
+                : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+                }`}
             >
               {showCompleted ? "Show Pending" : "Completed"}
             </button>
@@ -687,9 +695,9 @@ export default function DashboardPage() {
                     {...cat.stats}
                     onClick={() => {
                       const isAll = cat.id === "all";
-                      const isCurrentlySelected = selectedCategory === cat.id || 
+                      const isCurrentlySelected = selectedCategory === cat.id ||
                         (cat.id === "all" ? filters.category === "" : filters.category === cat.internalName);
-                      
+
                       if (isCurrentlySelected) {
                         // Deselect if already selected
                         setFilters({ category: "" });
@@ -701,12 +709,12 @@ export default function DashboardPage() {
                         if (clickedDiv) {
                           clickedElementRef.current = clickedDiv;
                         }
-                        
+
                         // Select the category - use internalName for filtering
                         setFilters({ category: isAll ? "" : cat.internalName });
                         setSelectedCategory(isAll ? null : cat.id);
                         setShowSubCategoriesSection(true); // Show subcategories section automatically
-                        
+
                         // Scroll to ticket list after a delay to ensure filters are applied and subcategories are rendered
                         if (!isAll) {
                           setTimeout(() => {
@@ -717,7 +725,7 @@ export default function DashboardPage() {
                     }}
                     onPriorityClick={(p) => {
                       // Preserve category context when clicking priority
-                      setFilters({ 
+                      setFilters({
                         priority: filters.priority === p ? "" : p,
                         category: cat.internalName
                       });
@@ -782,14 +790,14 @@ export default function DashboardPage() {
                           if (subDiv) {
                             clickedElementRef.current = subDiv;
                           }
-                          
+
                           // Filter by this subcategory
                           const cat = categories.find((c: any) => c._id === selectedCategory);
                           setFilters({
                             category: cat ? cat.name : "",
                             subCategory: sub.name
                           });
-                          
+
                           // Scroll to ticket list after a delay to ensure filters are applied
                           setTimeout(() => {
                             scrollToTicketList();
@@ -799,7 +807,7 @@ export default function DashboardPage() {
                         onPriorityClick={(p) => {
                           // Preserve category context when clicking priority in subcategory
                           const cat = categories.find((c: any) => c._id === selectedCategory);
-                          setFilters({ 
+                          setFilters({
                             priority: filters.priority === p ? "" : p,
                             category: cat ? cat.name : filters.category,
                             subCategory: filters.subCategory
@@ -829,7 +837,7 @@ export default function DashboardPage() {
         {stats.agencyStats && stats.agencyStats.length > 0 && (
           <div className="mb-12">
             {/* Collapsible Header */}
-            <div 
+            <div
               className="flex items-center justify-between mb-6 cursor-pointer group"
               onClick={() => setShowAgencyCapsules(!showAgencyCapsules)}
             >
@@ -876,7 +884,7 @@ export default function DashboardPage() {
                     }}
                     onPriorityClick={(p) => {
                       // Preserve agency context when clicking priority
-                      setFilters({ 
+                      setFilters({
                         priority: filters.priority === p ? "" : p,
                         agency: filters.agency
                       });
@@ -905,8 +913,8 @@ export default function DashboardPage() {
                   <button
                     onClick={() => setFilters({ priority: "" })}
                     className={`px-4 py-2 rounded-lg font-medium transition-all border-2 ${filters.priority === ""
-                        ? "bg-gray-800 text-white border-gray-800 shadow-md"
-                        : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                      ? "bg-gray-800 text-white border-gray-800 shadow-md"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                       }`}
                   >
                     All Priorities
@@ -914,8 +922,8 @@ export default function DashboardPage() {
                   <button
                     onClick={() => setFilters({ priority: "high" })}
                     className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "high"
-                        ? "bg-red-500 text-white border-red-500 shadow-md"
-                        : "bg-red-50 text-red-700 border-red-300 hover:border-red-400"
+                      ? "bg-red-500 text-white border-red-500 shadow-md"
+                      : "bg-red-50 text-red-700 border-red-300 hover:border-red-400"
                       }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-red-500"></span>
@@ -924,8 +932,8 @@ export default function DashboardPage() {
                   <button
                     onClick={() => setFilters({ priority: "medium" })}
                     className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "medium"
-                        ? "bg-amber-500 text-white border-amber-500 shadow-md"
-                        : "bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400"
+                      ? "bg-amber-500 text-white border-amber-500 shadow-md"
+                      : "bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400"
                       }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-amber-500"></span>
@@ -934,8 +942,8 @@ export default function DashboardPage() {
                   <button
                     onClick={() => setFilters({ priority: "low" })}
                     className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "low"
-                        ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
-                        : "bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-400"
+                      ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-400"
                       }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -1042,7 +1050,7 @@ export default function DashboardPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
-              
+
               {/* Agency Search Filter */}
               <div className="relative">
                 <input
@@ -1069,7 +1077,7 @@ export default function DashboardPage() {
                 // Filter by subcategory name and agency name
                 const filteredSubs = stats.subCategoryStats.filter((sub: any) => {
                   const matchesSubName = sub.name.toLowerCase().includes(subCategorySearch.toLowerCase());
-                  
+
                   // Check if agency search is active
                   if (agencySearch) {
                     const subData = subCategories.find((s: any) => s.name === sub.name);
@@ -1082,7 +1090,7 @@ export default function DashboardPage() {
                     }
                     return false; // If agency search is active but sub has no agencies, exclude it
                   }
-                  
+
                   return matchesSubName;
                 });
 
@@ -1111,11 +1119,10 @@ export default function DashboardPage() {
                         }}
                         className="w-full flex items-center gap-3 p-3 hover:bg-gray-700 rounded-lg transition-colors group"
                       >
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                          filters.subCategory === sub.name
-                            ? 'bg-blue-600 border-blue-600'
-                            : 'border-gray-500 group-hover:border-gray-400'
-                        }`}>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${filters.subCategory === sub.name
+                          ? 'bg-blue-600 border-blue-600'
+                          : 'border-gray-500 group-hover:border-gray-400'
+                          }`}>
                           {filters.subCategory === sub.name && (
                             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -1169,5 +1176,14 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Default export - wraps DashboardContent in Suspense for useSearchParams
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <DashboardContent />
+    </Suspense>
   );
 }
