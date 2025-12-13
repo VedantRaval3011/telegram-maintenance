@@ -1,5 +1,6 @@
 "use client";
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
 import FilterBar from "@/components/FilterBar";
@@ -12,6 +13,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
   const { data, error, mutate } = useSWR("/api/tickets", fetcher, { refreshInterval: 3000 });
   const { data: usersData } = useSWR("/api/masters/users?limit=100", fetcher);
   const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
@@ -24,10 +26,12 @@ export default function DashboardPage() {
   const [subCategorySearch, setSubCategorySearch] = useState(""); // Search term for subcategories
   const [agencySearch, setAgencySearch] = useState(""); // Search term for agencies
   const [showSubCategoryModal, setShowSubCategoryModal] = useState(false); // Show subcategory selection modal
+  const [showSubCategoriesSection, setShowSubCategoriesSection] = useState(false); // Control subcategories section visibility
   const scrollPosition = useRef<number>(0); // Store scroll position before jumping
   const clickedElementRef = useRef<HTMLElement | null>(null); // Store reference to clicked category element
   const ticketListRef = useRef<HTMLDivElement>(null); // Ref for ticket list section
   const [showAgencyCapsules, setShowAgencyCapsules] = useState(false); // Toggle agency capsules visibility
+  const [filtersInitialized, setFiltersInitialized] = useState(false); // Track if filters have been initialized from URL
 
 
   const [filters, setFiltersState] = useState({
@@ -75,7 +79,7 @@ export default function DashboardPage() {
     setTimeout(() => {
       if (ticketListRef.current) {
         const elementPosition = ticketListRef.current.getBoundingClientRect().top + window.scrollY;
-        const offsetPosition = elementPosition - 100; // 100px offset to show full ticket
+        const offsetPosition = elementPosition - 120; // 120px offset to show priority filters and tickets clearly
         window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
       }
     }, 100);
@@ -116,6 +120,7 @@ export default function DashboardPage() {
         // Reset to show all pending data
         resetFilters();
         setSelectedCategory(null);
+        setShowSubCategoriesSection(false); // Hide subcategories section
         setShowUpArrow(false);
         clickedElementRef.current = null;
         
@@ -134,6 +139,54 @@ export default function DashboardPage() {
     document.addEventListener('dblclick', handleDoubleClickReset);
     return () => document.removeEventListener('dblclick', handleDoubleClickReset);
   }, []);
+
+  // Initialize filters from URL parameters (e.g., when navigating from summary page)
+  useEffect(() => {
+    // Only run if we have category data and haven't initialized yet
+    if (!filtersInitialized && categoriesData?.data && Array.isArray(categoriesData.data)) {
+      const category = searchParams.get('category');
+      const priority = searchParams.get('priority');
+      const status = searchParams.get('status');
+      
+      if (category || priority || status) {
+        const newFilters: Partial<typeof filters> = {};
+        
+        if (category) {
+          newFilters.category = category;
+          // Find and set the selected category ID
+          const cat = categoriesData.data.find((c: any) => c.name === category);
+          if (cat) {
+            setSelectedCategory(cat._id);
+          }
+        }
+        
+        if (priority) {
+          newFilters.priority = priority;
+        }
+        
+        if (status) {
+          newFilters.status = status;
+          // Set showCompleted based on status
+          if (status === 'COMPLETED') {
+            setShowCompleted(true);
+          }
+        }
+        
+        // Apply filters immediately
+        setFilters(newFilters);
+        
+        // Mark as initialized
+        setFiltersInitialized(true);
+        
+        // Scroll to ticket list after filters are applied and data is rendered
+        setTimeout(() => {
+          scrollToTicketList();
+        }, 800);
+      } else {
+        setFiltersInitialized(true);
+      }
+    }
+  }, [searchParams, categoriesData, filtersInitialized, setFilters, scrollToTicketList]);
 
   const tickets = data && Array.isArray(data.data) ? data.data : [];
   const users = usersData?.data || [];
@@ -311,6 +364,81 @@ export default function DashboardPage() {
     return out;
   }, [tickets, filters]);
 
+  // Category Stats Base: Respects location, user, name, date/time filters but NOT priority or category
+  // This ensures category capsules always show their full stats, not filtered by priority
+  const categoryStatsBase = useMemo(() => {
+    const {
+      location, user, name,
+      dateFrom, dateTo, timeFrom, timeTo
+    } = filters;
+
+    let out = tickets.slice();
+
+    // Apply showCompleted filter first
+    if (showCompleted) {
+      out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "completed");
+    } else {
+      out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "pending");
+    }
+
+    if (location) out = out.filter((t: any) => (t.location || "").toString().toLowerCase() === location.toLowerCase());
+    // Note: Priority is NOT filtered here so category capsules show all priorities
+
+    if (user) {
+      out = out.filter((t: any) => {
+        const createdBy = (t.createdBy || "").toString().toLowerCase();
+        return createdBy.includes(user.toLowerCase());
+      });
+    }
+
+    if (name) {
+      const q = name.toLowerCase();
+      out = out.filter((t: any) => {
+        const createdBy = (t.createdBy || "").toString().toLowerCase();
+        const description = (t.description || "").toString().toLowerCase();
+        return createdBy.includes(q) || description.includes(q);
+      });
+    }
+
+    const parseTicketDate = (t: any) => {
+      const raw = t.createdAt || t.createdOn || t.created_at || t.created;
+      if (!raw) return null;
+      try {
+        return new Date(raw);
+      } catch {
+        return null;
+      }
+    };
+
+    if (dateFrom) {
+      const dFrom = new Date(dateFrom + "T00:00:00");
+      out = out.filter((t: any) => {
+        const d = parseTicketDate(t);
+        return d ? d >= dFrom : false;
+      });
+    }
+    if (dateTo) {
+      const dTo = new Date(dateTo + "T23:59:59");
+      out = out.filter((t: any) => {
+        const d = parseTicketDate(t);
+        return d ? d <= dTo : false;
+      });
+    }
+
+    if (timeFrom || timeTo) {
+      out = out.filter((t: any) => {
+        const d = parseTicketDate(t);
+        if (!d) return false;
+        const hhmm = `${d.getHours()}`.padStart(2, "0") + ":" + `${d.getMinutes()}`.padStart(2, "0");
+        if (timeFrom && hhmm < timeFrom) return false;
+        if (timeTo && hhmm > timeTo) return false;
+        return true;
+      });
+    }
+
+    return out;
+  }, [tickets, filters, showCompleted]);
+
   const fullyFiltered = useMemo(() => {
     let out = baseFiltered.slice();
     const { category, subCategory, agency, sortBy } = filters;
@@ -365,12 +493,13 @@ export default function DashboardPage() {
     const pendingStats = calculateStats(globalStatsBase.filter((t: any) => t.status === "PENDING"));
     const completedStats = calculateStats(globalStatsBase.filter((t: any) => t.status === "COMPLETED"));
 
-    // Category Stats - use baseFiltered (exclude category filter) so we see all categories
+    // Category Stats - use categoryStatsBase (excludes priority and category filters) so each category shows its full stats
     const categoryStats = categories.map((cat: any) => {
-      const catTickets = baseFiltered.filter((t: any) => (t.category || "").toLowerCase() === cat.name.toLowerCase());
+      const catTickets = categoryStatsBase.filter((t: any) => (t.category || "").toLowerCase() === cat.name.toLowerCase());
       return {
         id: cat._id,
-        name: cat.displayName,
+        name: cat.displayName, // Display name for UI
+        internalName: cat.name, // Internal name for filtering
         stats: calculateStats(catTickets),
         color: cat.color,
       };
@@ -390,13 +519,13 @@ export default function DashboardPage() {
       };
     }).filter((u: any) => u.stats.total > 0);
 
-    // Subcategory Stats - use baseFiltered + category filter (exclude subCategory filter)
+    // Subcategory Stats - use categoryStatsBase + category filter (exclude priority and subCategory filter)
     let subCategoryStats: any[] = [];
     if (selectedCategory) {
       const cat = categories.find((c: any) => c._id === selectedCategory);
       if (cat) {
-        // Filter tickets by this category only (ignore subCategory filter for the list stats)
-        const catTickets = baseFiltered.filter((t: any) => (t.category || "").toLowerCase() === cat.name.toLowerCase());
+        // Filter tickets by this category only (ignore subCategory and priority filters for the list stats)
+        const catTickets = categoryStatsBase.filter((t: any) => (t.category || "").toLowerCase() === cat.name.toLowerCase());
         const relevantSubs = subCategories.filter((s: any) => s.categoryId === selectedCategory);
 
         subCategoryStats = relevantSubs.map((sub: any) => {
@@ -412,13 +541,13 @@ export default function DashboardPage() {
       }
     }
 
-    // Agency Stats - calculate pending work for each agency based on their linked subcategories
+    // Agency Stats - use categoryStatsBase to show complete agency stats regardless of priority
     const agencyStats = agencies.map((agency: any) => {
       // Get all subcategories linked to this agency
       const linkedSubCategoryIds = agency.subCategories?.map((s: any) => s._id || s) || [];
       
       // Find tickets that match any of the linked subcategories
-      const agencyTickets = baseFiltered.filter((t: any) => {
+      const agencyTickets = categoryStatsBase.filter((t: any) => {
         const ticketSubCategory = subCategories.find((s: any) => 
           s.name.toLowerCase() === (t.subCategory || "").toLowerCase()
         );
@@ -433,7 +562,7 @@ export default function DashboardPage() {
     }).filter((a: any) => a.stats.total > 0); // Only show agencies with pending work
 
     return { totalStats, pendingStats, completedStats, categoryStats, userStats, subCategoryStats, agencyStats };
-  }, [fullyFiltered, baseFiltered, categories, users, subCategories, selectedCategory, calculateStats, agencies]);
+  }, [fullyFiltered, baseFiltered, categoryStatsBase, globalStatsBase, categories, users, subCategories, selectedCategory, calculateStats, agencies]);
 
   if (error)
     return <div className="p-10 text-center text-red-500">Failed to load</div>;
@@ -559,12 +688,13 @@ export default function DashboardPage() {
                     onClick={() => {
                       const isAll = cat.id === "all";
                       const isCurrentlySelected = selectedCategory === cat.id || 
-                        (cat.id === "all" ? filters.category === "" : filters.category === cat.name);
+                        (cat.id === "all" ? filters.category === "" : filters.category === cat.internalName);
                       
                       if (isCurrentlySelected) {
                         // Deselect if already selected
                         setFilters({ category: "" });
                         setSelectedCategory(null);
+                        setShowSubCategoriesSection(false); // Hide subcategories section
                       } else {
                         // Save reference to clicked element
                         const clickedDiv = document.getElementById(`category-${cat.id}`);
@@ -572,18 +702,30 @@ export default function DashboardPage() {
                           clickedElementRef.current = clickedDiv;
                         }
                         
-                        // Select the category and scroll to ticket list
-                        setFilters({ category: isAll ? "" : cat.name });
+                        // Select the category - use internalName for filtering
+                        setFilters({ category: isAll ? "" : cat.internalName });
                         setSelectedCategory(isAll ? null : cat.id);
+                        setShowSubCategoriesSection(true); // Show subcategories section automatically
+                        
+                        // Scroll to ticket list after a delay to ensure filters are applied and subcategories are rendered
                         if (!isAll) {
-                          scrollToTicketList();
+                          setTimeout(() => {
+                            scrollToTicketList();
+                          }, 500); // Increased delay to ensure subcategories section is fully rendered
                         }
                       }
                     }}
-                    onPriorityClick={(p) => setFilters({ priority: p })}
+                    onPriorityClick={(p) => {
+                      // Preserve category context when clicking priority
+                      setFilters({ 
+                        priority: filters.priority === p ? "" : p,
+                        category: cat.internalName
+                      });
+                      scrollToTicketList();
+                    }}
                     selectedPriority={filters.priority}
                     color={cat.color || "#6b7280"}
-                    className={(selectedCategory === cat.id || (cat.id === "all" ? filters.category === "" : filters.category === cat.name)) ? "ring-2 ring-gray-900 ring-offset-2" : ""}
+                    className={(selectedCategory === cat.id || (cat.id === "all" ? filters.category === "" : filters.category === cat.internalName)) ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                   />
                 </div>
               ))}
@@ -592,7 +734,7 @@ export default function DashboardPage() {
         )}
 
         {/* Subcategories Section */}
-        {selectedCategory && (
+        {selectedCategory && showSubCategoriesSection && (
           <div className="mb-12">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg font-semibold text-gray-900">
@@ -610,7 +752,7 @@ export default function DashboardPage() {
                 </button>
                 <button
                   onClick={() => {
-                    setSelectedCategory(null);
+                    setShowSubCategoriesSection(false);
                     setSubCategorySearch(""); // Clear search when closing
                   }}
                   className="text-sm text-gray-600 hover:text-gray-900 underline font-medium"
@@ -641,16 +783,29 @@ export default function DashboardPage() {
                             clickedElementRef.current = subDiv;
                           }
                           
-                          // Filter by this subcategory and scroll to ticket list
+                          // Filter by this subcategory
                           const cat = categories.find((c: any) => c._id === selectedCategory);
                           setFilters({
                             category: cat ? cat.name : "",
                             subCategory: sub.name
                           });
-                          scrollToTicketList();
+                          
+                          // Scroll to ticket list after a delay to ensure filters are applied
+                          setTimeout(() => {
+                            scrollToTicketList();
+                          }, 150);
                         }}
                         className={filters.subCategory === sub.name ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-                        onPriorityClick={(p) => setFilters({ priority: p })}
+                        onPriorityClick={(p) => {
+                          // Preserve category context when clicking priority in subcategory
+                          const cat = categories.find((c: any) => c._id === selectedCategory);
+                          setFilters({ 
+                            priority: filters.priority === p ? "" : p,
+                            category: cat ? cat.name : filters.category,
+                            subCategory: filters.subCategory
+                          });
+                          scrollToTicketList();
+                        }}
                         selectedPriority={filters.priority}
                         color={categories.find((c: any) => c._id === selectedCategory)?.color || "#6b7280"}
                         onScrollBack={scrollBackToTop}
@@ -713,10 +868,20 @@ export default function DashboardPage() {
                         setFilters({ agency: "" });
                       } else {
                         setFilters({ agency: agency.id });
-                        scrollToTicketList();
+                        // Scroll to ticket list after a delay to ensure filters are applied
+                        setTimeout(() => {
+                          scrollToTicketList();
+                        }, 150);
                       }
                     }}
-                    onPriorityClick={(p) => setFilters({ priority: p })}
+                    onPriorityClick={(p) => {
+                      // Preserve agency context when clicking priority
+                      setFilters({ 
+                        priority: filters.priority === p ? "" : p,
+                        agency: filters.agency
+                      });
+                      scrollToTicketList();
+                    }}
                     selectedPriority={filters.priority}
                     color="#f59e0b"
                     className={filters.agency === agency.id ? "ring-2 ring-gray-900 ring-offset-2" : ""}
@@ -990,6 +1155,7 @@ export default function DashboardPage() {
                   onClick={() => {
                     setShowSubCategoryModal(false);
                     if (filters.subCategory) {
+                      setShowSubCategoriesSection(true); // Show subcategories section
                       scrollToTicketList();
                     }
                   }}

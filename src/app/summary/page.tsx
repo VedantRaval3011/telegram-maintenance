@@ -1,6 +1,7 @@
 "use client";
 import React, { useMemo } from "react";
 import useSWR from "swr";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Capsule from "@/components/Capsule";
 import {
@@ -99,7 +100,49 @@ const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent
   );
 };
 
+// Custom X-Axis Tick with text wrapping
+const CustomXAxisTick = ({ x, y, payload }: any) => {
+  const text = payload.value;
+  const maxCharsPerLine = 12;
+  
+  // Split text into words
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+  
+  words.forEach((word: string) => {
+    if ((currentLine + word).length <= maxCharsPerLine) {
+      currentLine += (currentLine ? ' ' : '') + word;
+    } else {
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
+    }
+  });
+  if (currentLine) lines.push(currentLine);
+  
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text 
+        x={0} 
+        y={0} 
+        dy={32}
+        textAnchor="middle" 
+        fill="#374151"
+        fontSize={12}
+        fontWeight={500}
+      >
+        {lines.map((line, index) => (
+          <tspan key={index} x={0} dy={index === 0 ? 0 : 18}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+};
+
 export default function SummaryPage() {
+  const router = useRouter();
   const { data: tickets = [], error, isLoading } = useSWR<Ticket[]>("/api/tickets", fetcher, { refreshInterval: 3000 });
   const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", (url: string) => 
     fetch(url).then(r => r.json()));
@@ -199,13 +242,73 @@ export default function SummaryPage() {
     };
   }, [tickets]);
 
-  // Prepare chart data
-  const barChartData = summary.map(cat => ({
-    name: cat.displayName,
-    completed: cat.totalCompleted,
-    avgTime: parseFloat(cat.averageTimeHours.toFixed(1)),
-    color: cat.color,
-  }));
+  // Calculate subcategory breakdown for each category
+  const subcategoryBreakdown = useMemo(() => {
+    if (!Array.isArray(tickets)) return new Map();
+
+    const completedTickets = tickets.filter(
+      (t) => t.status === "COMPLETED" && t.completedAt && t.createdAt
+    );
+
+    const categorySubMap = new Map<string, Map<string, number>>();
+
+    completedTickets.forEach((ticket) => {
+      const category = ticket.category || "Uncategorized";
+      const subCategory = ticket.subCategory || "Others";
+
+      if (!categorySubMap.has(category)) {
+        categorySubMap.set(category, new Map());
+      }
+
+      const subMap = categorySubMap.get(category)!;
+      subMap.set(subCategory, (subMap.get(subCategory) || 0) + 1);
+    });
+
+    return categorySubMap;
+  }, [tickets]);
+
+  // Prepare chart data with subcategory breakdown
+  const barChartData = summary.map(cat => {
+    const subCategoryData = subcategoryBreakdown.get(cat.category) || new Map();
+    const subCategoryObj: Record<string, number> = {};
+    
+    subCategoryData.forEach((count: number, subCat: string) => {
+      subCategoryObj[subCat] = count;
+    });
+
+    return {
+      name: cat.displayName,
+      completed: cat.totalCompleted,
+      avgTime: parseFloat(cat.averageTimeHours.toFixed(1)),
+      color: cat.color,
+      ...subCategoryObj, // Spread subcategory counts
+    };
+  });
+
+  // Get all unique subcategories for the legend
+  const allSubCategories = useMemo(() => {
+    const subCats = new Set<string>();
+    subcategoryBreakdown.forEach((subMap: Map<string, number>) => {
+      subMap.forEach((_: number, subCat: string) => {
+        subCats.add(subCat);
+      });
+    });
+    return Array.from(subCats).sort();
+  }, [subcategoryBreakdown]);
+
+  // Generate colors for subcategories
+  const subCategoryColors: Record<string, string> = useMemo(() => {
+    const colors = [
+      '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+      '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+      '#a855f7', '#22c55e', '#eab308', '#f43f5e', '#6366f1'
+    ];
+    const colorMap: Record<string, string> = {};
+    allSubCategories.forEach((subCat, index) => {
+      colorMap[subCat] = colors[index % colors.length];
+    });
+    return colorMap;
+  }, [allSubCategories]);
 
   const pieChartData = summary.map(cat => ({
     name: cat.displayName,
@@ -318,15 +421,33 @@ export default function SummaryPage() {
                   <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Priority Distribution</div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5">
+                      <span 
+                        onClick={() => {
+                          // Navigate to dashboard with category and high priority filter
+                          router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=high&status=COMPLETED`);
+                        }}
+                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
+                      >
                         <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
                         <span className="text-gray-700 font-medium">High: {cat.priority.high}</span>
                       </span>
-                      <span className="flex items-center gap-1.5">
+                      <span 
+                        onClick={() => {
+                          // Navigate to dashboard with category and medium priority filter
+                          router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=medium&status=COMPLETED`);
+                        }}
+                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
+                      >
                         <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                         <span className="text-gray-700 font-medium">Med: {cat.priority.medium}</span>
                       </span>
-                      <span className="flex items-center gap-1.5">
+                      <span 
+                        onClick={() => {
+                          // Navigate to dashboard with category and low priority filter
+                          router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=low&status=COMPLETED`);
+                        }}
+                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
+                      >
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                         <span className="text-gray-700 font-medium">Low: {cat.priority.low}</span>
                       </span>
@@ -358,40 +479,42 @@ export default function SummaryPage() {
         {/* Charts Section */}
         <div className="space-y-6 mb-12">
           {/* Completion by Category - Bar Chart */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
             <div className="mb-6">
-              <div className="flex items-center gap-2 mb-2">
-                <BarChart3 className="w-5 h-5 text-blue-600" />
-                <h3 className="text-lg font-semibold text-gray-900">Completion Volume by Category</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Completion Volume by Category</h3>
+                </div>
+                <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-900">Total Completed: {overallStats.total}</span>
+                </div>
               </div>
               <p className="text-sm text-gray-600">
                 Total number of completed tickets across all categories. Higher bars indicate more work completed in that category.
               </p>
             </div>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={barChartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+            <ResponsiveContainer width="100%" height={550}>
+              <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 15 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="name" 
-                  tick={{ fontSize: 12, fill: '#4b5563' }}
-                  angle={-45}
+                  tick={<CustomXAxisTick />}
+                  interval={0}
+                  height={90}
                   textAnchor="end"
-                  height={80}
+                  tickMargin={20} 
                 />
                 <YAxis 
                   tick={{ fontSize: 12, fill: '#4b5563' }}
-                  label={{ value: 'Number of Tickets', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563' } }}
+                  label={{ value: 'Completed Tickets', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
                 />
                 <Tooltip content={<CustomTooltip formatter={(value: number) => `${value} tickets`} />} />
-                <Legend 
-                  wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
-                  iconType="square"
-                />
                 <Bar 
                   dataKey="completed" 
-                  name="Completed Tickets" 
                   radius={[8, 8, 0, 0]}
-                  label={{ position: 'top', fontSize: 11, fill: '#374151', fontWeight: 'bold' }}
+                  label={{ position: 'top', fontSize: 12, fill: '#1f2937', fontWeight: 'bold' }}
                 >
                   {barChartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -401,45 +524,98 @@ export default function SummaryPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* Average Time by Category - Line Chart */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+          {/* Average Time by Category with Subcategory Breakdown */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
             <div className="mb-6">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-5 h-5 text-purple-600" />
-                <h3 className="text-lg font-semibold text-gray-900">Average Completion Time Trend</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-purple-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Average Completion Time Trend</h3>
+                </div>
+                <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg border border-purple-200">
+                  <Activity className="w-4 h-4 text-purple-600" />
+                  <span className="text-sm font-semibold text-purple-900">With Subcategory Breakdown</span>
+                </div>
               </div>
               <p className="text-sm text-gray-600">
-                Average time taken to complete work in each category. Lower values indicate faster completion times and better efficiency.
+                Average time taken to complete work in each category (purple line) with completed work breakdown by subcategory (stacked bars). Lower line values indicate faster completion times.
               </p>
             </div>
-            <ResponsiveContainer width="100%" height={350}>
-              <ComposedChart data={barChartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+            <ResponsiveContainer width="100%" height={550}>
+              <ComposedChart data={barChartData} margin={{ top: 40, right: 40, left: 20, bottom: 100 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="name" 
-                  tick={{ fontSize: 12, fill: '#4b5563' }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
+                  tick={<CustomXAxisTick />}
+                  interval={0}
+                  height={90}
+                  tickMargin={20} 
                 />
                 <YAxis 
+                  yAxisId="left"
                   tick={{ fontSize: 12, fill: '#4b5563' }}
-                  label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563' } }}
+                  label={{ value: 'Completed Tickets', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
                 />
-                <Tooltip content={<CustomTooltip formatter={(value: number) => `${value} hours`} />} />
+                <YAxis 
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 12, fill: '#8b5cf6' }}
+                  label={{ value: 'Avg Time (Hours)', angle: 90, position: 'insideRight', style: { fontSize: 12, fill: '#8b5cf6', fontWeight: 600 } }}
+                />
+                <Tooltip 
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200">
+                          <p className="font-semibold text-gray-900 mb-2">{label}</p>
+                          {payload.map((entry: any, index: number) => {
+                            if (entry.dataKey === 'avgTime') {
+                              return (
+                                <p key={index} className="text-sm" style={{ color: entry.color }}>
+                                  {entry.name}: <span className="font-bold">{entry.value} hours</span>
+                                </p>
+                              );
+                            } else if (entry.value > 0) {
+                              return (
+                                <p key={index} className="text-sm" style={{ color: entry.color }}>
+                                  {entry.dataKey}: <span className="font-bold">{entry.value} tickets</span>
+                                </p>
+                              );
+                            }
+                            return null;
+                          })}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
                 <Legend 
-                  wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
-                  iconType="line"
+                  wrapperStyle={{ fontSize: '11px', paddingTop: '20px' }}
+                  iconType="circle"
                 />
+                {/* Stacked bars for subcategories */}
+                {allSubCategories.map((subCat) => (
+                  <Bar
+                    key={subCat}
+                    dataKey={subCat}
+                    stackId="subcategory"
+                    fill={subCategoryColors[subCat]}
+                    yAxisId="left"
+                    radius={[0, 0, 0, 0]}
+                  />
+                ))}
+                {/* Line for average time */}
                 <Line 
                   type="monotone" 
                   dataKey="avgTime" 
-                  name="Average Time (hours)"
-                  stroke="#9333ea" 
+                  name="Avg Time"
+                  stroke="#8b5cf6" 
                   strokeWidth={3}
-                  dot={{ fill: '#9333ea', r: 6, strokeWidth: 2, stroke: '#fff' }}
+                  yAxisId="right"
+                  dot={{ fill: '#8b5cf6', r: 6, strokeWidth: 2, stroke: '#fff' }}
                   activeDot={{ r: 8 }}
-                  label={{ position: 'top', fontSize: 11, fill: '#7e22ce', fontWeight: 'bold' }}
+                  label={{ position: 'top', fontSize: 12, fill: '#6d28d9', fontWeight: 'bold' }}
                 />
               </ComposedChart>
             </ResponsiveContainer>

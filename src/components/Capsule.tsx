@@ -126,21 +126,30 @@ export default function Capsule({
         </div>
         <div className="space-y-1">
           <div 
-            onClick={() => onPriorityClick?.("high")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPriorityClick?.("high");
+            }}
             className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
             <span style={{ color: getPriorityColor("high") }} className="font-semibold">High</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.high})</span>
           </div>
           <div 
-            onClick={() => onPriorityClick?.("medium")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPriorityClick?.("medium");
+            }}
             className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
             <span style={{ color: getPriorityColor("medium") }} className="font-semibold">Medium</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.medium})</span>
           </div>
           <div 
-            onClick={() => onPriorityClick?.("low")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPriorityClick?.("low");
+            }}
             className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
             <span style={{ color: getPriorityColor("low") }} className="font-semibold">Low</span>
