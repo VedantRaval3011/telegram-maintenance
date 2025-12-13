@@ -22,7 +22,7 @@ import {
 } from "recharts";
 import { Clock, TrendingUp, CheckCircle2, BarChart3, PieChart as PieChartIcon, Info, Activity } from "lucide-react";
 
-const fetcher = (url: string) => 
+const fetcher = (url: string) =>
   fetch(url)
     .then((res) => res.json())
     .then((json) => json.data || []);
@@ -87,11 +87,11 @@ const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent
   if (percent < 0.05) return null; // Don't show label if less than 5%
 
   return (
-    <text 
-      x={x} 
-      y={y} 
-      fill="white" 
-      textAnchor={x > cx ? 'start' : 'end'} 
+    <text
+      x={x}
+      y={y}
+      fill="white"
+      textAnchor={x > cx ? 'start' : 'end'}
       dominantBaseline="central"
       className="text-xs font-bold"
     >
@@ -104,12 +104,12 @@ const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent
 const CustomXAxisTick = ({ x, y, payload }: any) => {
   const text = payload.value;
   const maxCharsPerLine = 12;
-  
+
   // Split text into words
   const words = text.split(' ');
   const lines: string[] = [];
   let currentLine = '';
-  
+
   words.forEach((word: string) => {
     if ((currentLine + word).length <= maxCharsPerLine) {
       currentLine += (currentLine ? ' ' : '') + word;
@@ -119,14 +119,14 @@ const CustomXAxisTick = ({ x, y, payload }: any) => {
     }
   });
   if (currentLine) lines.push(currentLine);
-  
+
   return (
     <g transform={`translate(${x},${y})`}>
-      <text 
-        x={0} 
-        y={0} 
+      <text
+        x={0}
+        y={0}
         dy={32}
-        textAnchor="middle" 
+        textAnchor="middle"
         fill="#374151"
         fontSize={12}
         fontWeight={500}
@@ -144,7 +144,7 @@ const CustomXAxisTick = ({ x, y, payload }: any) => {
 export default function SummaryPage() {
   const router = useRouter();
   const { data: tickets = [], error, isLoading } = useSWR<Ticket[]>("/api/tickets", fetcher, { refreshInterval: 3000 });
-  const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", (url: string) => 
+  const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", (url: string) =>
     fetch(url).then(r => r.json()));
 
   const categories = categoriesData?.data || [];
@@ -227,7 +227,7 @@ export default function SummaryPage() {
     }
 
     const completedTickets = tickets.filter(t => t.status === "COMPLETED");
-    
+
     return {
       total: completedTickets.length,
       priority: {
@@ -242,7 +242,7 @@ export default function SummaryPage() {
     };
   }, [tickets]);
 
-  // Calculate subcategory breakdown for each category
+  // Calculate subcategory breakdown for each category (count and avg time)
   const subcategoryBreakdown = useMemo(() => {
     if (!Array.isArray(tickets)) return new Map();
 
@@ -250,30 +250,39 @@ export default function SummaryPage() {
       (t) => t.status === "COMPLETED" && t.completedAt && t.createdAt
     );
 
-    const categorySubMap = new Map<string, Map<string, number>>();
+    // Map: category -> subcategory -> { count, totalTime, avgTime }
+    const categorySubMap = new Map<string, Map<string, { count: number; totalTime: number; avgTime: number }>>();
 
     completedTickets.forEach((ticket) => {
       const category = ticket.category || "Uncategorized";
       const subCategory = ticket.subCategory || "Others";
+      const timeDiff = calculateTimeDiff(ticket.createdAt, ticket.completedAt!);
 
       if (!categorySubMap.has(category)) {
         categorySubMap.set(category, new Map());
       }
 
       const subMap = categorySubMap.get(category)!;
-      subMap.set(subCategory, (subMap.get(subCategory) || 0) + 1);
+      if (!subMap.has(subCategory)) {
+        subMap.set(subCategory, { count: 0, totalTime: 0, avgTime: 0 });
+      }
+
+      const subData = subMap.get(subCategory)!;
+      subData.count++;
+      subData.totalTime += timeDiff;
+      subData.avgTime = subData.totalTime / subData.count;
     });
 
     return categorySubMap;
   }, [tickets]);
 
-  // Prepare chart data with subcategory breakdown
+  // Prepare chart data with subcategory breakdown (for ticket counts)
   const barChartData = summary.map(cat => {
     const subCategoryData = subcategoryBreakdown.get(cat.category) || new Map();
     const subCategoryObj: Record<string, number> = {};
-    
-    subCategoryData.forEach((count: number, subCat: string) => {
-      subCategoryObj[subCat] = count;
+
+    subCategoryData.forEach((data: { count: number; totalTime: number; avgTime: number }, subCat: string) => {
+      subCategoryObj[subCat] = data.count;
     });
 
     return {
@@ -288,8 +297,8 @@ export default function SummaryPage() {
   // Get all unique subcategories for the legend
   const allSubCategories = useMemo(() => {
     const subCats = new Set<string>();
-    subcategoryBreakdown.forEach((subMap: Map<string, number>) => {
-      subMap.forEach((_: number, subCat: string) => {
+    subcategoryBreakdown.forEach((subMap: Map<string, { count: number; totalTime: number; avgTime: number }>) => {
+      subMap.forEach((_, subCat: string) => {
         subCats.add(subCat);
       });
     });
@@ -404,7 +413,7 @@ export default function SummaryPage() {
                     <span className="text-xs text-gray-500">tickets</span>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   {/* Average Time */}
                   <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
@@ -421,7 +430,7 @@ export default function SummaryPage() {
                   <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Priority Distribution</div>
                     <div className="flex items-center justify-between text-xs">
-                      <span 
+                      <span
                         onClick={() => {
                           // Navigate to dashboard with category and high priority filter
                           router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=high&status=COMPLETED`);
@@ -431,7 +440,7 @@ export default function SummaryPage() {
                         <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
                         <span className="text-gray-700 font-medium">High: {cat.priority.high}</span>
                       </span>
-                      <span 
+                      <span
                         onClick={() => {
                           // Navigate to dashboard with category and medium priority filter
                           router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=medium&status=COMPLETED`);
@@ -441,7 +450,7 @@ export default function SummaryPage() {
                         <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                         <span className="text-gray-700 font-medium">Med: {cat.priority.medium}</span>
                       </span>
-                      <span 
+                      <span
                         onClick={() => {
                           // Navigate to dashboard with category and low priority filter
                           router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=low&status=COMPLETED`);
@@ -478,7 +487,7 @@ export default function SummaryPage() {
 
         {/* Charts Section */}
         <div className="space-y-6 mb-12">
-          {/* Completion by Category - Bar Chart */}
+          {/* Completion by Category - Bar Chart with Subcategory Breakdown */}
           <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
@@ -492,105 +501,46 @@ export default function SummaryPage() {
                 </div>
               </div>
               <p className="text-sm text-gray-600">
-                Total number of completed tickets across all categories. Higher bars indicate more work completed in that category.
+                Completed tickets by category with subcategory breakdown. Each color represents a different subcategory.
               </p>
             </div>
             <ResponsiveContainer width="100%" height={550}>
-              <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 15 }}>
+              <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 100 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
-                  dataKey="name" 
+                <XAxis
+                  dataKey="name"
                   tick={<CustomXAxisTick />}
                   interval={0}
                   height={90}
                   textAnchor="end"
-                  tickMargin={20} 
+                  tickMargin={20}
                 />
-                <YAxis 
+                <YAxis
                   tick={{ fontSize: 12, fill: '#4b5563' }}
                   label={{ value: 'Completed Tickets', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
                 />
-                <Tooltip content={<CustomTooltip formatter={(value: number) => `${value} tickets`} />} />
-                <Bar 
-                  dataKey="completed" 
-                  radius={[8, 8, 0, 0]}
-                  label={{ position: 'top', fontSize: 12, fill: '#1f2937', fontWeight: 'bold' }}
-                >
-                  {barChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Average Time by Category with Subcategory Breakdown */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-purple-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Average Completion Time Trend</h3>
-                </div>
-                <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg border border-purple-200">
-                  <Activity className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-semibold text-purple-900">With Subcategory Breakdown</span>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">
-                Average time taken to complete work in each category (purple line) with completed work breakdown by subcategory (stacked bars). Lower line values indicate faster completion times.
-              </p>
-            </div>
-            <ResponsiveContainer width="100%" height={550}>
-              <ComposedChart data={barChartData} margin={{ top: 40, right: 40, left: 20, bottom: 100 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
-                  dataKey="name" 
-                  tick={<CustomXAxisTick />}
-                  interval={0}
-                  height={90}
-                  tickMargin={20} 
-                />
-                <YAxis 
-                  yAxisId="left"
-                  tick={{ fontSize: 12, fill: '#4b5563' }}
-                  label={{ value: 'Completed Tickets', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
-                />
-                <YAxis 
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 12, fill: '#8b5cf6' }}
-                  label={{ value: 'Avg Time (Hours)', angle: 90, position: 'insideRight', style: { fontSize: 12, fill: '#8b5cf6', fontWeight: 600 } }}
-                />
-                <Tooltip 
+                <Tooltip
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
+                      const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
                       return (
                         <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200">
                           <p className="font-semibold text-gray-900 mb-2">{label}</p>
-                          {payload.map((entry: any, index: number) => {
-                            if (entry.dataKey === 'avgTime') {
-                              return (
-                                <p key={index} className="text-sm" style={{ color: entry.color }}>
-                                  {entry.name}: <span className="font-bold">{entry.value} hours</span>
-                                </p>
-                              );
-                            } else if (entry.value > 0) {
-                              return (
-                                <p key={index} className="text-sm" style={{ color: entry.color }}>
-                                  {entry.dataKey}: <span className="font-bold">{entry.value} tickets</span>
-                                </p>
-                              );
-                            }
-                            return null;
-                          })}
+                          <p className="text-sm text-gray-600 mb-2 border-b pb-2">Total: <span className="font-bold">{total} tickets</span></p>
+                          {payload.map((entry: any, index: number) => (
+                            entry.value > 0 && (
+                              <p key={index} className="text-sm" style={{ color: entry.color }}>
+                                {entry.dataKey}: <span className="font-bold">{entry.value} tickets</span>
+                              </p>
+                            )
+                          ))}
                         </div>
                       );
                     }
                     return null;
                   }}
                 />
-                <Legend 
+                <Legend
                   wrapperStyle={{ fontSize: '11px', paddingTop: '20px' }}
                   iconType="circle"
                 />
@@ -601,23 +551,82 @@ export default function SummaryPage() {
                     dataKey={subCat}
                     stackId="subcategory"
                     fill={subCategoryColors[subCat]}
-                    yAxisId="left"
                     radius={[0, 0, 0, 0]}
                   />
                 ))}
-                {/* Line for average time */}
-                <Line 
-                  type="monotone" 
-                  dataKey="avgTime" 
-                  name="Avg Time"
-                  stroke="#8b5cf6" 
-                  strokeWidth={3}
-                  yAxisId="right"
-                  dot={{ fill: '#8b5cf6', r: 6, strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 8 }}
-                  label={{ position: 'top', fontSize: 12, fill: '#6d28d9', fontWeight: 'bold' }}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+
+          {/* Average Completion Time by Category */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-purple-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Average Completion Time by Category</h3>
+                </div>
+                <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg border border-purple-200">
+                  <Clock className="w-4 h-4 text-purple-600" />
+                  <span className="text-sm font-semibold text-purple-900">
+                    Overall Avg: {summary.length > 0
+                      ? formatTime(summary.reduce((acc, cat) => acc + cat.averageTimeHours, 0) / summary.length)
+                      : "0h"
+                    }
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600">
+                Average time taken to complete tickets in each category. Lower bars indicate faster completion. Each bar is colored by its category.
+              </p>
+            </div>
+            <ResponsiveContainer width="100%" height={550}>
+              <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 100 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="name"
+                  tick={<CustomXAxisTick />}
+                  interval={0}
+                  height={90}
+                  tickMargin={20}
                 />
-              </ComposedChart>
+                <YAxis
+                  tick={{ fontSize: 12, fill: '#4b5563' }}
+                  label={{ value: 'Average Time (Hours)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
+                />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const avgTime = payload[0]?.value as number;
+                      return (
+                        <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200">
+                          <p className="font-semibold text-gray-900 mb-2">{label}</p>
+                          <p className="text-sm text-purple-600">
+                            Avg Time: <span className="font-bold">{formatTime(avgTime)}</span>
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">({avgTime?.toFixed(1)} hours)</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar
+                  dataKey="avgTime"
+                  radius={[8, 8, 0, 0]}
+                  label={{
+                    position: 'top',
+                    fontSize: 11,
+                    fill: '#6d28d9',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {barChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
 
@@ -653,8 +662,8 @@ export default function SummaryPage() {
                     ))}
                   </Pie>
                   <Tooltip content={<CustomTooltip formatter={(value: number) => `${value} tickets`} />} />
-                  <Legend 
-                    verticalAlign="bottom" 
+                  <Legend
+                    verticalAlign="bottom"
                     height={36}
                     wrapperStyle={{ fontSize: '11px' }}
                     iconType="circle"
@@ -693,8 +702,8 @@ export default function SummaryPage() {
                     ))}
                   </Pie>
                   <Tooltip content={<CustomTooltip formatter={(value: number) => `${value} tickets`} />} />
-                  <Legend 
-                    verticalAlign="bottom" 
+                  <Legend
+                    verticalAlign="bottom"
                     height={36}
                     wrapperStyle={{ fontSize: '11px' }}
                     iconType="circle"
@@ -725,7 +734,7 @@ export default function SummaryPage() {
             <div className="bg-white rounded-lg p-6 shadow-md border border-gray-200">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Avg Completion</div>
               <div className="text-4xl font-bold text-purple-600 mb-1">
-                {summary.length > 0 
+                {summary.length > 0
                   ? formatTime(summary.reduce((acc, cat) => acc + cat.averageTimeHours, 0) / summary.length)
                   : "0h"
                 }
@@ -735,7 +744,7 @@ export default function SummaryPage() {
             <div className="bg-white rounded-lg p-6 shadow-md border border-gray-200">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Efficiency Rate</div>
               <div className="text-4xl font-bold text-blue-600 mb-1">
-                {overallStats.total > 0 
+                {overallStats.total > 0
                   ? `${((overallStats.source.inHouse / overallStats.total) * 100).toFixed(0)}%`
                   : "0%"
                 }
