@@ -1896,27 +1896,45 @@ export async function POST(req: NextRequest) {
             ticket = await createTicketFromSession(sessionData, createdBy);
           }
 
+          // Format the agency date with month name
+          let formattedAgencyDate = '';
+          let formattedAgencyMonth = '';
+          if (ticket.agencyDate) {
+            const agencyDateObj = new Date(ticket.agencyDate);
+            formattedAgencyMonth = agencyDateObj.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+            formattedAgencyDate = agencyDateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+          }
+
           let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} ${isEditing ? 'Updated' : 'Created'}</b>\n\n` +
                            `📝 ${ticket.description}\n` +
-                           `📂 ${ticket.category}\n` +
-                           `⚡ ${ticket.priority}\n`;
+                           `📂 Category: ${ticket.category}\n`;
+          
+          // Add subcategory if present
+          if (ticket.subCategory) {
+            ticketMsg += `🧩 Subcategory: ${ticket.subCategory}\n`;
+          }
+          
+          ticketMsg += `⚡ Priority: ${ticket.priority}\n`;
           
           // Show source/target locations for transfer, otherwise show regular location
           if (ticket.sourceLocation && ticket.targetLocation) {
             ticketMsg += `📤 From: ${ticket.sourceLocation}\n`;
             ticketMsg += `📥 To: ${ticket.targetLocation}\n`;
           } else {
-            ticketMsg += `📍 ${ticket.location}\n`;
+            ticketMsg += `📍 Location: ${ticket.location}\n`;
           }
           
           // Add agency info if present
           if (ticket.agencyName) {
-            ticketMsg += `👷 ${ticket.agencyName}\n`;
-            if (ticket.agencyDate) {
-              ticketMsg += `📅 ${new Date(ticket.agencyDate).toLocaleDateString()}\n`;
+            ticketMsg += `👷 Select Agency: ${ticket.agencyName}\n`;
+            if (formattedAgencyMonth) {
+              ticketMsg += `🗓 Select Month: ${formattedAgencyMonth}\n`;
+            }
+            if (formattedAgencyDate) {
+              ticketMsg += `📅 Agency Date: ${formattedAgencyDate}\n`;
             }
             if (ticket.agencyTime) {
-              ticketMsg += `⏰ ${ticket.agencyTime}\n`;
+              ticketMsg += `⏰ Time Slot: 🏢 ${ticket.agencyTime}\n`;
             }
           }
           
@@ -1961,8 +1979,11 @@ export async function POST(req: NextRequest) {
 
       // === CANCEL ACTION: cancel_<botMsgId> ===
       if (action === "cancel") {
+        const cancelledBy = callback.from?.username || 
+                           `${callback.from?.first_name || ""} ${callback.from?.last_name || ""}`.trim() ||
+                           "Unknown";
         await WizardSession.deleteOne({ botMessageId });
-        await editMessageText(chatId, botMessageId, "❌ Wizard cancelled", []);
+        await editMessageText(chatId, botMessageId, `❌ Ticket wizard cancelled\n\n👤 Cancelled by: ${cancelledBy}`, []);
         await answerCallbackQuery(callback.id, "Cancelled");
         return NextResponse.json({ ok: true });
       }

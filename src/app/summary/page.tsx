@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
@@ -20,7 +20,7 @@ import {
   Line,
   ComposedChart,
 } from "recharts";
-import { Clock, TrendingUp, CheckCircle2, BarChart3, PieChart as PieChartIcon, Info, Activity } from "lucide-react";
+import { Clock, TrendingUp, CheckCircle2, BarChart3, PieChart as PieChartIcon, Info, Activity, Minimize2, Maximize2 } from "lucide-react";
 
 const fetcher = (url: string) =>
   fetch(url)
@@ -148,6 +148,24 @@ export default function SummaryPage() {
     fetch(url).then(r => r.json()));
 
   const categories = categoriesData?.data || [];
+
+  // State for filtering subcategory charts by category
+  const [selectedSubCategoryFilter, setSelectedSubCategoryFilter] = useState<string>('all');
+
+  // State for collapsible sections
+  const [expandedSections, setExpandedSections] = useState({
+    categoryPerformance: true,
+    completionVolume: true,
+    avgTimeCategory: true,
+    avgTimeSubcategory: true,
+  });
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   // Calculate time difference in hours
   const calculateTimeDiff = (createdAt: string, completedAt: string): number => {
@@ -294,6 +312,33 @@ export default function SummaryPage() {
     };
   });
 
+  // Prepare subcategory average time data for each category
+  const subcategoryAvgTimeData = useMemo(() => {
+    const data: { category: string; displayName: string; color: string; subcategories: { name: string; avgTime: number; count: number }[] }[] = [];
+
+    summary.forEach(cat => {
+      const subCategoryData = subcategoryBreakdown.get(cat.category);
+      if (subCategoryData && subCategoryData.size > 0) {
+        const subcategories = (Array.from(subCategoryData.entries()) as [string, { count: number; totalTime: number; avgTime: number }][])
+          .map(([name, subData]) => ({
+            name,
+            avgTime: parseFloat(subData.avgTime.toFixed(1)),
+            count: subData.count,
+          }))
+          .sort((a, b) => b.avgTime - a.avgTime);
+
+        data.push({
+          category: cat.category,
+          displayName: cat.displayName,
+          color: cat.color,
+          subcategories,
+        });
+      }
+    });
+
+    return data;
+  }, [summary, subcategoryBreakdown]);
+
   // Get all unique subcategories for the legend
   const allSubCategories = useMemo(() => {
     const subCats = new Set<string>();
@@ -386,103 +431,141 @@ export default function SummaryPage() {
               <BarChart3 className="w-5 h-5" />
               Category Performance Overview
             </h2>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Info className="w-4 h-4" />
-              <span>Detailed metrics for each category</span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Info className="w-4 h-4" />
+                <span>Detailed metrics for each category</span>
+              </div>
+              <button
+                onClick={() => toggleSection('categoryPerformance')}
+                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-all"
+                title={expandedSections.categoryPerformance ? 'Minimize' : 'Expand'}
+              >
+                {expandedSections.categoryPerformance ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {summary.map((cat) => (
-              <div
-                key={cat.category}
-                className="bg-white rounded-2xl shadow-sm border-2 p-6 transition-all hover:shadow-lg hover:scale-[1.02]"
-                style={{
-                  borderLeftWidth: '4px',
-                  borderLeftColor: cat.color,
-                  borderTopColor: '#e5e7eb',
-                  borderRightColor: '#e5e7eb',
-                  borderBottomColor: '#e5e7eb'
-                }}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900 text-lg">{cat.displayName}</h3>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-sm font-bold">
-                      {cat.totalCompleted}
-                    </span>
-                    <span className="text-xs text-gray-500">tickets</span>
+          {expandedSections.categoryPerformance && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {summary.map((cat) => (
+                <div
+                  key={cat.category}
+                  className="bg-white rounded-2xl shadow-sm border-2 p-6 transition-all hover:shadow-lg hover:scale-[1.02]"
+                  style={{
+                    borderLeftWidth: '4px',
+                    borderLeftColor: cat.color,
+                    borderTopColor: '#e5e7eb',
+                    borderRightColor: '#e5e7eb',
+                    borderBottomColor: '#e5e7eb'
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <h3 className="font-semibold text-gray-900 text-lg">{cat.displayName}</h3>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-sm font-bold">
+                        {cat.totalCompleted}
+                      </span>
+                      <span className="text-xs text-gray-500">tickets</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Average Time */}
+                    <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-gray-700">Avg Time</span>
+                      </div>
+                      <span className="text-sm font-bold text-blue-700">
+                        {formatTime(cat.averageTimeHours)}
+                      </span>
+                    </div>
+
+                    {/* Priority Breakdown */}
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Priority Distribution</div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span
+                          onClick={() => {
+                            // Navigate to dashboard with category and high priority filter
+                            router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=high&status=COMPLETED`);
+                          }}
+                          className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                          <span className="text-gray-700 font-medium">High: {cat.priority.high}</span>
+                        </span>
+                        <span
+                          onClick={() => {
+                            // Navigate to dashboard with category and medium priority filter
+                            router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=medium&status=COMPLETED`);
+                          }}
+                          className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                          <span className="text-gray-700 font-medium">Med: {cat.priority.medium}</span>
+                        </span>
+                        <span
+                          onClick={() => {
+                            // Navigate to dashboard with category and low priority filter
+                            router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=low&status=COMPLETED`);
+                          }}
+                          className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                          <span className="text-gray-700 font-medium">Low: {cat.priority.low}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Source Breakdown */}
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Work Source</div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                          <span className="text-gray-700">In-House</span>
+                        </div>
+                        <div className="text-right font-bold text-gray-900">{cat.source.inHouse}</div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div>
+                          <span className="text-gray-700">Outsource</span>
+                        </div>
+                        <div className="text-right font-bold text-gray-900">{cat.source.outsource}</div>
+                      </div>
+                    </div>
+
+                    {/* Subcategory Avg Completion Time */}
+                    {subcategoryBreakdown.get(cat.category) && subcategoryBreakdown.get(cat.category)!.size > 0 && (
+                      <div className="p-3 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
+                        <div className="text-xs font-semibold text-purple-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                          <Clock className="w-3 h-3" />
+                          Avg Time by Subcategory
+                        </div>
+                        <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                          {(Array.from(subcategoryBreakdown.get(cat.category)!.entries()) as [string, { count: number; totalTime: number; avgTime: number }][])
+                            .sort((a, b) => b[1].avgTime - a[1].avgTime)
+                            .map(([subCat, data]) => (
+                              <div key={subCat} className="flex items-center justify-between text-xs">
+                                <span className="text-gray-700 truncate flex-1 mr-2" title={subCat}>
+                                  {subCat}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500 text-[10px]">({data.count})</span>
+                                  <span className="font-bold text-purple-700 min-w-[45px] text-right">
+                                    {formatTime(data.avgTime)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                <div className="space-y-3">
-                  {/* Average Time */}
-                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-blue-600" />
-                      <span className="text-sm font-medium text-gray-700">Avg Time</span>
-                    </div>
-                    <span className="text-sm font-bold text-blue-700">
-                      {formatTime(cat.averageTimeHours)}
-                    </span>
-                  </div>
-
-                  {/* Priority Breakdown */}
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Priority Distribution</div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span
-                        onClick={() => {
-                          // Navigate to dashboard with category and high priority filter
-                          router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=high&status=COMPLETED`);
-                        }}
-                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
-                      >
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                        <span className="text-gray-700 font-medium">High: {cat.priority.high}</span>
-                      </span>
-                      <span
-                        onClick={() => {
-                          // Navigate to dashboard with category and medium priority filter
-                          router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=medium&status=COMPLETED`);
-                        }}
-                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
-                      >
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                        <span className="text-gray-700 font-medium">Med: {cat.priority.medium}</span>
-                      </span>
-                      <span
-                        onClick={() => {
-                          // Navigate to dashboard with category and low priority filter
-                          router.push(`/dashboard?category=${encodeURIComponent(cat.category)}&priority=low&status=COMPLETED`);
-                        }}
-                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-70 transition-opacity"
-                      >
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                        <span className="text-gray-700 font-medium">Low: {cat.priority.low}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Source Breakdown */}
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Work Source</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                        <span className="text-gray-700">In-House</span>
-                      </div>
-                      <div className="text-right font-bold text-gray-900">{cat.source.inHouse}</div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div>
-                        <span className="text-gray-700">Outsource</span>
-                      </div>
-                      <div className="text-right font-bold text-gray-900">{cat.source.outsource}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Charts Section */}
@@ -495,67 +578,78 @@ export default function SummaryPage() {
                   <BarChart3 className="w-5 h-5 text-blue-600" />
                   <h3 className="text-lg font-semibold text-gray-900">Completion Volume by Category</h3>
                 </div>
-                <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
-                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-semibold text-blue-900">Total Completed: {overallStats.total}</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-blue-900">Total Completed: {overallStats.total}</span>
+                  </div>
+                  <button
+                    onClick={() => toggleSection('completionVolume')}
+                    className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-all"
+                    title={expandedSections.completionVolume ? 'Minimize' : 'Expand'}
+                  >
+                    {expandedSections.completionVolume ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
               <p className="text-sm text-gray-600">
                 Completed tickets by category with subcategory breakdown. Each color represents a different subcategory.
               </p>
             </div>
-            <ResponsiveContainer width="100%" height={550}>
-              <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 100 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="name"
-                  tick={<CustomXAxisTick />}
-                  interval={0}
-                  height={90}
-                  textAnchor="end"
-                  tickMargin={20}
-                />
-                <YAxis
-                  tick={{ fontSize: 12, fill: '#4b5563' }}
-                  label={{ value: 'Completed Tickets', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
-                      return (
-                        <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200">
-                          <p className="font-semibold text-gray-900 mb-2">{label}</p>
-                          <p className="text-sm text-gray-600 mb-2 border-b pb-2">Total: <span className="font-bold">{total} tickets</span></p>
-                          {payload.map((entry: any, index: number) => (
-                            entry.value > 0 && (
-                              <p key={index} className="text-sm" style={{ color: entry.color }}>
-                                {entry.dataKey}: <span className="font-bold">{entry.value} tickets</span>
-                              </p>
-                            )
-                          ))}
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Legend
-                  wrapperStyle={{ fontSize: '11px', paddingTop: '20px' }}
-                  iconType="circle"
-                />
-                {/* Stacked bars for subcategories */}
-                {allSubCategories.map((subCat) => (
-                  <Bar
-                    key={subCat}
-                    dataKey={subCat}
-                    stackId="subcategory"
-                    fill={subCategoryColors[subCat]}
-                    radius={[0, 0, 0, 0]}
+            {expandedSections.completionVolume && (
+              <ResponsiveContainer width="100%" height={550}>
+                <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 100 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="name"
+                    tick={<CustomXAxisTick />}
+                    interval={0}
+                    height={90}
+                    textAnchor="end"
+                    tickMargin={20}
                   />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+                  <YAxis
+                    tick={{ fontSize: 12, fill: '#4b5563' }}
+                    label={{ value: 'Completed Tickets', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
+                        return (
+                          <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200">
+                            <p className="font-semibold text-gray-900 mb-2">{label}</p>
+                            <p className="text-sm text-gray-600 mb-2 border-b pb-2">Total: <span className="font-bold">{total} tickets</span></p>
+                            {payload.map((entry: any, index: number) => (
+                              entry.value > 0 && (
+                                <p key={index} className="text-sm" style={{ color: entry.color }}>
+                                  {entry.dataKey}: <span className="font-bold">{entry.value} tickets</span>
+                                </p>
+                              )
+                            ))}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: '11px', paddingTop: '20px' }}
+                    iconType="circle"
+                  />
+                  {/* Stacked bars for subcategories */}
+                  {allSubCategories.map((subCat) => (
+                    <Bar
+                      key={subCat}
+                      dataKey={subCat}
+                      stackId="subcategory"
+                      fill={subCategoryColors[subCat]}
+                      radius={[0, 0, 0, 0]}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
 
@@ -567,68 +661,230 @@ export default function SummaryPage() {
                   <TrendingUp className="w-5 h-5 text-purple-600" />
                   <h3 className="text-lg font-semibold text-gray-900">Average Completion Time by Category</h3>
                 </div>
-                <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg border border-purple-200">
-                  <Clock className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-semibold text-purple-900">
-                    Overall Avg: {summary.length > 0
-                      ? formatTime(summary.reduce((acc, cat) => acc + cat.averageTimeHours, 0) / summary.length)
-                      : "0h"
-                    }
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg border border-purple-200">
+                    <Clock className="w-4 h-4 text-purple-600" />
+                    <span className="text-sm font-semibold text-purple-900">
+                      Overall Avg: {summary.length > 0
+                        ? formatTime(summary.reduce((acc, cat) => acc + cat.averageTimeHours, 0) / summary.length)
+                        : "0h"
+                      }
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => toggleSection('avgTimeCategory')}
+                    className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-all"
+                    title={expandedSections.avgTimeCategory ? 'Minimize' : 'Expand'}
+                  >
+                    {expandedSections.avgTimeCategory ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
               <p className="text-sm text-gray-600">
-                Average time taken to complete tickets in each category. Lower bars indicate faster completion. Each bar is colored by its category.
+                Average time taken to complete tickets in each category. Lower bars indicate faster completion. Click on a category bar to see subcategory breakdown.
               </p>
             </div>
-            <ResponsiveContainer width="100%" height={550}>
-              <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 100 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="name"
-                  tick={<CustomXAxisTick />}
-                  interval={0}
-                  height={90}
-                  tickMargin={20}
-                />
-                <YAxis
-                  tick={{ fontSize: 12, fill: '#4b5563' }}
-                  label={{ value: 'Average Time (Hours)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      const avgTime = payload[0]?.value as number;
-                      return (
-                        <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200">
-                          <p className="font-semibold text-gray-900 mb-2">{label}</p>
-                          <p className="text-sm text-purple-600">
-                            Avg Time: <span className="font-bold">{formatTime(avgTime)}</span>
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">({avgTime?.toFixed(1)} hours)</p>
+            {expandedSections.avgTimeCategory && (
+              <ResponsiveContainer width="100%" height={550}>
+                <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 100 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="name"
+                    tick={<CustomXAxisTick />}
+                    interval={0}
+                    height={90}
+                    tickMargin={20}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12, fill: '#4b5563' }}
+                    label={{ value: 'Average Time (Hours)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const avgTime = payload[0]?.value as number;
+                        // Find subcategory data for this category
+                        const catData = subcategoryAvgTimeData.find(c => c.displayName === label);
+                        return (
+                          <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200 max-w-xs">
+                            <p className="font-semibold text-gray-900 mb-2">{label}</p>
+                            <p className="text-sm text-purple-600 border-b pb-2 mb-2">
+                              Category Avg: <span className="font-bold">{formatTime(avgTime)}</span>
+                              <span className="text-xs text-gray-500 ml-1">({avgTime?.toFixed(1)}h)</span>
+                            </p>
+                            {catData && catData.subcategories.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-gray-600 uppercase mb-1">By Subcategory:</p>
+                                <div className="space-y-1 max-h-40 overflow-y-auto">
+                                  {catData.subcategories.map((sub, idx) => (
+                                    <div key={idx} className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-700 truncate flex-1 mr-2" title={sub.name}>{sub.name}</span>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-gray-400">({sub.count})</span>
+                                        <span className="font-bold text-purple-700">{formatTime(sub.avgTime)}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar
+                    dataKey="avgTime"
+                    radius={[8, 8, 0, 0]}
+                    label={{
+                      position: 'top',
+                      fontSize: 11,
+                      fill: '#6d28d9',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    {barChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+
+            {/* Subcategory Bar Charts Section */}
+            {subcategoryAvgTimeData.length > 0 && (
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <div className="flex flex-col  md:items-center md:justify-between gap-4 mb-6">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-purple-600" />
+                      <h4 className="text-lg font-semibold text-gray-900">Average Completion Time by Subcategory</h4>
+                    </div>
+                    <button
+                      onClick={() => toggleSection('avgTimeSubcategory')}
+                      className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-all"
+                      title={expandedSections.avgTimeSubcategory ? 'Minimize' : 'Expand'}
+                    >
+                      {expandedSections.avgTimeSubcategory ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  {/* Category Filter Buttons */}
+                  {expandedSections.avgTimeSubcategory && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setSelectedSubCategoryFilter('all')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedSubCategoryFilter === 'all'
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                      >
+                        All Categories
+                      </button>
+                      {subcategoryAvgTimeData.map((catData) => (
+                        <button
+                          key={catData.category}
+                          onClick={() => setSelectedSubCategoryFilter(catData.category)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${selectedSubCategoryFilter === catData.category
+                            ? 'text-white shadow-md'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          style={{
+                            backgroundColor: selectedSubCategoryFilter === catData.category ? catData.color : undefined
+                          }}
+                        >
+                          <div
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: selectedSubCategoryFilter === catData.category ? '#fff' : catData.color }}
+                          />
+                          {catData.displayName}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {expandedSections.avgTimeSubcategory && (
+                  <div className="space-y-8">
+                    {subcategoryAvgTimeData
+                      .filter(catData => selectedSubCategoryFilter === 'all' || catData.category === selectedSubCategoryFilter)
+                      .map((catData) => (
+                        <div key={catData.category} className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 p-6">
+                          <div className="flex items-center gap-2 mb-4">
+                            <div
+                              className="w-4 h-4 rounded-full"
+                              style={{ backgroundColor: catData.color }}
+                            />
+                            <span className="font-bold text-gray-900">{catData.displayName}</span>
+                            <span className="text-sm text-gray-500">({catData.subcategories.length} subcategories)</span>
+                          </div>
+                          <ResponsiveContainer width="100%" height={Math.max(200, catData.subcategories.length * 45 + 60)}>
+                            <BarChart
+                              data={catData.subcategories}
+                              layout="vertical"
+                              margin={{ top: 10, right: 80, left: 20, bottom: 10 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={true} vertical={false} />
+                              <XAxis
+                                type="number"
+                                tick={{ fontSize: 11, fill: '#4b5563' }}
+                                tickFormatter={(value) => `${value}h`}
+                              />
+                              <YAxis
+                                type="category"
+                                dataKey="name"
+                                width={150}
+                                tick={{ fontSize: 11, fill: '#374151' }}
+                                tickLine={false}
+                              />
+                              <Tooltip
+                                content={({ active, payload }) => {
+                                  if (active && payload && payload.length) {
+                                    const data = payload[0]?.payload;
+                                    return (
+                                      <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
+                                        <p className="font-semibold text-gray-900 text-sm">{data?.name}</p>
+                                        <p className="text-sm text-purple-600">
+                                          Avg Time: <span className="font-bold">{formatTime(data?.avgTime || 0)}</span>
+                                        </p>
+                                        <p className="text-xs text-gray-500 mt-1">Tickets: {data?.count}</p>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                }}
+                              />
+                              <Bar
+                                dataKey="avgTime"
+                                fill={catData.color}
+                                radius={[0, 6, 6, 0]}
+                                label={(props: any) => {
+                                  const { x, y, width, value } = props;
+                                  if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number') return null;
+                                  return (
+                                    <text
+                                      x={x + width + 5}
+                                      y={y + 14}
+                                      fill="#6d28d9"
+                                      fontSize={10}
+                                      fontWeight="bold"
+                                    >
+                                      {formatTime(value as number)}
+                                    </text>
+                                  );
+                                }}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
                         </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar
-                  dataKey="avgTime"
-                  radius={[8, 8, 0, 0]}
-                  label={{
-                    position: 'top',
-                    fontSize: 11,
-                    fill: '#6d28d9',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {barChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
+
 
           {/* Pie Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
