@@ -212,9 +212,14 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
         className="rounded-xl shadow-lg overflow-hidden"
         style={{
           backgroundColor: colors.bg,
-          borderWidth: '1px',
-          borderColor: colors.border,
+          borderStyle: 'solid',
+          borderTopWidth: '1px',
+          borderRightWidth: '1px',
+          borderBottomWidth: '1px',
           borderLeftWidth: '4px',
+          borderTopColor: colors.border,
+          borderRightColor: colors.border,
+          borderBottomColor: colors.border,
           borderLeftColor: priorityColor
         }}
       >
