@@ -220,17 +220,17 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
       >
         {/* Header Section */}
         <div
-          className="px-4 py-2.5"
+          className="px-3 sm:px-4 py-2 sm:py-2.5"
           style={{
             backgroundColor: colors.accentLight,
             borderBottomWidth: '1px',
             borderBottomColor: colors.border
           }}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
               {/* Ticket ID */}
-              <span className="text-base font-black" style={{ color: colors.textDark }}>
+              <span className="text-sm sm:text-base font-black" style={{ color: colors.textDark }}>
                 {ticket.ticketId}
               </span>
 
@@ -311,14 +311,14 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
         </div>
 
         {/* Main Content */}
-        <div className="p-4">
+        <div className="p-3 sm:p-4">
           {/* Description */}
-          <h3 className="text-base font-semibold mb-2 line-clamp-2" style={{ color: colors.textDark }}>
+          <h3 className="text-sm sm:text-base font-semibold mb-2 line-clamp-2" style={{ color: colors.textDark }}>
             {ticket.description}
           </h3>
 
           {/* Metadata Row */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-3">
+          <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-xs sm:text-sm mb-3">
             <span className="inline-flex items-center gap-1" style={{ color: colors.text }}>
               <span className="font-semibold">Category:</span>
               <span
@@ -369,7 +369,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
 
           {/* Time and People Info */}
           <div
-            className="rounded-lg p-3 mb-3 grid grid-cols-3 gap-3 text-sm"
+            className="rounded-lg p-2 sm:p-3 mb-3 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm"
             style={{ backgroundColor: colors.accentMedium }}
           >
             {/* Created By */}
@@ -403,20 +403,20 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
 
             {/* Completed By */}
             {ticket.status === "COMPLETED" && ticket.completedBy ? (
-              <div className="-m-3 p-3 rounded-lg" style={{ backgroundColor: `${colors.accent}20` }}>
-                <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.textDark }}>
+              <div className="col-span-2 sm:col-span-1 -m-2 sm:-m-3 p-2 sm:p-3 rounded-lg" style={{ backgroundColor: `${colors.accent}20` }}>
+                <div className="text-[9px] sm:text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.textDark }}>
                   <CheckCircle2 size={12} /> Completed By
                 </div>
                 <div className="font-bold truncate" style={{ color: colors.textDark }}>
                   {ticket.completedBy}
                 </div>
-                <div className="text-[10px]" style={{ color: colors.text }}>
+                <div className="text-[9px] sm:text-[10px]" style={{ color: colors.text }}>
                   {ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString() : ""}
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center">
-                <span className="text-[10px] italic" style={{ color: colors.text }}>Not completed</span>
+              <div className="col-span-2 sm:col-span-1 flex items-center justify-center">
+                <span className="text-[9px] sm:text-[10px] italic" style={{ color: colors.text }}>Not completed</span>
               </div>
             )}
           </div>
@@ -570,14 +570,14 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
 
       {/* Edit Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowEditModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" onClick={() => setShowEditModal(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="relative max-w-2xl w-full rounded-2xl p-8 shadow-xl"
+            className="relative max-w-2xl w-full rounded-xl sm:rounded-2xl p-4 sm:p-8 shadow-xl max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: colors.bg, borderWidth: '1px', borderColor: colors.border }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold mb-6" style={{ color: colors.textDark }}>Edit Ticket</h2>
+            <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6" style={{ color: colors.textDark }}>Edit Ticket</h2>
 
             <div className="space-y-4">
               <div>
@@ -596,7 +596,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2" style={{ color: colors.text }}>Category</label>
                   <input
@@ -691,14 +691,14 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
 
       {/* Add Note Modal */}
       {showNotesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowNotesModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" onClick={() => setShowNotesModal(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="relative max-w-lg w-full rounded-2xl p-8 shadow-xl"
+            className="relative max-w-lg w-full rounded-xl sm:rounded-2xl p-4 sm:p-8 shadow-xl"
             style={{ backgroundColor: colors.bg, borderWidth: '1px', borderColor: colors.border }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold mb-6" style={{ color: colors.textDark }}>Add Note</h2>
+            <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6" style={{ color: colors.textDark }}>Add Note</h2>
 
             <textarea
               value={newNote}
@@ -736,15 +736,15 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
 
       {/* Delete Confirmation */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowDeleteConfirm(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" onClick={() => setShowDeleteConfirm(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="relative max-w-md w-full rounded-2xl p-8 shadow-xl"
+            className="relative max-w-md w-full rounded-xl sm:rounded-2xl p-4 sm:p-8 shadow-xl"
             style={{ backgroundColor: colors.bg, borderWidth: '1px', borderColor: colors.border }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold mb-4" style={{ color: colors.textDark }}>Delete Ticket?</h2>
-            <p className="text-sm mb-6" style={{ color: colors.text }}>
+            <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4" style={{ color: colors.textDark }}>Delete Ticket?</h2>
+            <p className="text-sm mb-4 sm:mb-6" style={{ color: colors.text }}>
               This will permanently delete the ticket and its Telegram message. This action cannot be undone.
             </p>
 
@@ -769,17 +769,17 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
 
       {/* Photo Lightbox */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90" onClick={() => setSelectedPhoto(null)}>
-          <img src={selectedPhoto} alt="Full size" className="max-w-full max-h-full rounded-xl shadow-2xl" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/90" onClick={() => setSelectedPhoto(null)}>
+          <img src={selectedPhoto} alt="Full size" className="max-w-full max-h-full rounded-lg sm:rounded-xl shadow-2xl" />
         </div>
       )}
 
       {/* Video Lightbox */}
       {selectedVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90" onClick={() => setSelectedVideo(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/90" onClick={() => setSelectedVideo(null)}>
           <video
             src={selectedVideo}
-            className="max-w-full max-h-full rounded-xl shadow-2xl"
+            className="max-w-full max-h-full rounded-lg sm:rounded-xl shadow-2xl"
             controls
             autoPlay
             onClick={(e) => e.stopPropagation()}

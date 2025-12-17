@@ -1,6 +1,6 @@
 "use client";
 import React, { Suspense, useMemo, useState, useCallback, useRef, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
 import FilterBar from "@/components/FilterBar";
@@ -22,6 +22,7 @@ function DashboardLoading() {
 
 // Main dashboard content component that uses useSearchParams
 function DashboardContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { data, error, mutate } = useSWR("/api/tickets", fetcher, { refreshInterval: 3000 });
   const { data: usersData } = useSWR("/api/masters/users?limit=100", fetcher);
@@ -316,7 +317,7 @@ function DashboardContent() {
 
     if (location) out = out.filter((t: any) => (t.location || "").toString().toLowerCase() === location.toLowerCase());
     // Note: Status is NOT filtered here because we calculate Pending/Completed stats from this base.
-    if (priority) out = out.filter((t: any) => (t.priority || "").toString().toLowerCase() === priority.toLowerCase());
+    // Note: Priority is NOT filtered here so that Pending/Completed capsules show ALL priorities counts (unchanged by selection).
 
     if (user) {
       out = out.filter((t: any) => {
@@ -581,49 +582,47 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 dashboard-content">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 dashboard-content">
         {/* Top Filters: Advanced Toggle */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-end gap-4 mb-6">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 mb-4 sm:mb-6">
           {/* Advanced Filters Toggle */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all border border-gray-200 shadow-sm"
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-white text-gray-700 rounded-xl text-sm sm:text-base font-medium hover:bg-gray-50 transition-all border border-gray-200 shadow-sm"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${showAdvancedFilters ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <svg
-                className={`w-4 h-4 transition-transform ${showAdvancedFilters ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-              Advanced Filters
-            </button>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            <span className="hidden sm:inline">Advanced </span>Filters
+          </button>
+          <button
+            onClick={() => {
+              setShowCompleted(!showCompleted);
+              // When switching to completed view, reset filters
+              if (!showCompleted) {
+                resetFilters();
+              }
+            }}
+            className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-sm sm:text-base font-medium transition-all shadow-sm ${showCompleted
+              ? "bg-teal-600 text-white hover:bg-teal-700"
+              : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+              }`}
+          >
+            {showCompleted ? "Show Pending" : "Completed"}
+          </button>
+          {(filters.category || filters.location || filters.priority || filters.user || filters.agency || filters.name || filters.dateFrom || filters.dateTo) && (
             <button
-              onClick={() => {
-                setShowCompleted(!showCompleted);
-                // When switching to completed view, reset filters
-                if (!showCompleted) {
-                  resetFilters();
-                }
-              }}
-              className={`px-4 py-2.5 rounded-xl font-medium transition-all shadow-sm ${showCompleted
-                ? "bg-teal-600 text-white hover:bg-teal-700"
-                : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-                }`}
+              onClick={resetFilters}
+              className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-900 text-white rounded-xl text-sm sm:text-base font-medium hover:bg-gray-800 transition-all shadow-sm"
             >
-              {showCompleted ? "Show Pending" : "Completed"}
+              Reset
             </button>
-            {(filters.category || filters.location || filters.priority || filters.user || filters.agency || filters.name || filters.dateFrom || filters.dateTo) && (
-              <button
-                onClick={resetFilters}
-                className="px-4 py-2.5 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-all shadow-sm"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Advanced Filters Panel */}
@@ -634,8 +633,8 @@ function DashboardContent() {
         )}
 
         {/* Summary Stats */}
-        <div className="mb-12">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="mb-8 sm:mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             {!showCompleted ? (
               <div id="pending-capsule">
                 <Capsule
@@ -647,11 +646,26 @@ function DashboardContent() {
                     if (pendingDiv) {
                       clickedElementRef.current = pendingDiv;
                     }
-                    setFilters({ category: "", status: "" });
+                    const newStatus = "";
+                    setFilters({ category: "", status: newStatus, priority: "" });
                     setSelectedCategory(null);
                     scrollToTicketList();
+                    // Update URL
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.delete('category');
+                    params.delete('priority');
+                    if (newStatus) params.set('status', newStatus); else params.delete('status');
+                    router.push(`/dashboard?${params.toString()}`);
                   }}
-                  onPriorityClick={(p) => setFilters({ priority: p })}
+                  onPriorityClick={(p) => {
+                    const newPriority = p; // Clicked priority
+                    setFilters({ priority: newPriority });
+                    scrollToTicketList();
+                    // Update URL - user request: redirect to tickets page (dashboard with filter)
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set('priority', newPriority);
+                    router.push(`/dashboard?${params.toString()}`);
+                  }}
                   selectedPriority={filters.priority}
                   color="#3b82f6"
                   className={filters.status === "PENDING" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
@@ -669,10 +683,23 @@ function DashboardContent() {
                     if (completedDiv) {
                       clickedElementRef.current = completedDiv;
                     }
-                    setFilters({ status: filters.status === "COMPLETED" ? "" : "COMPLETED" });
+                    const newStatus = filters.status === "COMPLETED" ? "" : "COMPLETED";
+                    setFilters({ status: newStatus, priority: "" });
                     scrollToTicketList();
+                    // Update URL
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.delete('priority');
+                    if (newStatus) params.set('status', newStatus); else params.delete('status');
+                    router.push(`/dashboard?${params.toString()}`);
                   }}
-                  onPriorityClick={(p) => setFilters({ priority: p })}
+                  onPriorityClick={(p) => {
+                    const newPriority = p;
+                    setFilters({ priority: newPriority });
+                    scrollToTicketList();
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set('priority', newPriority);
+                    router.push(`/dashboard?${params.toString()}`);
+                  }}
                   selectedPriority={filters.priority}
                   color="#14b8a6"
                   className={filters.status === "COMPLETED" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
@@ -685,9 +712,9 @@ function DashboardContent() {
 
         {/* Category Stats Capsules */}
         {stats.categoryStats.length > 0 && (
-          <div className="mb-12">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">By Category</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="mb-8 sm:mb-12">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 sm:mb-6">By Category</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
               {stats.categoryStats.map((cat: any) => (
                 <div key={cat.id} className="relative" id={`category-${cat.id}`}>
                   <Capsule
@@ -700,9 +727,15 @@ function DashboardContent() {
 
                       if (isCurrentlySelected) {
                         // Deselect if already selected
-                        setFilters({ category: "" });
+                        setFilters({ category: "", priority: "" });
                         setSelectedCategory(null);
                         setShowSubCategoriesSection(false); // Hide subcategories section
+                        
+                        // Update URL
+                        const params = new URLSearchParams(searchParams.toString());
+                        params.delete('category');
+                        params.delete('priority');
+                        router.push(`/dashboard?${params.toString()}`);
                       } else {
                         // Save reference to clicked element
                         const clickedDiv = document.getElementById(`category-${cat.id}`);
@@ -711,9 +744,16 @@ function DashboardContent() {
                         }
 
                         // Select the category - use internalName for filtering
-                        setFilters({ category: isAll ? "" : cat.internalName });
+                        setFilters({ category: isAll ? "" : cat.internalName, priority: "", agency: "" });
                         setSelectedCategory(isAll ? null : cat.id);
                         setShowSubCategoriesSection(true); // Show subcategories section automatically
+                        
+                        // Update URL
+                        const params = new URLSearchParams(searchParams.toString());
+                        if (isAll) params.delete('category'); else params.set('category', cat.internalName);
+                        params.delete('priority');
+                        params.delete('agency');
+                        router.push(`/dashboard?${params.toString()}`);
 
                         // Scroll to ticket list after a delay to ensure filters are applied and subcategories are rendered
                         if (!isAll) {
@@ -725,11 +765,17 @@ function DashboardContent() {
                     }}
                     onPriorityClick={(p) => {
                       // Preserve category context when clicking priority
+                      const newPriority = filters.priority === p ? "" : p;
                       setFilters({
-                        priority: filters.priority === p ? "" : p,
+                        priority: newPriority,
                         category: cat.internalName
                       });
                       scrollToTicketList();
+                      // Update URL
+                      const params = new URLSearchParams(searchParams.toString());
+                      if (newPriority) params.set('priority', newPriority); else params.delete('priority');
+                      params.set('category', cat.internalName);
+                      router.push(`/dashboard?${params.toString()}`);
                     }}
                     selectedPriority={filters.priority}
                     color={cat.color || "#6b7280"}
@@ -743,20 +789,20 @@ function DashboardContent() {
 
         {/* Subcategories Section */}
         {selectedCategory && showSubCategoriesSection && (
-          <div className="mb-12">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-semibold text-gray-900">
+          <div className="mb-8 sm:mb-12">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900">
                 Subcategories for {categories.find((c: any) => c._id === selectedCategory)?.displayName}
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <button
                   onClick={() => setShowSubCategoryModal(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2"
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg text-sm sm:text-base font-medium hover:bg-blue-700 transition-all shadow-sm flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  Select SubCategories
+                  <span className="hidden sm:inline">Select </span>SubCategories
                 </button>
                 <button
                   onClick={() => {
@@ -778,7 +824,7 @@ function DashboardContent() {
               );
 
               return filteredSubCategories.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
                   {filteredSubCategories.map((sub: any) => (
                     <div key={sub.id} id={`subcategory-${sub.id}`}>
                       <Capsule
@@ -795,8 +841,16 @@ function DashboardContent() {
                           const cat = categories.find((c: any) => c._id === selectedCategory);
                           setFilters({
                             category: cat ? cat.name : "",
-                            subCategory: sub.name
+                            subCategory: sub.name,
+                            priority: ""
                           });
+
+                          // Update URL
+                          const params = new URLSearchParams(searchParams.toString());
+                          if (cat) params.set('category', cat.name);
+                          params.delete('priority');
+                          // subCategory is not persisted in URL yet, but priority must be cleared
+                          router.push(`/dashboard?${params.toString()}`);
 
                           // Scroll to ticket list after a delay to ensure filters are applied
                           setTimeout(() => {
@@ -807,12 +861,21 @@ function DashboardContent() {
                         onPriorityClick={(p) => {
                           // Preserve category context when clicking priority in subcategory
                           const cat = categories.find((c: any) => c._id === selectedCategory);
+                          const newPriority = filters.priority === p ? "" : p;
                           setFilters({
-                            priority: filters.priority === p ? "" : p,
+                            priority: newPriority,
                             category: cat ? cat.name : filters.category,
                             subCategory: filters.subCategory
                           });
                           scrollToTicketList();
+                          
+                          // Update URL
+                          const params = new URLSearchParams(searchParams.toString());
+                          if (newPriority) params.set('priority', newPriority); else params.delete('priority');
+                          if (cat) params.set('category', cat.name);
+                          // Note: subCategories are not currently tracked in URL in this component's useEffect, 
+                          // but we can add it if needed. For now, just priority and category redirect.
+                          router.push(`/dashboard?${params.toString()}`);
                         }}
                         selectedPriority={filters.priority}
                         color={categories.find((c: any) => c._id === selectedCategory)?.color || "#6b7280"}
@@ -835,28 +898,28 @@ function DashboardContent() {
 
         {/* Agency Stats Capsules - Agency-wise Pending Work (Collapsible) */}
         {stats.agencyStats && stats.agencyStats.length > 0 && (
-          <div className="mb-12">
+          <div className="mb-8 sm:mb-12">
             {/* Collapsible Header */}
             <div
-              className="flex items-center justify-between mb-6 cursor-pointer group"
+              className="flex items-center justify-between mb-4 sm:mb-6 cursor-pointer group"
               onClick={() => setShowAgencyCapsules(!showAgencyCapsules)}
             >
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-semibold text-gray-900">By Agency (Pending Work)</h2>
-                <span className="text-sm text-gray-500 font-medium">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900">By Agency</h2>
+                <span className="text-xs sm:text-sm text-gray-500 font-medium">
                   ({stats.agencyStats.length} {stats.agencyStats.length === 1 ? 'agency' : 'agencies'})
                 </span>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all shadow-sm">
+              <button className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all shadow-sm">
                 <svg
-                  className={`w-5 h-5 text-gray-600 transition-transform duration-300 ${showAgencyCapsules ? 'rotate-180' : ''}`}
+                  className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-600 transition-transform duration-300 ${showAgencyCapsules ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
-                <span className="text-sm font-medium text-gray-700">
+                <span className="text-xs sm:text-sm font-medium text-gray-700">
                   {showAgencyCapsules ? 'Hide' : 'Show'}
                 </span>
               </button>
@@ -864,7 +927,7 @@ function DashboardContent() {
 
             {/* Collapsible Content */}
             {showAgencyCapsules && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadeIn">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 animate-fadeIn">
                 {stats.agencyStats.map((agency: any) => (
                   <Capsule
                     key={agency.id}
@@ -873,9 +936,23 @@ function DashboardContent() {
                     onClick={() => {
                       // Toggle agency filter
                       if (filters.agency === agency.id) {
-                        setFilters({ agency: "" });
+                        setFilters({ agency: "", priority: "" });
+                        
+                        const params = new URLSearchParams(searchParams.toString());
+                        params.delete('priority');
+                        // URL persistence for agency not fully implemented, but clear priority
+                        router.push(`/dashboard?${params.toString()}`);
                       } else {
-                        setFilters({ agency: agency.id });
+                        setFilters({ agency: agency.id, priority: "", category: "", subCategory: "" });
+                        setSelectedCategory(null);
+                        setShowSubCategoriesSection(false);
+                        
+                        const params = new URLSearchParams(searchParams.toString());
+                        params.delete('priority');
+                        params.delete('category');
+                        // URL persistence for agency not fully implemented, but clear priority
+                        router.push(`/dashboard?${params.toString()}`);
+                        
                         // Scroll to ticket list after a delay to ensure filters are applied
                         setTimeout(() => {
                           scrollToTicketList();
@@ -884,11 +961,20 @@ function DashboardContent() {
                     }}
                     onPriorityClick={(p) => {
                       // Preserve agency context when clicking priority
+                      const newPriority = filters.priority === p ? "" : p;
                       setFilters({
-                        priority: filters.priority === p ? "" : p,
+                        priority: newPriority,
                         agency: filters.agency
                       });
                       scrollToTicketList();
+                      
+                      const params = new URLSearchParams(searchParams.toString());
+                      if (newPriority) params.set('priority', newPriority); else params.delete('priority');
+                      // Agency is local state mostly, but if we want to persist:
+                      // params.set('agency', filters.agency); 
+                      // The current URL parsing in useEffect doesn't seem to look for 'agency', 
+                      // but pushing it won't hurt.
+                      router.push(`/dashboard?${params.toString()}`);
                     }}
                     selectedPriority={filters.priority}
                     color="#f59e0b"
@@ -904,55 +990,55 @@ function DashboardContent() {
 
 
         {/* Priority Filter Section */}
-        <div className="mb-8">
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Filter by Priority:</h3>
-                <div className="flex items-center gap-2">
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-3 sm:p-6">
+            <div className="flex flex-col gap-3 sm:gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide">Priority:</h3>
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                   <button
                     onClick={() => setFilters({ priority: "" })}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 ${filters.priority === ""
+                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 ${filters.priority === ""
                       ? "bg-gray-800 text-white border-gray-800 shadow-md"
                       : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                       }`}
                   >
-                    All Priorities
+                    All
                   </button>
                   <button
                     onClick={() => setFilters({ priority: "high" })}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "high"
+                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "high"
                       ? "bg-red-500 text-white border-red-500 shadow-md"
                       : "bg-red-50 text-red-700 border-red-300 hover:border-red-400"
                       }`}
                   >
-                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500"></span>
                     High
                   </button>
                   <button
                     onClick={() => setFilters({ priority: "medium" })}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "medium"
+                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "medium"
                       ? "bg-amber-500 text-white border-amber-500 shadow-md"
                       : "bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400"
                       }`}
                   >
-                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                    Medium
+                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500"></span>
+                    Med
                   </button>
                   <button
                     onClick={() => setFilters({ priority: "low" })}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all border-2 flex items-center gap-2 ${filters.priority === "low"
+                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "low"
                       ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
                       : "bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-400"
                       }`}
                   >
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500"></span>
                     Low
                   </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="text-sm text-gray-600 font-medium">
+              <div className="flex items-center">
+                <div className="text-xs sm:text-sm text-gray-600 font-medium">
                   Showing <span className="text-gray-900 font-bold">{fullyFiltered.length}</span> ticket{fullyFiltered.length !== 1 ? 's' : ''}
                 </div>
               </div>
@@ -961,7 +1047,7 @@ function DashboardContent() {
         </div>
 
         {/* Tickets grid */}
-        <div ref={ticketListRef} className="grid grid-cols-1 gap-6">
+        <div ref={ticketListRef} className="grid grid-cols-1 gap-4 sm:gap-6">
           {fullyFiltered.map((t: any) => {
             const cat = categories.find((c: any) => c.name.toLowerCase() === (t.category || "").toLowerCase());
             return (
@@ -983,10 +1069,10 @@ function DashboardContent() {
 
       {/* Subcategory Selection Modal */}
       {showSubCategoryModal && selectedCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setShowSubCategoryModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" onClick={() => setShowSubCategoryModal(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="relative max-w-2xl w-full rounded-2xl shadow-2xl bg-gradient-to-br from-gray-800 to-gray-900"
+            className="relative max-w-2xl w-full rounded-xl sm:rounded-2xl shadow-2xl bg-gradient-to-br from-gray-800 to-gray-900 max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
