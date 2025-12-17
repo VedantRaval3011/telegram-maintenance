@@ -389,20 +389,21 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
       case "agency":
         // Agency is required when this field is present
         completed = !!session.agencyName;
-        value = session.agencyName || undefined;
+        // Show "No Agency ❌" if user selected none
+        value = session.agencyName === "__NONE__" ? "No Agency ❌" : session.agencyName || undefined;
         break;
       
       case "agency_time_slot":
-        // Only required if an agency was selected
-        required = !!session.agencyName;
+        // Only required if an actual agency was selected (not "No Agency")
+        required = !!session.agencyName && session.agencyName !== "__NONE__";
         completed = !!session.agencyTimeSlot;
         value = session.agencyTimeSlot === "first_half" ? "🌅 First Half" : session.agencyTimeSlot === "second_half" ? "🌆 Second Half" : undefined;
         break;
       
       
       case "agency_month":
-        // Only required if an agency was selected
-        required = !!session.agencyName;
+        // Only required if an actual agency was selected (not "No Agency")
+        required = !!session.agencyName && session.agencyName !== "__NONE__";
         completed = session.agencyMonth !== null && session.agencyMonth !== undefined;
         if (completed) {
           const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
@@ -412,8 +413,8 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         break;
       
       case "agency_date":
-        // Required if agency was selected AND month was selected
-        required = !!session.agencyName && session.agencyMonth !== null;
+        // Required if an actual agency was selected (not "No Agency") AND month was selected
+        required = !!session.agencyName && session.agencyName !== "__NONE__" && session.agencyMonth !== null;
         // Complete if date is set OR date was intentionally skipped
         completed = !!session.agencyDate || !!session.agencyDateSkipped;
         if (session.agencyDateSkipped) {
@@ -646,6 +647,12 @@ case "target_location": {
         }
         keyboard.push(row);
       }
+      
+      // Add "No Agency" option at the end
+      keyboard.push([{
+        text: "❌ No Agency",
+        callback_data: `select_${botMessageId}_agency_none`
+      }]);
       break;
     }
 
@@ -1444,6 +1451,8 @@ export async function POST(req: NextRequest) {
             }
             keyboard.push(row);
           }
+          // Add "No Agency" option
+          keyboard.push([{ text: "❌ No Agency", callback_data: `edit_${originalMsgId}_${ticketId}_agency_none` }]);
           keyboard.push([{ text: "⬅️ Back", callback_data: `edit_${originalMsgId}_${ticketId}_back` }]);
           
           const msg = `✏️ <b>Edit Ticket #${ticketId}</b>\n\n👷 Select new agency:`;
@@ -1452,15 +1461,27 @@ export async function POST(req: NextRequest) {
         }
         
         if (editField === "agency" && editValue) {
-          // Update agency
-          const agency = await Agency.findById(editValue).lean();
-          if (agency) {
-            ticket.agencyName = agency.name;
+          // Handle "No Agency" selection
+          if (editValue === "none") {
+            ticket.agencyName = undefined;
+            ticket.agencyDate = undefined;
+            ticket.agencyTime = undefined;
             await ticket.save();
             
             const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
-                       `👷 Agency changed to: ${agency.name}`;
+                       `👷 Agency removed (No Agency)`;
             await editMessageText(chatId, messageId, msg, []);
+          } else {
+            // Update agency
+            const agency = await Agency.findById(editValue).lean();
+            if (agency) {
+              ticket.agencyName = agency.name;
+              await ticket.save();
+              
+              const msg = `✅ <b>Ticket #${ticketId} Updated</b>\n\n` +
+                         `👷 Agency changed to: ${agency.name}`;
+              await editMessageText(chatId, messageId, msg, []);
+            }
           }
           return NextResponse.json({ ok: true });
         }
@@ -1600,9 +1621,20 @@ export async function POST(req: NextRequest) {
 
 
           case "agency": {
-            // Lookup agency by ID from AgencyMaster
-            const agency = await Agency.findById(value).lean();
-            session.agencyName = agency?.name || value;
+            // Handle "No Agency" selection
+            if (value === "none") {
+              session.agencyName = "__NONE__";
+              // Clear dependent fields since no agency was selected
+              session.agencyMonth = null;
+              session.agencyYear = null;
+              session.agencyDate = null;
+              session.agencyDateSkipped = false;
+              session.agencyTimeSlot = null;
+            } else {
+              // Lookup agency by ID from AgencyMaster
+              const agency = await Agency.findById(value).lean();
+              session.agencyName = agency?.name || value;
+            }
             session.agencyRequired = true; // Mark agency as required when selected
             await session.save();
             break;
