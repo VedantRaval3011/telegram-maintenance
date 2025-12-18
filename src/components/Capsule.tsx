@@ -106,11 +106,15 @@ export default function Capsule({
       className={`rounded-xl sm:rounded-2xl shadow-sm overflow-hidden flex flex-row h-24 sm:h-32 border transition-all duration-200 ${onClick ? "cursor-pointer" : ""
         } ${isHovered ? "shadow-md" : ""} ${className}`}
       style={{
+        borderTopWidth: '1px',
+        borderRightWidth: '1px',
+        borderBottomWidth: '1px',
+        borderLeftWidth: '4px',
         borderTopColor: lightenColor(baseColor, 0.5),
         borderRightColor: lightenColor(baseColor, 0.5),
         borderBottomColor: lightenColor(baseColor, 0.5),
-        borderLeftWidth: '4px',
-        borderLeftColor: baseColor
+        borderLeftColor: baseColor,
+        borderStyle: 'solid'
       }}
     >
       {/* Left Section: Priority */}

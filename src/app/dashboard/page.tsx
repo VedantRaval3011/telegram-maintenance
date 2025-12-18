@@ -449,6 +449,50 @@ function DashboardContent() {
     return out;
   }, [tickets, filters, showCompleted]);
 
+  // Create ticket-to-agency mapping to prevent duplicate counting
+  // Each ticket is assigned to exactly ONE agency
+  const ticketToAgencyMap = useMemo(() => {
+    const map = new Map<string, string>(); // ticketId -> agencyId
+    
+    // First pass: assign tickets that have explicit agencyName
+    categoryStatsBase.forEach((ticket: any) => {
+      if (ticket.agencyName) {
+        const agency = agencies.find((a: any) => 
+          a.name.toLowerCase().trim() === (ticket.agencyName || "").toLowerCase().trim()
+        );
+        if (agency) {
+          map.set(ticket._id || ticket.ticketId, agency._id);
+        }
+      }
+    });
+    
+    // Second pass: assign remaining tickets based on subcategory (first matching agency wins)
+    categoryStatsBase.forEach((ticket: any) => {
+      const ticketId = ticket._id || ticket.ticketId;
+      if (!map.has(ticketId)) {
+        // Find ticket's subcategory
+        const ticketSubCategory = subCategories.find((s: any) =>
+          s.name.toLowerCase() === (ticket.subCategory || "").toLowerCase()
+        );
+        
+        if (ticketSubCategory) {
+          // Find first agency that has this subcategory linked
+          const matchingAgency = agencies.find((agency: any) => {
+            const linkedSubCategoryIds = agency.subCategories?.map((s: any) => s._id || s) || [];
+            return linkedSubCategoryIds.includes(ticketSubCategory._id);
+          });
+          
+          if (matchingAgency) {
+            map.set(ticketId, matchingAgency._id);
+          }
+        }
+      }
+    });
+    
+    return map;
+  }, [categoryStatsBase, agencies, subCategories]);
+
+
   const fullyFiltered = useMemo(() => {
     let out = baseFiltered.slice();
     const { category, subCategory, agency, sortBy } = filters;
@@ -456,18 +500,12 @@ function DashboardContent() {
     if (category) out = out.filter((t: any) => (t.category || "").toString().toLowerCase() === category.toLowerCase());
     if (subCategory) out = out.filter((t: any) => (t.subCategory || "").toString().toLowerCase() === subCategory.toLowerCase());
 
-    // Filter by agency - show tickets whose subcategories are linked to this agency
+    // Filter by agency - use the ticket-to-agency mapping to ensure consistency with stats
     if (agency) {
-      const agencyData = agencies.find((a: any) => a._id === agency);
-      if (agencyData && agencyData.subCategories) {
-        const linkedSubCategoryIds = agencyData.subCategories.map((s: any) => s._id || s);
-        out = out.filter((t: any) => {
-          const ticketSubCategory = subCategories.find((s: any) =>
-            s.name.toLowerCase() === (t.subCategory || "").toLowerCase()
-          );
-          return ticketSubCategory && linkedSubCategoryIds.includes(ticketSubCategory._id);
-        });
-      }
+      out = out.filter((t: any) => {
+        const ticketId = t._id || t.ticketId;
+        return ticketToAgencyMap.get(ticketId) === agency;
+      });
     }
 
     if (sortBy) {
@@ -495,7 +533,7 @@ function DashboardContent() {
     }
 
     return out;
-  }, [baseFiltered, filters, agencies, subCategories]);
+  }, [baseFiltered, filters, agencies, subCategories, ticketToAgencyMap]);
 
   const stats = useMemo(() => {
     // Global Stats - use globalStatsBase (ignores Category, respects Priority)
@@ -551,17 +589,11 @@ function DashboardContent() {
       }
     }
 
-    // Agency Stats - use categoryStatsBase to show complete agency stats regardless of priority
+    // Agency Stats - use the shared ticket-to-agency mapping to prevent duplicate counting
     const agencyStats = agencies.map((agency: any) => {
-      // Get all subcategories linked to this agency
-      const linkedSubCategoryIds = agency.subCategories?.map((s: any) => s._id || s) || [];
-
-      // Find tickets that match any of the linked subcategories
       const agencyTickets = categoryStatsBase.filter((t: any) => {
-        const ticketSubCategory = subCategories.find((s: any) =>
-          s.name.toLowerCase() === (t.subCategory || "").toLowerCase()
-        );
-        return ticketSubCategory && linkedSubCategoryIds.includes(ticketSubCategory._id);
+        const ticketId = t._id || t.ticketId;
+        return ticketToAgencyMap.get(ticketId) === agency._id;
       });
 
       return {
@@ -572,7 +604,7 @@ function DashboardContent() {
     }).filter((a: any) => a.stats.total > 0); // Only show agencies with pending work
 
     return { totalStats, pendingStats, completedStats, categoryStats, userStats, subCategoryStats, agencyStats };
-  }, [fullyFiltered, baseFiltered, categoryStatsBase, globalStatsBase, categories, users, subCategories, selectedCategory, calculateStats, agencies]);
+  }, [fullyFiltered, baseFiltered, categoryStatsBase, globalStatsBase, categories, users, subCategories, selectedCategory, calculateStats, agencies, ticketToAgencyMap]);
 
   if (error)
     return <div className="p-10 text-center text-red-500">Failed to load</div>;
@@ -580,11 +612,11 @@ function DashboardContent() {
     return <div className="p-10 text-center text-gray-500 animate-pulse">Loading…</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-16 sm:pb-20">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 dashboard-content">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 dashboard-content">
         {/* Top Filters: Advanced Toggle */}
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 mb-4 sm:mb-6">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 mb-3 sm:mb-6">
           {/* Advanced Filters Toggle */}
           <button
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
@@ -712,8 +744,8 @@ function DashboardContent() {
 
         {/* Category Stats Capsules */}
         {stats.categoryStats.length > 0 && (
-          <div className="mb-8 sm:mb-12">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 sm:mb-6">By Category</h2>
+          <div className="mb-6 sm:mb-12">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-6">By Category</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
               {stats.categoryStats.map((cat: any) => (
                 <div key={cat.id} className="relative" id={`category-${cat.id}`}>
@@ -896,12 +928,12 @@ function DashboardContent() {
 
 
 
-        {/* Agency Stats Capsules - Agency-wise Pending Work (Collapsible) */}
-        {stats.agencyStats && stats.agencyStats.length > 0 && (
-          <div className="mb-8 sm:mb-12">
+        {/* Agency Stats Capsules - Agency-wise Pending Work (Collapsible) - Only show for pending view */}
+        {!showCompleted && stats.agencyStats && stats.agencyStats.length > 0 && (
+          <div className="mb-6 sm:mb-12">
             {/* Collapsible Header */}
             <div
-              className="flex items-center justify-between mb-4 sm:mb-6 cursor-pointer group"
+              className="flex items-center justify-between mb-3 sm:mb-6 cursor-pointer group"
               onClick={() => setShowAgencyCapsules(!showAgencyCapsules)}
             >
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -929,36 +961,42 @@ function DashboardContent() {
             {showAgencyCapsules && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 animate-fadeIn">
                 {stats.agencyStats.map((agency: any) => (
-                  <Capsule
-                    key={agency.id}
-                    title={agency.name}
-                    {...agency.stats}
-                    onClick={() => {
-                      // Toggle agency filter
-                      if (filters.agency === agency.id) {
-                        setFilters({ agency: "", priority: "" });
-                        
-                        const params = new URLSearchParams(searchParams.toString());
-                        params.delete('priority');
-                        // URL persistence for agency not fully implemented, but clear priority
-                        router.push(`/dashboard?${params.toString()}`);
-                      } else {
-                        setFilters({ agency: agency.id, priority: "", category: "", subCategory: "" });
-                        setSelectedCategory(null);
-                        setShowSubCategoriesSection(false);
-                        
-                        const params = new URLSearchParams(searchParams.toString());
-                        params.delete('priority');
-                        params.delete('category');
-                        // URL persistence for agency not fully implemented, but clear priority
-                        router.push(`/dashboard?${params.toString()}`);
-                        
-                        // Scroll to ticket list after a delay to ensure filters are applied
-                        setTimeout(() => {
-                          scrollToTicketList();
-                        }, 150);
-                      }
-                    }}
+                  <div key={agency.id} className="relative" id={`agency-${agency.id}`}>
+                    <Capsule
+                      title={agency.name}
+                      {...agency.stats}
+                      onClick={() => {
+                        // Toggle agency filter
+                        if (filters.agency === agency.id) {
+                          setFilters({ agency: "", priority: "" });
+                          
+                          const params = new URLSearchParams(searchParams.toString());
+                          params.delete('priority');
+                          // URL persistence for agency not fully implemented, but clear priority
+                          router.push(`/dashboard?${params.toString()}`);
+                        } else {
+                          // Save reference to clicked element
+                          const clickedDiv = document.getElementById(`agency-${agency.id}`);
+                          if (clickedDiv) {
+                            clickedElementRef.current = clickedDiv;
+                          }
+
+                          setFilters({ agency: agency.id, priority: "", category: "", subCategory: "" });
+                          setSelectedCategory(null);
+                          setShowSubCategoriesSection(false);
+                          
+                          const params = new URLSearchParams(searchParams.toString());
+                          params.delete('priority');
+                          params.delete('category');
+                          // URL persistence for agency not fully implemented, but clear priority
+                          router.push(`/dashboard?${params.toString()}`);
+                          
+                          // Scroll to ticket list after a delay to ensure filters are applied
+                          setTimeout(() => {
+                            scrollToTicketList();
+                          }, 150);
+                        }
+                      }}
                     onPriorityClick={(p) => {
                       // Preserve agency context when clicking priority
                       const newPriority = filters.priority === p ? "" : p;
@@ -979,7 +1017,9 @@ function DashboardContent() {
                     selectedPriority={filters.priority}
                     color="#f59e0b"
                     className={filters.agency === agency.id ? "ring-2 ring-gray-900 ring-offset-2" : ""}
+                    onScrollBack={scrollBackToTop}
                   />
+                  </div>
                 ))}
               </div>
             )}
@@ -1047,13 +1087,26 @@ function DashboardContent() {
         </div>
 
         {/* Tickets grid */}
-        <div ref={ticketListRef} className="grid grid-cols-1 gap-4 sm:gap-6">
+        <div ref={ticketListRef} className="grid grid-cols-1 gap-3 sm:gap-6">
           {fullyFiltered.map((t: any) => {
             const cat = categories.find((c: any) => c.name.toLowerCase() === (t.category || "").toLowerCase());
+            
+            // Derive agency name from the mapping if not explicitly set
+            const ticketId = t._id || t.ticketId;
+            const mappedAgencyId = ticketToAgencyMap.get(ticketId);
+            const mappedAgency = mappedAgencyId ? agencies.find((a: any) => a._id === mappedAgencyId) : null;
+            const derivedAgencyName = mappedAgency?.name || null;
+            
+            // Use explicit agencyName if set, otherwise use derived name
+            const displayAgencyName = t.agencyName && t.agencyName !== '__NONE__' ? t.agencyName : derivedAgencyName;
+            
             return (
               <TicketCard
                 key={t.ticketId}
-                ticket={t}
+                ticket={{
+                  ...t,
+                  agencyName: displayAgencyName // Override with derived agency name
+                }}
                 onStatusChange={() => mutate()}
                 categoryColor={cat?.color}
                 onScrollBack={scrollBackToTop}

@@ -212,10 +212,15 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
         className="rounded-xl shadow-lg overflow-hidden"
         style={{
           backgroundColor: colors.bg,
-          borderWidth: '1px',
-          borderColor: colors.border,
+          borderTopWidth: '1px',
+          borderRightWidth: '1px',
+          borderBottomWidth: '1px',
           borderLeftWidth: '4px',
-          borderLeftColor: priorityColor
+          borderTopColor: colors.border,
+          borderRightColor: colors.border,
+          borderBottomColor: colors.border,
+          borderLeftColor: priorityColor,
+          borderStyle: 'solid'
         }}
       >
         {/* Header Section */}
@@ -318,7 +323,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
           </h3>
 
           {/* Metadata Row */}
-          <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-xs sm:text-sm mb-3">
+          <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-xs sm:text-sm mb-2 sm:mb-3">
             <span className="inline-flex items-center gap-1" style={{ color: colors.text }}>
               <span className="font-semibold">Category:</span>
               <span
@@ -351,25 +356,26 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
               </span>
             )}
 
-            {/* Agency Info */}
-            {ticket.agencyName && (
-              <span className="inline-flex items-center gap-1.5" style={{ color: colors.text }}>
-                <Building2 size={14} /> <span className="font-medium">{ticket.agencyName}</span>
-                {ticket.agencyDate && (
-                  <span className="inline-flex items-center gap-1 ml-1">
-                    <Calendar size={12} /> {new Date(ticket.agencyDate).toLocaleDateString()}
-                  </span>
-                )}
-                {ticket.agencyTime && (
-                  <span className="inline-flex items-center gap-1 ml-1"><Timer size={12} /> {ticket.agencyTime}</span>
-                )}
+            {/* Agency Info - Always show */}
+            <span className="inline-flex items-center gap-1.5" style={{ color: colors.text }}>
+              <Building2 size={14} />
+              <span className="font-medium">
+                {ticket.agencyName && ticket.agencyName !== '__NONE__' ? ticket.agencyName : 'In-house'}
               </span>
-            )}
+              {ticket.agencyName && ticket.agencyName !== '__NONE__' && ticket.agencyDate && (
+                <span className="inline-flex items-center gap-1 ml-1">
+                  <Calendar size={12} /> {new Date(ticket.agencyDate).toLocaleDateString()}
+                </span>
+              )}
+              {ticket.agencyName && ticket.agencyName !== '__NONE__' && ticket.agencyTime && (
+                <span className="inline-flex items-center gap-1 ml-1"><Timer size={12} /> {ticket.agencyTime}</span>
+              )}
+            </span>
           </div>
 
           {/* Time and People Info */}
           <div
-            className="rounded-lg p-2 sm:p-3 mb-3 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm"
+            className="rounded-lg p-2 sm:p-3 mb-2 sm:mb-3 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm"
             style={{ backgroundColor: colors.accentMedium }}
           >
             {/* Created By */}
@@ -434,7 +440,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                     src={url}
                     alt={`Photo ${idx + 1}`}
                     className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
-                    style={{ borderWidth: '1px', borderColor: colors.border }}
+                    style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: colors.border }}
                     onClick={() => setSelectedPhoto(url)}
                   />
                 ))}
@@ -453,7 +459,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                   <div
                     key={idx}
                     className="w-24 h-16 rounded cursor-pointer hover:opacity-80 transition relative overflow-hidden"
-                    style={{ borderWidth: '1px', borderColor: colors.border }}
+                    style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: colors.border }}
                     onClick={() => setSelectedVideo(url)}
                   >
                     <video
@@ -485,7 +491,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                     src={url}
                     alt={`Completion ${idx + 1}`}
                     className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition"
-                    style={{ borderWidth: '1px', borderColor: colors.borderDark }}
+                    style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: colors.borderDark }}
                     onClick={() => setSelectedPhoto(url)}
                   />
                 ))}
@@ -504,7 +510,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                   <div
                     key={idx}
                     className="w-24 h-16 rounded cursor-pointer hover:opacity-80 transition relative overflow-hidden"
-                    style={{ borderWidth: '1px', borderColor: colors.borderDark }}
+                    style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: colors.borderDark }}
                     onClick={() => setSelectedVideo(url)}
                   >
                     <video
