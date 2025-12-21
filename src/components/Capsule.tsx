@@ -103,34 +103,38 @@ export default function Capsule({
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`rounded-2xl shadow-sm overflow-hidden flex flex-row h-32 border transition-all duration-200 ${onClick ? "cursor-pointer" : ""
+      className={`rounded-xl sm:rounded-2xl shadow-sm overflow-hidden flex flex-row h-24 sm:h-32 border transition-all duration-200 ${onClick ? "cursor-pointer" : ""
         } ${isHovered ? "shadow-md" : ""} ${className}`}
       style={{
+        borderTopWidth: '1px',
+        borderRightWidth: '1px',
+        borderBottomWidth: '1px',
+        borderLeftWidth: '4px',
         borderTopColor: lightenColor(baseColor, 0.5),
         borderRightColor: lightenColor(baseColor, 0.5),
         borderBottomColor: lightenColor(baseColor, 0.5),
-        borderLeftWidth: '4px',
-        borderLeftColor: baseColor
+        borderLeftColor: baseColor,
+        borderStyle: 'solid'
       }}
     >
       {/* Left Section: Priority */}
       <div
-        className="flex-1 px-4 py-3 flex flex-col justify-center transition-colors duration-200"
+        className="flex-1 px-2 sm:px-4 py-2 sm:py-3 flex flex-col justify-center transition-colors duration-200"
         style={{ backgroundColor: priorityBg }}
       >
         <div
-          className="text-[10px] font-semibold uppercase tracking-wide mb-2"
+          className="text-[8px] sm:text-[10px] font-semibold uppercase tracking-wide mb-1 sm:mb-2"
           style={{ color: labelColor }}
         >
           Priority
         </div>
-        <div className="space-y-1">
+        <div className="space-y-0.5 sm:space-y-1">
           <div 
             onClick={(e) => {
               e.stopPropagation();
               onPriorityClick?.("high");
             }}
-            className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
+            className={`flex justify-between items-center text-[10px] sm:text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
             <span style={{ color: getPriorityColor("high") }} className="font-semibold">High</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.high})</span>
@@ -140,9 +144,9 @@ export default function Capsule({
               e.stopPropagation();
               onPriorityClick?.("medium");
             }}
-            className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
+            className={`flex justify-between items-center text-[10px] sm:text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
-            <span style={{ color: getPriorityColor("medium") }} className="font-semibold">Medium</span>
+            <span style={{ color: getPriorityColor("medium") }} className="font-semibold">Med</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.medium})</span>
           </div>
           <div 
@@ -150,7 +154,7 @@ export default function Capsule({
               e.stopPropagation();
               onPriorityClick?.("low");
             }}
-            className={`flex justify-between items-center text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
+            className={`flex justify-between items-center text-[10px] sm:text-xs ${onPriorityClick ? 'cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
           >
             <span style={{ color: getPriorityColor("low") }} className="font-semibold">Low</span>
             <span className="font-semibold" style={{ color: textColor }}>({priority.low})</span>
@@ -160,30 +164,30 @@ export default function Capsule({
 
       {/* Middle Section: Total */}
       <div
-        className="flex-1 px-4 py-3 flex flex-col justify-center items-center transition-colors duration-200 relative"
+        className="flex-1 px-2 sm:px-4 py-2 sm:py-3 flex flex-col justify-center items-center transition-colors duration-200 relative"
         style={{ backgroundColor: middleBg }}
       >
-          <div className="text-xs font-medium mb-1" style={{ color: labelColor }}>{title}</div>
-        <div className="text-4xl font-bold" style={{ color: textColor }}>{total}</div>
+        <div className="text-[10px] sm:text-xs font-medium mb-0.5 sm:mb-1 text-center truncate w-full" style={{ color: labelColor }}>{title}</div>
+        <div className="text-2xl sm:text-4xl font-bold" style={{ color: textColor }}>{total}</div>
       </div>
 
       {/* Right Section: Source */}
       <div
-        className="flex-1 px-4 py-3 flex flex-col justify-center relative transition-colors duration-200"
+        className="flex-1 px-2 sm:px-4 py-2 sm:py-3 flex flex-col justify-center relative transition-colors duration-200"
         style={{ backgroundColor: sourceBg }}
       >
         <div
-          className="text-[10px] font-semibold uppercase tracking-wide mb-2"
+          className="text-[8px] sm:text-[10px] font-semibold uppercase tracking-wide mb-1 sm:mb-2"
           style={{ color: labelColor }}
         >
           Source
         </div>
-        <div className="space-y-1">
-          <div className="flex justify-between items-center text-xs">
+        <div className="space-y-0.5 sm:space-y-1">
+          <div className="flex justify-between items-center text-[10px] sm:text-xs">
             <span style={{ color: labelColor }}>In-house</span>
             <span className="font-semibold" style={{ color: textColor }}>{source.inHouse}</span>
           </div>
-          <div className="flex justify-between items-center text-xs">
+          <div className="flex justify-between items-center text-[10px] sm:text-xs">
             <span style={{ color: labelColor }}>Outsource</span>
             <span className="font-semibold" style={{ color: textColor }}>{source.outsource}</span>
           </div>
