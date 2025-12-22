@@ -1085,13 +1085,17 @@ async function createTicketFromSession(session: any, createdBy: string) {
 
   // Add agency info if present
   if (session.agencyRequired) {
-    ticketData.agencyName = (session.agencyName && session.agencyName !== "__NONE__") ? session.agencyName : "NONE";
-    if (session.agencyTimeSlot) {
-      // Convert time slot to human-readable format for display
-      ticketData.agencyTime = session.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
-    }
-    if (session.agencyDate) {
-      ticketData.agencyDate = session.agencyDate;
+    const isNoAgency = !session.agencyName || session.agencyName === "__NONE__" || session.agencyName === "NONE";
+    ticketData.agencyName = isNoAgency ? "NONE" : session.agencyName;
+    
+    if (!isNoAgency) {
+      if (session.agencyTimeSlot) {
+        // Convert time slot to human-readable format for display
+        ticketData.agencyTime = session.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
+      }
+      if (session.agencyDate) {
+        ticketData.agencyDate = session.agencyDate;
+      }
     }
   }
 
@@ -1886,6 +1890,10 @@ export async function POST(req: NextRequest) {
                 updateData.location = deduplicateLocationPath(sessionData.locationPath).map((n: any) => n.name).join(" → ");
               } else if (tf === "agency") {
                   updateData.agencyName = sessionData.agencyName;
+                  if (sessionData.agencyName === "__NONE__" || sessionData.agencyName === "NONE") {
+                    updateData.agencyDate = null;
+                    updateData.agencyTime = null;
+                  }
               } else if (tf === "agency_date" || tf === "agency_time_slot") {
                 updateData.agencyDate = sessionData.agencyDate;
                 if (sessionData.agencyTimeSlot) {
@@ -1918,12 +1926,19 @@ export async function POST(req: NextRequest) {
 
               // Add agency info if present
               if (sessionData.agencyRequired) {
-                updateData.agencyName = sessionData.agencyName || null;
-                if (sessionData.agencyTimeSlot) {
-                  updateData.agencyTime = sessionData.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
-                }
-                if (sessionData.agencyDate) {
-                  updateData.agencyDate = sessionData.agencyDate;
+                const isNoAgency = !sessionData.agencyName || sessionData.agencyName === "__NONE__" || sessionData.agencyName === "NONE";
+                updateData.agencyName = isNoAgency ? "NONE" : sessionData.agencyName;
+                
+                if (isNoAgency) {
+                  updateData.agencyDate = null;
+                  updateData.agencyTime = null;
+                } else {
+                  if (sessionData.agencyTimeSlot) {
+                    updateData.agencyTime = sessionData.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
+                  }
+                  if (sessionData.agencyDate) {
+                    updateData.agencyDate = sessionData.agencyDate;
+                  }
                 }
               }
 
@@ -2013,7 +2028,7 @@ export async function POST(req: NextRequest) {
           }
           
           // Add agency info if present
-          if (ticket.agencyName) {
+          if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
             ticketMsg += `👷 Select Agency: ${ticket.agencyName}\n`;
             if (formattedAgencyMonth) {
               ticketMsg += `🗓 Select Month: ${formattedAgencyMonth}\n`;
