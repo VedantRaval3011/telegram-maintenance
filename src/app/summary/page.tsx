@@ -204,6 +204,18 @@ export default function SummaryPage() {
     }
   }, [excludedTicketIds]);
   
+  // State for mobile responsiveness
+  const [isMobile, setIsMobile] = useState(false);
+
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   // State for stable subcategory tooltip
   const [activeTooltip, setActiveTooltip] = useState<{
     data: any;
@@ -581,17 +593,17 @@ export default function SummaryPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Work Summary & Analytics</h1>
-          <p className="text-gray-600">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Work Summary & Analytics</h1>
+          <p className="text-sm sm:text-base text-gray-600">
             Comprehensive performance metrics and insights for completed maintenance work
           </p>
         </div>
 
         {/* Overall Stats Capsule */}
-        <div className="mb-12">
+        <div className="mb-8 sm:mb-12">
           <Capsule
             title="Total Completed Work"
             {...overallStats}
@@ -600,57 +612,63 @@ export default function SummaryPage() {
         </div>
 
         {/* Enhanced Unified Analytics Overview Chart */}
-        <div className="bg-gradient-to-br from-white to-slate-50 rounded-2xl shadow-2xl border-2 border-indigo-200 p-10 mb-12">
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
+        <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl sm:rounded-2xl shadow-xl sm:shadow-2xl border-2 border-indigo-200 p-4 sm:p-10 mb-8 sm:mb-12">
+          <div className="mb-6 sm:mb-8">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 mb-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 rounded-lg">
-                  <BarChart3 className="w-6 h-6 text-indigo-600" />
+                <div className="p-2 bg-indigo-100 rounded-lg flex-shrink-0">
+                  <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-900">Complete Analytics Overview</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Comprehensive performance analysis: workload, efficiency, and time benchmarks across all categories
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Complete Analytics Overview</h3>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    Workload, efficiency, and time benchmarks across all categories
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-gradient-to-r from-teal-50 to-teal-100 px-4 py-2.5 rounded-xl border-2 border-teal-300 shadow-sm">
-                  <CheckCircle2 className="w-5 h-5 text-teal-600" />
+              
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 bg-gradient-to-r from-teal-50 to-teal-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-teal-300 shadow-sm">
+                  <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-teal-600" />
                   <div className="text-left">
-                    <div className="text-[10px] text-teal-600 font-semibold uppercase">Total Tickets</div>
-                    <div className="text-lg font-bold text-teal-900">{overallStats.total}</div>
+                    <div className="text-[8px] sm:text-[10px] text-teal-600 font-semibold uppercase">Tickets</div>
+                    <div className="text-sm sm:text-lg font-bold text-teal-900">{overallStats.total}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-purple-100 px-4 py-2.5 rounded-xl border-2 border-purple-300 shadow-sm">
-                  <Clock className="w-5 h-5 text-purple-600" />
+                <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-purple-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-purple-300 shadow-sm">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                   <div className="text-left">
-                    <div className="text-[10px] text-purple-600 font-semibold uppercase">Avg Time</div>
-                    <div className="text-lg font-bold text-purple-900">{formatTime(overallStats.avgTime || 0)}</div>
+                    <div className="text-[8px] sm:text-[10px] text-purple-600 font-semibold uppercase">Avg Time</div>
+                    <div className="text-sm sm:text-lg font-bold text-purple-900">{formatTime(overallStats.avgTime || 0)}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-2.5 rounded-xl border-2 border-blue-300 shadow-sm">
-                  <Users className="w-5 h-5 text-blue-600" />
+                <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-blue-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-blue-300 shadow-sm">
+                  <Users className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                   <div className="text-left">
-                    <div className="text-[10px] text-blue-600 font-semibold uppercase">In-House</div>
-                    <div className="text-lg font-bold text-blue-900">{overallStats.source.inHouse}</div>
+                    <div className="text-[8px] sm:text-[10px] text-blue-600 font-semibold uppercase">In-House</div>
+                    <div className="text-sm sm:text-lg font-bold text-blue-900">{overallStats.source.inHouse}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-orange-100 px-4 py-2.5 rounded-xl border-2 border-orange-300 shadow-sm">
-                  <Building2 className="w-5 h-5 text-orange-600" />
+                <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-orange-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-orange-300 shadow-sm">
+                  <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
                   <div className="text-left">
-                    <div className="text-[10px] text-orange-600 font-semibold uppercase">Outsource</div>
-                    <div className="text-lg font-bold text-orange-900">{overallStats.source.outsource}</div>
+                    <div className="text-[8px] sm:text-[10px] text-orange-600 font-semibold uppercase">Outsource</div>
+                    <div className="text-sm sm:text-lg font-bold text-orange-900">{overallStats.source.outsource}</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={600}>
+          <ResponsiveContainer width="100%" height={isMobile ? 350 : 600}>
             <ComposedChart 
               data={summary} 
-              margin={{ top: 60, right: 100, left: 30, bottom: 120 }}
+              margin={{ 
+                top: 40, 
+                right: isMobile ? 10 : 100, 
+                left: isMobile ? -10 : 30, 
+                bottom: isMobile ? 80 : 120 
+              }}
             >
               <defs>
                 <linearGradient id="idealTimeGradient" x1="0" y1="0" x2="0" y2="1">
@@ -726,7 +744,7 @@ export default function SummaryPage() {
                       .sort((a, b) => (b?.count || 0) - (a?.count || 0));
 
                     return (
-                      <div className="bg-white p-6 rounded-2xl shadow-2xl border-3 border-indigo-300 min-w-[420px] max-w-[480px]">
+                      <div className={`bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-2xl border-2 sm:border-3 border-indigo-300 min-w-0 ${isMobile ? 'w-[calc(100vw-40px)]' : 'min-w-[420px] max-w-[480px]'}`}>
                         <div className="flex items-center justify-between mb-4 pb-4 border-b-2 border-slate-200">
                           <div className="flex items-center gap-3">
                             <div 
@@ -1056,18 +1074,18 @@ export default function SummaryPage() {
         </div>
 
         {/* Category Summary Cards */}
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" />
+        <div className="mb-8 sm:mb-12">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 flex-shrink-0" />
               Category Performance Overview
             </h2>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Info className="w-4 h-4" />
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+              <Info className="w-4 h-4 flex-shrink-0" />
               <span>Detailed metrics for each category</span>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 items-start">
               {summary.map((cat) => {
                 const isExpanded = expandedCategories.has(cat.category);
                 const toggleExpand = () => {
@@ -1224,25 +1242,25 @@ export default function SummaryPage() {
         </div>
 
         {/* Charts Section */}
-        <div className="space-y-6 mb-12">
+        <div className="space-y-6 sm:space-y-8 mb-8 sm:mb-12">
           {/* Completion Trends - Area Chart */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-8">
             <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-teal-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Completion Trends</h3>
+                  <Activity className="w-5 h-5 text-teal-600 flex-shrink-0" />
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Completion Trends</h3>
                 </div>
-                <div className="flex items-center gap-2 bg-teal-50 px-4 py-2 rounded-lg border border-teal-200">
-                  <CheckCircle2 className="w-4 h-4 text-teal-600" />
-                  <span className="text-sm font-semibold text-teal-900">Total Completed: {overallStats.total}</span>
+                <div className="flex items-center gap-2 bg-teal-50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg border border-teal-200 self-start sm:self-auto">
+                  <CheckCircle2 className="w-4 h-4 text-teal-600 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-semibold text-teal-900">Total: {overallStats.total}</span>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-xs sm:text-sm text-gray-600">
                 A performance matrix comparing total tickets completed (Bars) against average resolution time (Line).
               </p>
             </div>
-            <ResponsiveContainer width="100%" height={450}>
+            <ResponsiveContainer width="100%" height={isMobile ? 350 : 450}>
               <ComposedChart data={barChartData} margin={{ top: 30, right: 60, left: 20, bottom: 80 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e1e7ef" vertical={false} />
                 <XAxis
@@ -1284,7 +1302,7 @@ export default function SummaryPage() {
                         : 0;
 
                       return (
-                        <div className="bg-white p-5 rounded-xl shadow-2xl border border-slate-200 min-w-[240px]">
+                        <div className={`bg-white p-4 sm:p-5 rounded-xl shadow-2xl border border-slate-200 ${isMobile ? 'w-[calc(100vw-60px)]' : 'min-w-[240px]'}`}>
                           <p className="font-bold text-slate-900 text-base mb-3 border-b pb-2">{label}</p>
                           <div className="space-y-3">
                             <div className="flex justify-between items-center">
@@ -1343,28 +1361,28 @@ export default function SummaryPage() {
 
 
           {/* Average Completion Time by Category */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-8">
             <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-purple-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Average Completion Time by Category</h3>
+                  <TrendingUp className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Average Completion Time by Category</h3>
                 </div>
-                <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg border border-purple-200">
-                  <Clock className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-semibold text-purple-900">
-                    Overall Avg: {summary.length > 0
+                <div className="flex items-center gap-2 bg-purple-50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg border border-purple-200 self-start sm:self-auto">
+                  <Clock className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-semibold text-purple-900">
+                    Overall: {summary.length > 0
                       ? formatTime(summary.reduce((acc, cat) => acc + cat.averageTimeHours, 0) / summary.length)
                       : "0h"
                     }
                   </span>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
-                Average time taken to complete tickets in each category. Lower bars indicate faster completion. Click on a category bar to see subcategory breakdown.
+              <p className="text-xs sm:text-sm text-gray-600">
+                Average time taken to complete tickets in each category. Lower bars indicate faster completion.
               </p>
             </div>
-            <ResponsiveContainer width="100%" height={550}>
+            <ResponsiveContainer width="100%" height={isMobile ? 350 : 550}>
                 <BarChart data={barChartData} margin={{ top: 30, right: 40, left: 20, bottom: 100 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
@@ -1492,29 +1510,34 @@ export default function SummaryPage() {
                           setActiveTooltip(prev => prev?.chartId === 'all-combined' ? null : prev);
                         }}
                       >
-                        <ResponsiveContainer width="100%" height={400}>
+                        <ResponsiveContainer width="100%" height={isMobile ? 350 : 400}>
                           <BarChart
                             data={allSubcategoriesCombined}
-                            margin={{ top: 20, right: 30, left: 50, bottom: 120 }}
+                            margin={{ 
+                              top: 20, 
+                              right: isMobile ? 10 : 30, 
+                              left: isMobile ? -20 : 50, 
+                              bottom: isMobile ? 100 : 120 
+                            }}
                           >
                             <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e5e7eb" />
                             <XAxis
                               dataKey="name"
                               type="category"
-                              angle={-45}
+                              angle={isMobile ? -90 : -45}
                               textAnchor="end"
-                              height={100}
+                              height={isMobile ? 120 : 100}
                               interval={0}
-                              tick={{ fontSize: 9, fill: '#6b7280', fontWeight: 400 }}
+                              tick={{ fontSize: isMobile ? 8 : 9, fill: '#6b7280', fontWeight: 400 }}
                               axisLine={{ stroke: '#d1d5db' }}
                               tickLine={{ stroke: '#d1d5db' }}
                             />
                             <YAxis 
                               type="number"
-                              tick={{ fontSize: 10, fill: '#6b7280' }}
+                              tick={{ fontSize: isMobile ? 9 : 10, fill: '#6b7280' }}
                               axisLine={{ stroke: '#d1d5db' }}
                               tickLine={{ stroke: '#d1d5db' }}
-                              label={{ 
+                              label={isMobile ? undefined : { 
                                 value: 'Avg Time (Hours)', 
                                 angle: -90, 
                                 position: 'insideLeft',
@@ -1524,7 +1547,7 @@ export default function SummaryPage() {
                             <Bar
                               dataKey="avgTime"
                               radius={[4, 4, 0, 0]}
-                              barSize={40}
+                              barSize={isMobile ? 20 : 40}
                               isAnimationActive={false}
                               style={{ cursor: 'pointer', transition: 'filter 0.3s' }}
                               onMouseEnter={(data: any) => {
@@ -1570,7 +1593,14 @@ export default function SummaryPage() {
                         {/* Manual Stable Tooltip for Combined Chart */}
                         {activeTooltip && activeTooltip.chartId === 'all-combined' && (
                           <div 
-                            style={{ 
+                            style={isMobile ? {
+                              position: 'absolute',
+                              left: '10px',
+                              right: '10px',
+                              bottom: '0px',
+                              zIndex: 100,
+                              pointerEvents: 'auto'
+                            } : { 
                               position: 'absolute',
                               left: activeTooltip.pos.x + 15,
                               top: activeTooltip.pos.y,
@@ -1580,7 +1610,7 @@ export default function SummaryPage() {
                             }}
                             className="animate-in fade-in zoom-in duration-200"
                           >
-                            <div className="bg-white p-4 rounded-xl shadow-[0_20px_50px_rgba(109,40,217,0.15)] border border-purple-100 max-w-sm pointer-events-auto">
+                            <div className={`bg-white p-4 rounded-xl shadow-[0_20px_50px_rgba(109,40,217,0.15)] border border-purple-100 pointer-events-auto ${isMobile ? 'w-full' : 'max-w-sm'}`}>
                               <div className="flex items-center justify-between gap-4 mb-3">
                                 <p className="font-bold text-gray-900 text-sm">{activeTooltip.data.name}</p>
                                 <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 rounded-full border border-purple-100">
@@ -1625,13 +1655,13 @@ export default function SummaryPage() {
                     subcategoryAvgTimeData
                       .filter(catData => catData.category === selectedSubCategoryFilter)
                       .map((catData) => (
-                  <div key={catData.category} className="bg-white rounded-lg border border-gray-200 p-2">
+                  <div key={catData.category} className="bg-white rounded-lg border border-gray-200 p-2 sm:p-4">
                     <div className="flex items-center gap-1.5 mb-2">
                       <div
                         className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: catData.color }}
                       />
-                      <h5 className="font-medium text-gray-700 text-xs">
+                      <h5 className="font-semibold text-gray-800 text-xs sm:text-sm">
                         {catData.displayName}
                         <span className="ml-1 text-[10px] font-normal text-gray-400">
                           ({catData.subcategories.length} subcategories)
@@ -1645,7 +1675,7 @@ export default function SummaryPage() {
                         setActiveTooltip(prev => prev?.chartId === catData.category ? null : prev);
                       }}
                     >
-                      <ResponsiveContainer width="100%" height={220}>
+                      <ResponsiveContainer width="100%" height={isMobile ? 250 : 300}>
                         <BarChart
                           data={catData.subcategories}
                           margin={{ top: 25, right: 10, left: 10, bottom: 50 }}
@@ -1781,19 +1811,19 @@ export default function SummaryPage() {
 
 
           {/* Pie Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Work Distribution - Pie Chart */}
-            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-              <div className="mb-6">
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
+              <div className="mb-4 sm:mb-6">
                 <div className="flex items-center gap-2 mb-2">
                   <PieChartIcon className="w-5 h-5 text-teal-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Work Distribution by Category</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Work Distribution by Category</h3>
                 </div>
-                <p className="text-sm text-gray-600">
-                  Percentage breakdown of completed work across different categories. Shows which categories receive the most attention.
+                <p className="text-xs sm:text-sm text-gray-600">
+                  Percentage breakdown of completed work across different categories.
                 </p>
               </div>
-              <ResponsiveContainer width="100%" height={320}>
+              <ResponsiveContainer width="100%" height={isMobile ? 300 : 320}>
                 <PieChart>
                   <Pie
                     data={pieChartData}
@@ -1823,17 +1853,17 @@ export default function SummaryPage() {
             </div>
 
             {/* Priority Distribution - Pie Chart */}
-            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-              <div className="mb-6">
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
+              <div className="mb-4 sm:mb-6">
                 <div className="flex items-center gap-2 mb-2">
                   <Activity className="w-5 h-5 text-red-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Priority Level Distribution</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Priority Level Distribution</h3>
                 </div>
-                <p className="text-sm text-gray-600">
-                  Distribution of completed tickets by priority level. Helps identify the urgency profile of completed work.
+                <p className="text-xs sm:text-sm text-gray-600">
+                  Distribution of completed tickets by priority level.
                 </p>
               </div>
-              <ResponsiveContainer width="100%" height={320}>
+              <ResponsiveContainer width="100%" height={isMobile ? 300 : 320}>
                 <PieChart>
                   <Pie
                     data={priorityData}
@@ -1866,45 +1896,50 @@ export default function SummaryPage() {
 
         {/* Agency-wise Performance Section */}
         {agencyPerformanceData.length > 0 && (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 mb-12">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-8 mb-8 sm:mb-12">
             <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-indigo-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Agency-wise Performance Overview</h3>
+                  <Activity className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Agency-wise Performance Overview</h3>
                 </div>
-                <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-lg border border-indigo-200">
-                  <span className="text-sm font-semibold text-indigo-900">
+                <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200 self-start sm:self-auto">
+                  <span className="text-xs sm:text-sm font-semibold text-indigo-900">
                     {agencyPerformanceData.length} {agencyPerformanceData.length === 1 ? 'Agency' : 'Agencies'}
                   </span>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
-                Complete performance metrics for each agency including total time consumed, tickets handled, and category breakdown.
+              <p className="text-xs sm:text-sm text-gray-600">
+                Complete performance metrics for each agency.
               </p>
             </div>
 
             {/* Agency Performance Bar Chart */}
-            <ResponsiveContainer width="100%" height={400}>
+            <ResponsiveContainer width="100%" height={isMobile ? 350 : 400}>
               <ComposedChart 
                 data={agencyPerformanceData} 
-                margin={{ top: 40, right: 60, left: 20, bottom: 80 }}
+                margin={{ 
+                  top: 40, 
+                  right: isMobile ? 10 : 60, 
+                  left: isMobile ? -10 : 20, 
+                  bottom: 80 
+                }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e1e7ef" vertical={false} />
                 <XAxis
                   dataKey="name"
-                  angle={-45}
+                  angle={isMobile ? -90 : -45}
                   textAnchor="end"
-                  height={80}
+                  height={isMobile ? 100 : 80}
                   interval={0}
-                  tick={{ fontSize: 11, fill: '#4b5563', fontWeight: 500 }}
+                  tick={{ fontSize: isMobile ? 9 : 11, fill: '#4b5563', fontWeight: 500 }}
                   axisLine={{ stroke: '#d1d5db' }}
                   tickLine={{ stroke: '#d1d5db' }}
                 />
                 <YAxis
                   yAxisId="left"
-                  tick={{ fontSize: 12, fill: '#64748b' }}
-                  label={{ 
+                  tick={{ fontSize: isMobile ? 10 : 12, fill: '#64748b' }}
+                  label={isMobile ? undefined : { 
                     value: 'Total Time (Hours)', 
                     angle: -90, 
                     position: 'insideLeft', 
@@ -1914,8 +1949,8 @@ export default function SummaryPage() {
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 12, fill: '#6366f1' }}
-                  label={{ 
+                  tick={{ fontSize: isMobile ? 10 : 12, fill: '#6366f1' }}
+                  label={isMobile ? undefined : { 
                     value: 'Tickets Handled', 
                     angle: 90, 
                     position: 'insideRight', 
@@ -1928,7 +1963,7 @@ export default function SummaryPage() {
                     if (active && payload && payload.length) {
                       const data = payload[0]?.payload;
                       return (
-                        <div className="bg-white p-5 rounded-xl shadow-2xl border border-slate-200 min-w-[260px]">
+                        <div className={`bg-white p-4 sm:p-5 rounded-xl shadow-2xl border border-slate-200 ${isMobile ? 'w-[calc(100vw-60px)]' : 'min-w-[260px]'}`}>
                           <p className="font-bold text-slate-900 text-base mb-3 border-b pb-2">{label}</p>
                           <div className="space-y-3">
                             <div className="flex justify-between items-center">

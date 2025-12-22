@@ -30,7 +30,7 @@ function DashboardContent() {
   const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
   const { data: subCategoriesData } = useSWR("/api/masters/subcategories?limit=100", fetcher);
   const { data: agenciesData } = useSWR("/api/masters/agencies?limit=100", fetcher);
-  const { data: locationsData } = useSWR("/api/masters/locations?limit=100", fetcher);
+  const { data: locationsData } = useSWR("/api/masters/locations?limit=500", fetcher);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false); // Track if showing completed view
@@ -51,6 +51,11 @@ function DashboardContent() {
   const [editFormData, setEditFormData] = useState({
     category: '',
     subCategory: '',
+    location: '',
+    agencyName: '',
+    priority: '',
+    status: '',
+    description: '',
   });
 
   // Global state for excluded tickets from summary (persisted in localStorage)
@@ -251,10 +256,16 @@ function DashboardContent() {
         setEditFormData({
           category: ticket.category || '',
           subCategory: ticket.subCategory || '',
+          location: ticket.location || '',
+          agencyName: ticket.agencyName || '',
+          priority: (ticket.priority || 'medium').toLowerCase(),
+          status: ticket.status || 'PENDING',
+          description: ticket.description || '',
         });
       }
     }
-  }, [selectedTicketId, tickets]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTicketId]); // Only run when modal opens for a new ticket, don't reset on SWR refreshes while editing
 
   // Helper to calculate stats
   const calculateStats = useCallback((subset: any[]) => {
@@ -568,6 +579,52 @@ function DashboardContent() {
 
     return out;
   }, [baseFiltered, filters, agencies, subCategories, ticketToAgencyMap]);
+
+  // Hierarchical locations for dropdown
+  const hierarchicalLocations = useMemo(() => {
+    const raw = locationsData?.data || [];
+    if (!raw.length) return [];
+
+    const map = new Map<string, any[]>();
+    raw.forEach((loc: any) => {
+      const parentVal = loc.parentLocationId?._id || loc.parentLocationId;
+      const parentId = parentVal ? parentVal.toString() : "root";
+      if (!map.has(parentId)) map.set(parentId, []);
+      map.get(parentId)!.push(loc);
+    });
+
+    const result: { name: string; fullPath: string; depth: number }[] = [];
+    const getDepth = (loc: any) => {
+      let depth = 0;
+      let current = loc;
+      // Safety limit to prevent infinite loops in circular hierarchies
+      let safetyCounter = 0;
+      while (current?.parentLocationId && safetyCounter < 10) {
+        safetyCounter++;
+        depth++;
+        const pId = (current.parentLocationId?._id || current.parentLocationId).toString();
+        current = raw.find((x: any) => (x._id?.$oid || x._id || "").toString() === pId);
+        if (!current) break;
+      }
+      return depth;
+    };
+
+    const traverse = (parentId: string, currentPath: string[]) => {
+      const children = map.get(parentId) || [];
+      children.sort((a, b) => a.name.localeCompare(b.name));
+      children.forEach((child) => {
+        const newPath = [...currentPath, child.name];
+        result.push({
+          name: child.name,
+          fullPath: newPath.join(" → "),
+          depth: getDepth(child)
+        });
+        traverse((child._id?.$oid || child._id || "").toString(), newPath);
+      });
+    };
+    traverse("root", []);
+    return result;
+  }, [locationsData]);
 
   const stats = useMemo(() => {
     // Global Stats - use globalStatsBase (ignores Category, respects Priority)
@@ -1370,7 +1427,7 @@ function DashboardContent() {
               setIsEditMode(false);
             }}
           >
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-black/60" />
             
             {!isEditMode ? (
               /* Step 1: Preview/Read-Only View */
@@ -1443,7 +1500,8 @@ function DashboardContent() {
                       Description
                     </label>
                     <textarea
-                      defaultValue={selectedTicket.description}
+                      value={editFormData.description}
+                      onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
                       className="w-full px-4 py-3 bg-orange-50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none"
                       rows={4}
                       placeholder="Enter ticket description..."
@@ -1467,6 +1525,7 @@ function DashboardContent() {
                           onChange={(e) => {
                             const newCategory = e.target.value;
                             setEditFormData({
+                              ...editFormData,
                               category: newCategory,
                               subCategory: '', // Reset subcategory when category changes
                             });
@@ -1509,12 +1568,13 @@ function DashboardContent() {
                           Priority
                         </label>
                         <select
-                          defaultValue={selectedTicket.priority}
+                          value={editFormData.priority}
+                          onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value })}
                           className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
                         >
-                          <option value="HIGH">🔴 High</option>
-                          <option value="MEDIUM">🟡 Medium</option>
-                          <option value="LOW">🟢 Low</option>
+                          <option value="high">🔴 High</option>
+                          <option value="medium">🟡 Medium</option>
+                          <option value="low">🟢 Low</option>
                         </select>
                       </div>
 
@@ -1524,11 +1584,11 @@ function DashboardContent() {
                           Status
                         </label>
                         <select
-                          defaultValue={selectedTicket.status}
+                          value={editFormData.status}
+                          onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
                           className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
                         >
                           <option value="PENDING">Pending</option>
-                          <option value="IN_PROGRESS">In Progress</option>
                           <option value="COMPLETED">Completed</option>
                         </select>
                       </div>
@@ -1548,13 +1608,16 @@ function DashboardContent() {
                           Location
                         </label>
                         <select
-                          defaultValue={selectedTicket.location || ''}
+                          value={editFormData.location}
+                          onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
                           className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium"
                         >
                           <option value="">Select Location</option>
-                          {(locationsData?.data || []).map((loc: any) => (
-                            <option key={loc._id} value={loc.fullPath || loc.name}>
-                              {loc.fullPath || loc.name}
+                          {hierarchicalLocations.map((loc, idx) => (
+                            <option key={idx} value={loc.fullPath}>
+                              {Array(loc.depth).fill("\u00A0\u00A0\u00A0").join("")}
+                              {loc.depth > 0 ? "└─ " : ""}
+                              {loc.name}
                             </option>
                           ))}
                         </select>
@@ -1566,7 +1629,8 @@ function DashboardContent() {
                           Assigned Agency
                         </label>
                         <select
-                          defaultValue={selectedTicket.agencyName || 'In-House Team'}
+                          value={editFormData.agencyName}
+                          onChange={(e) => setEditFormData({ ...editFormData, agencyName: e.target.value })}
                           className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium"
                         >
                           <option value="In-House Team">In-House Team</option>
@@ -1630,30 +1694,17 @@ function DashboardContent() {
                       onClick={async () => {
                         try {
                           // Collect form data
-                          const formElement = document.querySelector('form') as HTMLFormElement;
-                          if (!formElement) {
-                            // If no form element, collect data from individual inputs
-                            const descriptionEl = document.querySelector('textarea[placeholder="Enter ticket description..."]') as HTMLTextAreaElement;
-                            const priorityEl = document.querySelector('select[defaultValue="' + selectedTicket.priority + '"]') as HTMLSelectElement;
-                            const statusEl = document.querySelectorAll('select')[3] as HTMLSelectElement; // Status is 4th select
-                            const locationEl = document.querySelectorAll('select')[4] as HTMLSelectElement; // Location is 5th select
-                            const agencyEl = document.querySelectorAll('select')[5] as HTMLSelectElement; // Agency is 6th select
-                            const newNoteEl = document.querySelector('textarea[placeholder="Add a new note..."]') as HTMLTextAreaElement;
-
                             const updateData: any = {
-                              description: descriptionEl?.value || selectedTicket.description,
+                              description: editFormData.description,
                               category: editFormData.category,
                               subCategory: editFormData.subCategory,
-                              priority: priorityEl?.value || selectedTicket.priority,
-                              status: statusEl?.value || selectedTicket.status,
-                              location: locationEl?.value || selectedTicket.location,
-                              agencyName: agencyEl?.value || selectedTicket.agencyName,
+                              priority: editFormData.priority,
+                              status: editFormData.status,
+                              location: editFormData.location,
+                              agencyName: editFormData.agencyName,
                             };
-
-                            // Add new note if provided
-                            if (newNoteEl?.value.trim()) {
-                              updateData.newNote = newNoteEl.value.trim();
-                            }
+                            
+                            const newNoteEl = document.querySelector('textarea[placeholder="Add a new note..."]') as HTMLTextAreaElement;
 
                             // Send PATCH request to update ticket
                             const response = await fetch(`/api/tickets/${selectedTicket.ticketId}`, {
@@ -1675,7 +1726,6 @@ function DashboardContent() {
                             
                             // Show success message
                             alert('Ticket updated successfully!');
-                          }
                         } catch (error) {
                           console.error('Error updating ticket:', error);
                           alert('Failed to update ticket. Please try again.');

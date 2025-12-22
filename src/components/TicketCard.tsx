@@ -250,7 +250,7 @@ export default function TicketCard({
             borderBottomColor: colors.border
           }}
         >
-          <div className="flex items-center justify-between gap-3 relative">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {/* Ticket ID */}
               <span className="text-base font-black" style={{ color: colors.textDark }}>
@@ -291,25 +291,6 @@ export default function TicketCard({
                 )}
               </div>
             </div>
-
-            {/* Exclude from Summary Button - Icon Only, Top Middle (Absolute Centered) */}
-            {onExcludeFromSummary && (
-              <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
-                <button
-                  onClick={onExcludeFromSummary}
-                  className={`p-1.5 sm:p-2 rounded-full transition-all hover:scale-110 shadow-sm ${
-                    isExcludedFromSummary ? 'ring-2 ring-purple-400' : ''
-                  }`}
-                  style={{ 
-                    backgroundColor: isExcludedFromSummary ? '#a855f7' : colors.accentMedium, 
-                    color: isExcludedFromSummary ? 'white' : colors.textDark 
-                  }}
-                  title={isExcludedFromSummary ? "Include in summary calculations" : "Exclude from summary calculations"}
-                >
-                  {isExcludedFromSummary ? <Eye size={18} /> : <EyeOff size={18} />}
-                </button>
-              </div>
-            )}
 
             {/* Action Buttons */}
             <div className="flex items-center gap-1.5">
@@ -576,13 +557,31 @@ export default function TicketCard({
               <h3 className="text-xs font-semibold flex items-center gap-1" style={{ color: colors.textDark }}>
                 <FileText size={14} /> Notes ({notes.length})
               </h3>
-              <button
-                onClick={() => setShowNotesModal(true)}
-                className="px-2 py-1 rounded-lg hover:opacity-80 transition-all text-[10px] font-medium flex items-center gap-1"
-                style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
-              >
-                <Plus size={12} /> Add
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Exclude from Summary Button - Icon Only, Bottom Right */}
+                {onExcludeFromSummary && (
+                  <button
+                    onClick={onExcludeFromSummary}
+                    className={`p-1.5 rounded-lg transition-all hover:scale-110 shadow-sm ${
+                      isExcludedFromSummary ? 'ring-2 ring-purple-400' : ''
+                    }`}
+                    style={{ 
+                      backgroundColor: isExcludedFromSummary ? '#a855f7' : colors.accentMedium, 
+                      color: isExcludedFromSummary ? 'white' : colors.textDark 
+                    }}
+                    title={isExcludedFromSummary ? "Include in summary calculations" : "Exclude from summary calculations"}
+                  >
+                    {isExcludedFromSummary ? <Eye size={12} /> : <EyeOff size={12} />}
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowNotesModal(true)}
+                  className="px-2 py-1 rounded-lg hover:opacity-80 transition-all text-[10px] font-medium flex items-center gap-1"
+                  style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
+                >
+                  <Plus size={12} /> Add
+                </button>
+              </div>
             </div>
 
             {notes.length > 0 ? (
