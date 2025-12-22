@@ -105,9 +105,9 @@ const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent
 };
 
 // Custom X-Axis Tick with text wrapping
-const CustomXAxisTick = ({ x, y, payload }: any) => {
+const CustomXAxisTick = ({ x, y, payload, isMobile }: any) => {
   const text = payload.value;
-  const maxCharsPerLine = 12;
+  const maxCharsPerLine = isMobile ? 8 : 12;
 
   // Split text into words
   const words = text.split(' ');
@@ -129,14 +129,14 @@ const CustomXAxisTick = ({ x, y, payload }: any) => {
       <text
         x={0}
         y={0}
-        dy={32}
+        dy={isMobile ? 20 : 32}
         textAnchor="middle"
         fill="#374151"
-        fontSize={12}
-        fontWeight={500}
+        fontSize={isMobile ? 10 : 12}
+        fontWeight={600}
       >
         {lines.map((line, index) => (
-          <tspan key={index} x={0} dy={index === 0 ? 0 : 18}>
+          <tspan key={index} x={0} dy={index === 0 ? 0 : (isMobile ? 12 : 18)}>
             {line}
           </tspan>
         ))}
@@ -660,14 +660,14 @@ export default function SummaryPage() {
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={isMobile ? 350 : 600}>
+          <ResponsiveContainer width="100%" height={isMobile ? 400 : 600}>
             <ComposedChart 
               data={summary} 
               margin={{ 
-                top: 40, 
-                right: isMobile ? 10 : 100, 
-                left: isMobile ? -10 : 30, 
-                bottom: isMobile ? 80 : 120 
+                top: 50, 
+                right: isMobile ? 5 : 100, 
+                left: isMobile ? -30 : 30, 
+                bottom: isMobile ? 50 : 120 
               }}
             >
               <defs>
@@ -681,40 +681,40 @@ export default function SummaryPage() {
               
               <XAxis
                 dataKey="displayName"
-                angle={-35}
-                textAnchor="end"
-                height={100}
+                height={isMobile ? 60 : 100}
                 interval={0}
-                tick={{ fontSize: 13, fill: '#1e293b', fontWeight: 600 }}
+                angle={isMobile ? 0 : -35}
+                textAnchor={isMobile ? "middle" : "end"}
+                tick={isMobile ? <CustomXAxisTick isMobile={true} /> : { fontSize: 13, fill: '#1e293b', fontWeight: 600 }}
                 axisLine={{ stroke: '#94a3b8', strokeWidth: 2 }}
                 tickLine={{ stroke: '#94a3b8', strokeWidth: 1.5 }}
               />
               
               <YAxis
                 yAxisId="left"
-                tick={{ fontSize: 13, fill: '#475569', fontWeight: 500 }}
+                tick={{ fontSize: isMobile ? 10 : 13, fill: '#475569', fontWeight: 500 }}
                 axisLine={{ stroke: '#94a3b8', strokeWidth: 2 }}
                 tickLine={{ stroke: '#94a3b8', strokeWidth: 1.5 }}
-                label={{ 
+                label={!isMobile ? { 
                   value: 'Tickets Completed', 
                   angle: -90, 
                   position: 'insideLeft', 
                   style: { fontSize: 14, fill: '#1e293b', fontWeight: 700 } 
-                }}
+                } : undefined}
               />
               
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                tick={{ fontSize: 13, fill: '#7c3aed', fontWeight: 500 }}
+                tick={{ fontSize: isMobile ? 10 : 13, fill: '#7c3aed', fontWeight: 500 }}
                 axisLine={{ stroke: '#a78bfa', strokeWidth: 2 }}
                 tickLine={{ stroke: '#a78bfa', strokeWidth: 1.5 }}
-                label={{ 
+                label={!isMobile ? { 
                   value: 'Average Time (Hours)', 
                   angle: 90, 
                   position: 'insideRight', 
                   style: { fontSize: 14, fill: '#7c3aed', fontWeight: 700 } 
-                }}
+                } : undefined}
               />
               
               <Tooltip
@@ -928,7 +928,7 @@ export default function SummaryPage() {
                 stackId="priority"
                 fill="#ef4444"
                 radius={[0, 0, 0, 0]}
-                barSize={70}
+                barSize={isMobile ? 30 : 70}
               />
               <Bar 
                 yAxisId="left"
@@ -936,7 +936,7 @@ export default function SummaryPage() {
                 stackId="priority"
                 fill="#f59e0b"
                 radius={[0, 0, 0, 0]}
-                barSize={70}
+                barSize={isMobile ? 30 : 70}
               />
               <Bar 
                 yAxisId="left"
@@ -944,7 +944,7 @@ export default function SummaryPage() {
                 stackId="priority"
                 fill="#10b981"
                 radius={[10, 10, 0, 0]}
-                barSize={70}
+                barSize={isMobile ? 30 : 70}
               />
 
               <Line
@@ -952,33 +952,40 @@ export default function SummaryPage() {
                 type="monotone"
                 dataKey="averageTimeHours"
                 stroke="#7c3aed"
-                strokeWidth={4}
-                dot={{ r: 8, fill: '#7c3aed', strokeWidth: 3, stroke: '#fff' }}
-                activeDot={{ r: 10, strokeWidth: 0, fill: '#7c3aed' }}
+                strokeWidth={isMobile ? 2 : 4}
+                dot={{ r: isMobile ? 4 : 8, fill: '#7c3aed', strokeWidth: isMobile ? 1 : 3, stroke: '#fff' }}
+                activeDot={{ r: isMobile ? 6 : 10, strokeWidth: 0, fill: '#7c3aed' }}
                 label={(props: any) => {
-                  const { x, y, value } = props;
+                  const { x, y, value, index } = props;
                   if (typeof x !== 'number' || typeof y !== 'number') return null;
+                  
+                  // On mobile, only show labels for every other category if there are more than 4, or for all if few
+                  if (isMobile && summary.length > 4 && index % 2 !== 0) return null;
+                  
                   const idealTime = (overallStats.avgTime || 0) * 0.85;
                   const exceedsIdeal = value > idealTime;
+                  
+                  const labelWidth = isMobile ? 50 : 70;
+                  const labelHeight = isMobile ? 18 : 22;
                   
                   return (
                     <g>
                       <rect
-                        x={x - 35}
-                        y={y - 28}
-                        width={70}
-                        height={22}
+                        x={x - labelWidth / 2}
+                        y={y - (isMobile ? 24 : 28)}
+                        width={labelWidth}
+                        height={labelHeight}
                         fill={exceedsIdeal ? '#fef2f2' : '#f0fdf4'}
                         stroke={exceedsIdeal ? '#fca5a5' : '#86efac'}
-                        strokeWidth={2}
+                        strokeWidth={isMobile ? 1 : 2}
                         rx={6}
                         opacity={0.95}
                       />
                       <text
                         x={x}
-                        y={y - 12}
+                        y={y - (isMobile ? 12 : 12)}
                         fill={exceedsIdeal ? '#dc2626' : '#16a34a'}
-                        fontSize={12}
+                        fontSize={isMobile ? 9 : 12}
                         fontWeight="bold"
                         textAnchor="middle"
                       >
@@ -1265,31 +1272,31 @@ export default function SummaryPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e1e7ef" vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={<CustomXAxisTick />}
+                  tick={<CustomXAxisTick isMobile={isMobile} />}
                   interval={0}
-                  height={110}
-                  tickMargin={30}
+                  height={isMobile ? 60 : 110}
+                  tickMargin={isMobile ? 10 : 30}
                 />
                 <YAxis
                   yAxisId="left"
-                  tick={{ fontSize: 12, fill: '#64748b' }}
-                  label={{ 
+                  tick={{ fontSize: isMobile ? 10 : 12, fill: '#64748b' }}
+                  label={!isMobile ? { 
                     value: 'Tickets Completed', 
                     angle: -90, 
                     position: 'insideLeft', 
                     style: { fontSize: 12, fill: '#64748b', fontWeight: 600 } 
-                  }}
+                  } : undefined}
                 />
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 12, fill: '#8b5cf6' }}
-                  label={{ 
+                  tick={{ fontSize: isMobile ? 10 : 12, fill: '#8b5cf6' }}
+                  label={!isMobile ? { 
                     value: 'Avg. Hours to Resolution', 
                     angle: 90, 
                     position: 'insideRight', 
                     style: { fontSize: 12, fill: '#8b5cf6', fontWeight: 600 } 
-                  }}
+                  } : undefined}
                 />
                 <Tooltip
                   cursor={{ fill: '#f1f5f9', opacity: 0.4 }}
@@ -1349,9 +1356,9 @@ export default function SummaryPage() {
                   type="monotone"
                   dataKey="avgTime"
                   stroke="#8b5cf6"
-                  strokeWidth={3}
-                  dot={{ r: 6, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 8, strokeWidth: 0, fill: '#8b5cf6' }}
+                  strokeWidth={isMobile ? 2 : 3}
+                  dot={{ r: isMobile ? 4 : 6, fill: '#8b5cf6', strokeWidth: isMobile ? 1 : 2, stroke: '#fff' }}
+                  activeDot={{ r: isMobile ? 6 : 8, strokeWidth: 0, fill: '#8b5cf6' }}
                   isAnimationActive={true}
                 />
               </ComposedChart>
@@ -1387,14 +1394,14 @@ export default function SummaryPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
                     dataKey="name"
-                    tick={<CustomXAxisTick />}
+                    tick={<CustomXAxisTick isMobile={isMobile} />}
                     interval={0}
-                    height={90}
-                    tickMargin={20}
+                    height={isMobile ? 60 : 90}
+                    tickMargin={isMobile ? 10 : 20}
                   />
                   <YAxis
-                    tick={{ fontSize: 12, fill: '#4b5563' }}
-                    label={{ value: 'Average Time (Hours)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } }}
+                    tick={{ fontSize: isMobile ? 10 : 12, fill: '#4b5563' }}
+                    label={!isMobile ? { value: 'Average Time (Hours)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#4b5563', fontWeight: 600 } } : undefined}
                   />
                   <Tooltip
                     content={({ active, payload, label }) => {
