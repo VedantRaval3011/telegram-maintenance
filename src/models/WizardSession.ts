@@ -76,6 +76,10 @@ export interface IWizardSession extends Document {
   waitingForInput: boolean;
   inputField: string | null;
 
+  /** Support for partial edits (/edit field) */
+  isPartialEdit: boolean;
+  targetField: string | null;
+
   createdAt: Date;
 }
 
@@ -163,6 +167,10 @@ const WizardSessionSchema = new Schema<IWizardSession>(
 
     waitingForInput: { type: Boolean, default: false },
     inputField: { type: String, default: null },
+
+    /** Support for partial edits (/edit field) */
+    isPartialEdit: { type: Boolean, default: false },
+    targetField: { type: String, default: null },
 
     createdAt: { type: Date, default: Date.now },
   },

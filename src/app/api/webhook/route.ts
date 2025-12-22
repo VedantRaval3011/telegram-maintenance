@@ -155,7 +155,7 @@ interface WizardField {
 /**
  * Build the complete field list based on WorkflowRule
  */
-async function buildFieldsFromRule(categoryId: string | null): Promise<WizardField[]> {
+async function buildFieldsFromRule(categoryId: string | null, session?: any): Promise<WizardField[]> {
   const fields: WizardField[] = [];
 
   // Always include category first
@@ -166,6 +166,19 @@ async function buildFieldsFromRule(categoryId: string | null): Promise<WizardFie
     required: true,
     completed: false,
   });
+
+  // If this is a targeted description edit, add it to the fields
+  // (Normal tickets get description from the original message text)
+  if (session?.isPartialEdit && session.targetField === "description") {
+    fields.push({
+      key: "description",
+      label: "📝 Description",
+      type: "additional", // Use additional type to trigger text input
+      required: true,
+      completed: !!session.originalText && session.originalText !== "New entry",
+      additionalFieldKey: "description",
+    });
+  }
 
   // Priority will be added later, before agency
 
@@ -440,6 +453,13 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
           value = fieldValue;
         }
         break;
+    }
+
+    // If this is a partial edit, mark ALL fields as completed except the targetField
+    if (session.isPartialEdit && session.targetField) {
+      if (field.key !== session.targetField && field.type !== session.targetField) {
+        completed = true;
+      }
     }
 
     return { ...field, completed, value, required };
@@ -745,6 +765,13 @@ case "target_location": {
     }
 
     case "additional": {
+      if (field.additionalFieldKey === "description") {
+        keyboard.push([{
+          text: "✍️ Edit Description",
+          callback_data: `input_${botMessageId}_additional_description`
+        }]);
+        break;
+      }
       if (field.additionalFieldKey) {
         // ✅ OPTIMIZED: Cache workflow rule
         const rule = await getCached(
@@ -885,7 +912,7 @@ async function refreshWizardUI(session: any, chatId: number, botMessageId: numbe
     return;
   }
   
-  const fields = await buildFieldsFromRule(freshSession.category);
+  const fields = await buildFieldsFromRule(freshSession.category, freshSession);
   const updatedFields = updateFieldCompletion(fields, freshSession);
   const currentField = findCurrentField(updatedFields);
 
@@ -1809,7 +1836,7 @@ export async function POST(req: NextRequest) {
         await answerCallbackQuery(callback.id, "Please type your value");
         const message = await formatWizardMessage(
           session,
-          updateFieldCompletion(await buildFieldsFromRule(session.category), session),
+          updateFieldCompletion(await buildFieldsFromRule(session.category, session), session),
           null
         );
         await editMessageText(chatId, botMessageId, message + "\n\n✍️ Type your value below:", []);
@@ -1818,7 +1845,7 @@ export async function POST(req: NextRequest) {
 
       // === SUBMIT ACTION: submit_<botMsgId> ===
       if (action === "submit") {
-        const fields = await buildFieldsFromRule(session.category);
+        const fields = await buildFieldsFromRule(session.category, session);
         const updatedFields = updateFieldCompletion(fields, session);
         const allComplete = updatedFields.filter(f => f.required).every(f => f.completed);
 
@@ -1842,48 +1869,76 @@ export async function POST(req: NextRequest) {
           if (sessionData.editingTicketId) {
             isEditing = true;
             // Update existing ticket instead of creating new one
-            const category = await Category.findById(sessionData.category).lean();
-            const subcategory = sessionData.subCategoryId ? await SubCategory.findById(sessionData.subCategoryId).lean() : null;
+            let updateData: any = {};
 
-            // Build location string
-            let locationStr = "Not specified";
-            const dedupedPath = deduplicateLocationPath(sessionData.locationPath);
-            if (dedupedPath.length > 0) {
-              locationStr = dedupedPath.map((n: any) => n.name).join(" → ");
-            }
-
-            const updateData: any = {
-              description: sessionData.originalText || "No description",
-              category: category?.name || "unknown",
-              subCategory: subcategory?.name,
-              priority: sessionData.priority || "medium",
-              location: locationStr,
-              photos: sessionData.photos || [],
-              videos: sessionData.videos || [],
-            };
-
-            // Add agency info if present
-            if (sessionData.agencyRequired) {
-              updateData.agencyName = sessionData.agencyName || null;
-              if (sessionData.agencyTimeSlot) {
-                updateData.agencyTime = sessionData.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
-              }
-              if (sessionData.agencyDate) {
+            if (sessionData.isPartialEdit && sessionData.targetField) {
+              // Targeted update: Only update the field the user specifically asked for
+              const tf = sessionData.targetField;
+              if (tf === "priority") {
+                updateData.priority = sessionData.priority || "medium";
+              } else if (tf === "category") {
+                const category = await Category.findById(sessionData.category).lean();
+                updateData.category = category?.name || "unknown";
+              } else if (tf === "subcategory") {
+                const subcategory = sessionData.subCategoryId ? await SubCategory.findById(sessionData.subCategoryId).lean() : null;
+                updateData.subCategory = subcategory?.name;
+              } else if (tf === "location") {
+                updateData.location = deduplicateLocationPath(sessionData.locationPath).map((n: any) => n.name).join(" → ");
+              } else if (tf === "agency") {
+                  updateData.agencyName = sessionData.agencyName;
+              } else if (tf === "agency_date" || tf === "agency_time_slot") {
                 updateData.agencyDate = sessionData.agencyDate;
+                if (sessionData.agencyTimeSlot) {
+                  updateData.agencyTime = sessionData.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
+                }
+              } else if (tf === "description") {
+                updateData.description = sessionData.originalText;
               }
-            }
+            } else {
+              // Full update: Rebuild everything from session (matches current behavior)
+              const category = await Category.findById(sessionData.category).lean();
+              const subcategory = sessionData.subCategoryId ? await SubCategory.findById(sessionData.subCategoryId).lean() : null;
 
-            // Add source/target locations if transfer
-            if (sessionData.sourceLocationPath) {
-              updateData.sourceLocation = deduplicateLocationPath(sessionData.sourceLocationPath).map((n: any) => n.name).join(" → ");
-            }
-            if (sessionData.targetLocationPath) {
-              updateData.targetLocation = deduplicateLocationPath(sessionData.targetLocationPath).map((n: any) => n.name).join(" → ");
-            }
+              // Build location string
+              let locationStr = "Not specified";
+              const dedupedPath = deduplicateLocationPath(sessionData.locationPath);
+              if (dedupedPath.length > 0) {
+                locationStr = dedupedPath.map((n: any) => n.name).join(" → ");
+              }
 
-            // Add or Repair choice
-            if (sessionData.addOrRepairChoice) {
-              updateData.addOrRepairChoice = sessionData.addOrRepairChoice;
+              updateData = {
+                description: sessionData.originalText || "No description",
+                category: category?.name || "unknown",
+                subCategory: subcategory?.name,
+                priority: sessionData.priority || "medium",
+                location: locationStr,
+                photos: sessionData.photos || [],
+                videos: sessionData.videos || [],
+              };
+
+              // Add agency info if present
+              if (sessionData.agencyRequired) {
+                updateData.agencyName = sessionData.agencyName || null;
+                if (sessionData.agencyTimeSlot) {
+                  updateData.agencyTime = sessionData.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
+                }
+                if (sessionData.agencyDate) {
+                  updateData.agencyDate = sessionData.agencyDate;
+                }
+              }
+
+              // Add source/target locations if transfer
+              if (sessionData.sourceLocationPath && sessionData.sourceLocationPath.length > 0) {
+                updateData.sourceLocation = deduplicateLocationPath(sessionData.sourceLocationPath).map((n: any) => n.name).join(" → ");
+              }
+              if (sessionData.targetLocationPath && sessionData.targetLocationPath.length > 0) {
+                updateData.targetLocation = deduplicateLocationPath(sessionData.targetLocationPath).map((n: any) => n.name).join(" → ");
+              }
+
+              // Add or Repair choice
+              if (sessionData.addOrRepairChoice) {
+                updateData.addOrRepairChoice = sessionData.addOrRepairChoice;
+              }
             }
 
             ticket = await Ticket.findOneAndUpdate(
@@ -2296,7 +2351,24 @@ if (msg.reply_to_message) {
   // Check for EDIT command in reply (allows updating ticket data)
   // Also triggered by "not ok" / "not okay" to allow corrections
   const editKeywords = ["/edit", "edit", "not ok", "not okay"];
-  if (editKeywords.some(k => lowerText === k || lowerText.startsWith(k + " "))) {
+  const editKeywordUsed = editKeywords.find(k => lowerText === k || lowerText.startsWith(k + " "));
+  if (editKeywordUsed) {
+    // Determine if it's a specific field edit (e.g., "/edit priority")
+    const remainingText = lowerText.substring(editKeywordUsed.length).trim();
+    const fieldMapping: Record<string, string> = {
+      "priority": "priority",
+      "category": "category",
+      "location": "location",
+      "subcategory": "subcategory",
+      "subcat": "subcategory",
+      "agency": "agency",
+      "date": "agency_date",
+      "time": "agency_time_slot",
+      "description": "description",
+      "desc": "description"
+    };
+    const targetField = fieldMapping[remainingText.toLowerCase()] || null;
+
     // Find ticket by message ID
     const ticket = await Ticket.findOne({
       $or: [
@@ -2307,29 +2379,42 @@ if (msg.reply_to_message) {
     });
     
     if (ticket) {
-      // Create a fresh wizard session - NO pre-populated data
-      // When submitted, this will completely overwrite the existing ticket
-      
+      // For targeted edits, we need the original category ID to build the field list
+      let categoryId = null;
+      let categoryDisplay = ticket.category;
+      if (ticket.category) {
+        const catDoc = await Category.findOne({ 
+          $or: [{ name: ticket.category }, { displayName: ticket.category }] 
+        }).lean();
+        categoryId = catDoc ? String(catDoc._id) : null;
+        categoryDisplay = catDoc?.displayName || ticket.category;
+      }
+
       // Send initial "Processing" message
-      const initialMsg = `✏️ <b>Edit Ticket #${ticket.ticketId}</b>\n⚡ Loading wizard...\n\n📝 Fill out the form to replace all ticket data.`;
+      const editHeader = targetField ? `✏️ <b>Change ${remainingText} for #${ticket.ticketId}</b>` : `✏️ <b>Edit Ticket #${ticket.ticketId}</b>`;
+      const initialMsg = `${editHeader}\n⚡ Loading wizard...\n\n${targetField ? 'Updating specific field...' : '📝 Fill out the form to replace all ticket data.'}`;
       const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
       
       const botMessageId = (botRes as any)?.result?.message_id;
       
       if (botMessageId) {
-        // Create BLANK wizard session - user starts from scratch
-        // Only editingTicketId is set to track which ticket to update
         const newSession = await WizardSession.create({
           chatId: chat.id,
           userId: msg.from.id,
           botMessageId,
           originalMessageId: msg.message_id,
-          originalText: "New entry", // Don't use old ticket description - start fresh
-          editingTicketId: ticket.ticketId, // Track that we're editing this ticket
+          originalText: ticket.description, 
+          editingTicketId: ticket.ticketId, 
           
-          // ALL fields start blank - no pre-population
-          category: null,
-          categoryDisplay: null,
+          // Pre-fill category if possible so rules load correctly
+          category: categoryId,
+          categoryDisplay,
+          
+          // If a specific field is targeted, mark it as a partial edit
+          isPartialEdit: !!targetField,
+          targetField,
+
+          // Other fields start blank
           subCategoryId: null,
           subCategoryDisplay: null,
           priority: null,
@@ -2344,17 +2429,13 @@ if (msg.reply_to_message) {
           agencyDate: null,
           agencyTimeSlot: null,
           addOrRepairChoice: null,
-          
-          // Start with no media - user can add new ones
           photos: [],
           videos: [],
-          
           additionalFieldValues: {},
-          
           createdAt: new Date(),
         });
         
-        // Refresh UI with the fresh wizard
+        // Refresh UI with the wizard
         await refreshWizardUI(newSession, chat.id, botMessageId);
       }
       
@@ -2533,10 +2614,14 @@ if (msg.reply_to_message) {
       const fieldKey = activeSession.inputField;
       if (fieldKey && fieldKey.startsWith("additional_")) {
         const key = fieldKey.replace("additional_", "");
-        if (!activeSession.additionalFieldValues) {
-          activeSession.additionalFieldValues = {};
+        if (key === "description") {
+          activeSession.originalText = incomingText;
+        } else {
+          if (!activeSession.additionalFieldValues) {
+            activeSession.additionalFieldValues = {};
+          }
+          activeSession.additionalFieldValues[key] = incomingText;
         }
-        activeSession.additionalFieldValues[key] = incomingText;
       } else if (fieldKey === "agency_date") {
         const parsed = new Date(incomingText);
         if (!isNaN(parsed.getTime())) {
