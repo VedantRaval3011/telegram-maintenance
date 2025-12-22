@@ -456,7 +456,7 @@ function DashboardContent() {
     
     // First pass: assign tickets that have explicit agencyName
     categoryStatsBase.forEach((ticket: any) => {
-      if (ticket.agencyName) {
+      if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
         const agency = agencies.find((a: any) => 
           a.name.toLowerCase().trim() === (ticket.agencyName || "").toLowerCase().trim()
         );
@@ -475,6 +475,12 @@ function DashboardContent() {
           s.name.toLowerCase() === (ticket.subCategory || "").toLowerCase()
         );
         
+        // EXCLUSION: If ticket is explicitly marked as NO agency, don't try to auto-assign it
+        if (["NONE", "__NONE__"].includes(ticket.agencyName || "")) {
+          map.set(ticketId, "none");
+          return;
+        }
+
         if (ticketSubCategory) {
           // Find first agency that has this subcategory linked
           const matchingAgency = agencies.find((agency: any) => {
@@ -484,7 +490,13 @@ function DashboardContent() {
           
           if (matchingAgency) {
             map.set(ticketId, matchingAgency._id);
+          } else {
+            // Not explicitly assigned and no matching agency for subcategory
+            map.set(ticketId, "none");
           }
+        } else {
+          // No subcategory to use for auto-assignment
+          map.set(ticketId, "none");
         }
       }
     });
@@ -602,6 +614,21 @@ function DashboardContent() {
         stats: calculateStats(agencyTickets),
       };
     }).filter((a: any) => a.stats.total > 0); // Only show agencies with pending work
+
+    // Add "Not Assigned" pseudo-agency if there are tickets
+    const notAssignedTickets = categoryStatsBase.filter((t: any) => {
+      const ticketId = t._id || t.ticketId;
+      return ticketToAgencyMap.get(ticketId) === "none";
+    });
+
+    if (notAssignedTickets.length > 0) {
+      agencyStats.push({
+        id: "none",
+        name: "Not Assigned",
+        stats: calculateStats(notAssignedTickets),
+        isSpecial: true
+      });
+    }
 
     return { totalStats, pendingStats, completedStats, categoryStats, userStats, subCategoryStats, agencyStats };
   }, [fullyFiltered, baseFiltered, categoryStatsBase, globalStatsBase, categories, users, subCategories, selectedCategory, calculateStats, agencies, ticketToAgencyMap]);
@@ -1097,8 +1124,9 @@ function DashboardContent() {
             const mappedAgency = mappedAgencyId ? agencies.find((a: any) => a._id === mappedAgencyId) : null;
             const derivedAgencyName = mappedAgency?.name || null;
             
-            // Use explicit agencyName if set, otherwise use derived name
-            const displayAgencyName = t.agencyName && t.agencyName !== '__NONE__' ? t.agencyName : derivedAgencyName;
+            // Use explicit agencyName if set (including placeholders like __NONE__ or NONE), 
+            // otherwise use derived name from subcategory mapping
+            const displayAgencyName = t.agencyName || derivedAgencyName;
             
             return (
               <TicketCard

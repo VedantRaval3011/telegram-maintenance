@@ -63,7 +63,7 @@ function darkenColor(hex: string, percent: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-export default function TicketCard({ ticket, onStatusChange, categoryColor, onScrollBack }: { ticket: any; onStatusChange?: () => void; categoryColor?: string; onScrollBack?: () => void }) {
+export default function TicketCard({ ticket, onStatusChange, categoryColor, onScrollBack, onEditClick }: { ticket: any; onStatusChange?: () => void; categoryColor?: string; onScrollBack?: () => void; onEditClick?: () => void }) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -277,7 +277,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
             {/* Action Buttons */}
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setShowEditModal(true)}
+                onClick={() => onEditClick ? onEditClick() : setShowEditModal(true)}
                 className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
                 style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
                 title="Edit ticket"
@@ -357,7 +357,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
             )}
 
             {/* Agency Info */}
-            {ticket.agencyName && (
+            {ticket.agencyName && !["NONE", "__NONE__", "null"].includes(ticket.agencyName) && ticket.agencyName.trim() !== "" ? (
               <span className="inline-flex items-center gap-1.5" style={{ color: colors.text }}>
                 <Building2 size={14} /> <span className="font-medium">{ticket.agencyName}</span>
                 {ticket.agencyDate && (
@@ -368,6 +368,10 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                 {ticket.agencyTime && (
                   <span className="inline-flex items-center gap-1 ml-1"><Timer size={12} /> {ticket.agencyTime}</span>
                 )}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 opacity-60 italic text-[10px]" style={{ color: colors.text }}>
+                <Building2 size={14} /> Agency: Not Assigned
               </span>
             )}
           </div>

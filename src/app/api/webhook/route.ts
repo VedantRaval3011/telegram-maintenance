@@ -1057,7 +1057,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
 
   // Add agency info if present
   if (session.agencyRequired) {
-    ticketData.agencyName = session.agencyName || "Unknown Agency";
+    ticketData.agencyName = (session.agencyName && session.agencyName !== "__NONE__") ? session.agencyName : "NONE";
     if (session.agencyTimeSlot) {
       // Convert time slot to human-readable format for display
       ticketData.agencyTime = session.agencyTimeSlot === "first_half" ? "First Half" : "Second Half";
@@ -1463,7 +1463,7 @@ export async function POST(req: NextRequest) {
         if (editField === "agency" && editValue) {
           // Handle "No Agency" selection
           if (editValue === "none") {
-            ticket.agencyName = undefined;
+            ticket.agencyName = "NONE";
             ticket.agencyDate = undefined;
             ticket.agencyTime = undefined;
             await ticket.save();
