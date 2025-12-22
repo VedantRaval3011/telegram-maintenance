@@ -394,8 +394,9 @@ function updateFieldCompletion(fields: WizardField[], session: any): WizardField
         break;
       
       case "agency_time_slot":
-        // Only required if an actual agency was selected (not "No Agency")
-        required = !!session.agencyName && session.agencyName !== "__NONE__";
+        // Required ONLY if an actual agency was selected AND a specific date was chosen
+        // If date was skipped (agencyDate is null), time slot is also skipped
+        required = !!session.agencyName && session.agencyName !== "__NONE__" && !!session.agencyDate;
         completed = !!session.agencyTimeSlot;
         value = session.agencyTimeSlot === "first_half" ? "🌅 First Half" : session.agencyTimeSlot === "second_half" ? "🌆 Second Half" : undefined;
         break;
