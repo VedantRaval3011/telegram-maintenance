@@ -223,6 +223,9 @@ export default function SummaryPage() {
     chartId: string;
   } | null>(null);
 
+  // State for tracking selected category on the unified chart (for mobile interaction)
+  const [selectedUnifiedCategory, setSelectedUnifiedCategory] = useState<string | null>(null);
+
   // Sync edit form data when selected ticket changes
   React.useEffect(() => {
     if (selectedTicket) {
@@ -613,61 +616,67 @@ export default function SummaryPage() {
 
         {/* Enhanced Unified Analytics Overview Chart */}
         <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl sm:rounded-2xl shadow-xl sm:shadow-2xl border-2 border-indigo-200 p-4 sm:p-10 mb-8 sm:mb-12">
-          <div className="mb-6 sm:mb-8">
+          <div className="mb-4 sm:mb-8">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 rounded-lg flex-shrink-0">
-                  <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-indigo-100 rounded-lg flex-shrink-0">
+                  <BarChart3 className="w-4 h-4 sm:w-6 sm:h-6 text-indigo-600" />
                 </div>
                 <div>
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Complete Analytics Overview</h3>
-                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                    Workload, efficiency, and time benchmarks across all categories
+                  <h3 className="text-lg sm:text-2xl font-bold text-gray-900">Complete Analytics</h3>
+                  <p className="text-[10px] sm:text-sm text-gray-600 mt-0.5">
+                    Benchmarks across categories
                   </p>
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex items-center gap-2 sm:gap-3">
-                <div className="flex items-center gap-2 bg-gradient-to-r from-teal-50 to-teal-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-teal-300 shadow-sm">
-                  <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-teal-600" />
+              <div className="grid grid-cols-2 lg:flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 bg-gradient-to-r from-teal-50 to-teal-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-teal-300 shadow-sm transition-all hover:shadow-md">
+                  <CheckCircle2 className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-teal-600" />
                   <div className="text-left">
-                    <div className="text-[8px] sm:text-[10px] text-teal-600 font-semibold uppercase">Tickets</div>
-                    <div className="text-sm sm:text-lg font-bold text-teal-900">{overallStats.total}</div>
+                    <div className="text-[7px] sm:text-[10px] text-teal-600 font-bold uppercase leading-none mb-0.5">Tickets</div>
+                    <div className="text-xs sm:text-lg font-bold text-teal-900 leading-none">{overallStats.total}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-purple-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-purple-300 shadow-sm">
-                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-purple-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-purple-300 shadow-sm transition-all hover:shadow-md">
+                  <Clock className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-purple-600" />
                   <div className="text-left">
-                    <div className="text-[8px] sm:text-[10px] text-purple-600 font-semibold uppercase">Avg Time</div>
-                    <div className="text-sm sm:text-lg font-bold text-purple-900">{formatTime(overallStats.avgTime || 0)}</div>
+                    <div className="text-[7px] sm:text-[10px] text-purple-600 font-bold uppercase leading-none mb-0.5">Avg Time</div>
+                    <div className="text-xs sm:text-lg font-bold text-purple-900 leading-none">{formatTime(overallStats.avgTime || 0)}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-blue-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-blue-300 shadow-sm">
-                  <Users className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-blue-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-blue-300 shadow-sm transition-all hover:shadow-md">
+                  <Users className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-blue-600" />
                   <div className="text-left">
-                    <div className="text-[8px] sm:text-[10px] text-blue-600 font-semibold uppercase">In-House</div>
-                    <div className="text-sm sm:text-lg font-bold text-blue-900">{overallStats.source.inHouse}</div>
+                    <div className="text-[7px] sm:text-[10px] text-blue-600 font-bold uppercase leading-none mb-0.5">In-House</div>
+                    <div className="text-xs sm:text-lg font-bold text-blue-900 leading-none">{overallStats.source.inHouse}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-orange-100 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-2 border-orange-300 shadow-sm">
-                  <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+                <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-orange-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-orange-300 shadow-sm transition-all hover:shadow-md">
+                  <Building2 className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-orange-600" />
                   <div className="text-left">
-                    <div className="text-[8px] sm:text-[10px] text-orange-600 font-semibold uppercase">Outsource</div>
-                    <div className="text-sm sm:text-lg font-bold text-orange-900">{overallStats.source.outsource}</div>
+                    <div className="text-[7px] sm:text-[10px] text-orange-600 font-bold uppercase leading-none mb-0.5">Outsource</div>
+                    <div className="text-xs sm:text-lg font-bold text-orange-900 leading-none">{overallStats.source.outsource}</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={isMobile ? 400 : 600}>
+          <ResponsiveContainer width="100%" height={isMobile ? 320 : 600}>
             <ComposedChart 
               data={summary} 
+              onClick={(data: any) => {
+                if (isMobile && data && data.activePayload && data.activePayload.length > 0) {
+                  const cat = data.activePayload[0].payload.category;
+                  setSelectedUnifiedCategory(cat === selectedUnifiedCategory ? null : cat);
+                }
+              }}
               margin={{ 
-                top: 50, 
+                top: 30, 
                 right: isMobile ? 5 : 100, 
                 left: isMobile ? -30 : 30, 
-                bottom: isMobile ? 50 : 120 
+                bottom: isMobile ? 40 : 120 
               }}
             >
               <defs>
@@ -692,9 +701,9 @@ export default function SummaryPage() {
               
               <YAxis
                 yAxisId="left"
-                tick={{ fontSize: isMobile ? 10 : 13, fill: '#475569', fontWeight: 500 }}
-                axisLine={{ stroke: '#94a3b8', strokeWidth: 2 }}
-                tickLine={{ stroke: '#94a3b8', strokeWidth: 1.5 }}
+                tick={{ fontSize: isMobile ? 9 : 13, fill: '#475569', fontWeight: 500 }}
+                axisLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                tickLine={false}
                 label={!isMobile ? { 
                   value: 'Tickets Completed', 
                   angle: -90, 
@@ -706,9 +715,9 @@ export default function SummaryPage() {
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                tick={{ fontSize: isMobile ? 10 : 13, fill: '#7c3aed', fontWeight: 500 }}
-                axisLine={{ stroke: '#a78bfa', strokeWidth: 2 }}
-                tickLine={{ stroke: '#a78bfa', strokeWidth: 1.5 }}
+                tick={{ fontSize: isMobile ? 9 : 13, fill: '#7c3aed', fontWeight: 500 }}
+                axisLine={{ stroke: '#a78bfa', strokeWidth: 1 }}
+                tickLine={false}
                 label={!isMobile ? { 
                   value: 'Average Time (Hours)', 
                   angle: 90, 
@@ -953,39 +962,37 @@ export default function SummaryPage() {
                 dataKey="averageTimeHours"
                 stroke="#7c3aed"
                 strokeWidth={isMobile ? 2 : 4}
-                dot={{ r: isMobile ? 4 : 8, fill: '#7c3aed', strokeWidth: isMobile ? 1 : 3, stroke: '#fff' }}
-                activeDot={{ r: isMobile ? 6 : 10, strokeWidth: 0, fill: '#7c3aed' }}
-                label={(props: any) => {
-                  const { x, y, value, index } = props;
+                dot={{ r: isMobile ? 3 : 8, fill: '#7c3aed', strokeWidth: isMobile ? 1 : 3, stroke: '#fff' }}
+                activeDot={{ r: isMobile ? 5 : 10, strokeWidth: 0, fill: '#7c3aed' }}
+                label={ (props: any) => {
+                  if (isMobile) return null; // Hide all floating labels on mobile
+                  const { x, y, value } = props;
                   if (typeof x !== 'number' || typeof y !== 'number') return null;
-                  
-                  // On mobile, only show labels for every other category if there are more than 4, or for all if few
-                  if (isMobile && summary.length > 4 && index % 2 !== 0) return null;
                   
                   const idealTime = (overallStats.avgTime || 0) * 0.85;
                   const exceedsIdeal = value > idealTime;
                   
-                  const labelWidth = isMobile ? 50 : 70;
-                  const labelHeight = isMobile ? 18 : 22;
+                  const labelWidth = 70;
+                  const labelHeight = 22;
                   
                   return (
                     <g>
                       <rect
                         x={x - labelWidth / 2}
-                        y={y - (isMobile ? 24 : 28)}
+                        y={y - 28}
                         width={labelWidth}
                         height={labelHeight}
                         fill={exceedsIdeal ? '#fef2f2' : '#f0fdf4'}
                         stroke={exceedsIdeal ? '#fca5a5' : '#86efac'}
-                        strokeWidth={isMobile ? 1 : 2}
+                        strokeWidth={2}
                         rx={6}
                         opacity={0.95}
                       />
                       <text
                         x={x}
-                        y={y - (isMobile ? 12 : 12)}
+                        y={y - 12}
                         fill={exceedsIdeal ? '#dc2626' : '#16a34a'}
-                        fontSize={isMobile ? 9 : 12}
+                        fontSize={12}
                         fontWeight="bold"
                         textAnchor="middle"
                       >
@@ -997,6 +1004,49 @@ export default function SummaryPage() {
               />
             </ComposedChart>
           </ResponsiveContainer>
+
+          {/* Mobile Interaction Insight Card - Shows only when a bar is tapped */}
+          {isMobile && selectedUnifiedCategory && (
+            <div className="mt-4 p-4 bg-white border-2 border-indigo-200 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-300 shadow-lg">
+              {(() => {
+                const data = summary.find(s => s.category === selectedUnifiedCategory);
+                if (!data) return null;
+                const globalAvg = overallStats.avgTime || 0;
+                const idealTime = globalAvg * 0.85;
+                const exceedsIdeal = data.averageTimeHours > idealTime;
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                       <div className="flex items-center gap-2">
+                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: data.color }} />
+                         <span className="font-bold text-gray-900">{data.displayName}</span>
+                       </div>
+                       <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${exceedsIdeal ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
+                         {exceedsIdeal ? '⚠ Above Ideal' : '✓ Good Flow'}
+                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
+                        <div className="text-[9px] text-slate-500 uppercase font-bold">Volume</div>
+                        <div className="text-sm font-bold text-slate-800">{data.totalCompleted} Tickets</div>
+                      </div>
+                      <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
+                        <div className="text-[9px] text-slate-500 uppercase font-bold">Avg Time</div>
+                        <div className="text-sm font-bold text-purple-700">{formatTime(data.averageTimeHours)}</div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-gray-600 leading-tight italic">
+                      {exceedsIdeal 
+                        ? `This category is taking ${((data.averageTimeHours - idealTime) / idealTime * 100).toFixed(0)}% longer than the target efficiency.`
+                        : `Performing excellently at ${Math.abs(((data.averageTimeHours - idealTime) / idealTime * 100)).toFixed(0)}% faster than ideal.`
+                      }
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="mt-8 pt-6 border-t-2 border-slate-200">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
