@@ -7,6 +7,7 @@ import FilterBar from "@/components/FilterBar";
 import SyncUsersButton from "@/components/SyncUsersButton";
 import TicketCard from "@/components/TicketCard";
 import Capsule from "@/components/Capsule";
+import { BarChart3, Info, Activity, CheckCircle2 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -29,6 +30,7 @@ function DashboardContent() {
   const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
   const { data: subCategoriesData } = useSWR("/api/masters/subcategories?limit=100", fetcher);
   const { data: agenciesData } = useSWR("/api/masters/agencies?limit=100", fetcher);
+  const { data: locationsData } = useSWR("/api/masters/locations?limit=100", fetcher);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false); // Track if showing completed view
@@ -42,6 +44,43 @@ function DashboardContent() {
   const ticketListRef = useRef<HTMLDivElement>(null); // Ref for ticket list section
   const [showAgencyCapsules, setShowAgencyCapsules] = useState(false); // Toggle agency capsules visibility
   const [filtersInitialized, setFiltersInitialized] = useState(false); // Track if filters have been initialized from URL
+  
+  // State for ticket editing
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [editFormData, setEditFormData] = useState({
+    category: '',
+    subCategory: '',
+  });
+
+  // Global state for excluded tickets from summary (persisted in localStorage)
+  const [excludedTicketIds, setExcludedTicketIds] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('excludedTicketIds');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    }
+    return new Set();
+  });
+
+  // Sync excluded tickets to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('excludedTicketIds', JSON.stringify(Array.from(excludedTicketIds)));
+    }
+  }, [excludedTicketIds]);
+
+  // Toggle ticket exclusion from summary calculations
+  const toggleExcludeTicket = (ticketId: string) => {
+    setExcludedTicketIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(ticketId)) {
+        newSet.delete(ticketId);
+      } else {
+        newSet.add(ticketId);
+      }
+      return newSet;
+    });
+  };
 
 
   const [filters, setFiltersState] = useState({
@@ -203,6 +242,19 @@ function DashboardContent() {
   const categories = categoriesData?.data || [];
   const subCategories = subCategoriesData?.data || [];
   const agencies = agenciesData?.data || [];
+
+  // Sync edit form data when selected ticket changes
+  useEffect(() => {
+    if (selectedTicketId) {
+      const ticket = tickets.find((t: any) => t.ticketId === selectedTicketId);
+      if (ticket) {
+        setEditFormData({
+          category: ticket.category || '',
+          subCategory: ticket.subCategory || '',
+        });
+      }
+    }
+  }, [selectedTicketId, tickets]);
 
   // Helper to calculate stats
   const calculateStats = useCallback((subset: any[]) => {
@@ -454,50 +506,20 @@ function DashboardContent() {
   const ticketToAgencyMap = useMemo(() => {
     const map = new Map<string, string>(); // ticketId -> agencyId
     
-    // First pass: assign tickets that have explicit agencyName
+    // Pass: assign tickets that have explicit agencyName
     categoryStatsBase.forEach((ticket: any) => {
+      const ticketId = ticket._id || ticket.ticketId;
       if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
         const agency = agencies.find((a: any) => 
           a.name.toLowerCase().trim() === (ticket.agencyName || "").toLowerCase().trim()
         );
         if (agency) {
-          map.set(ticket._id || ticket.ticketId, agency._id);
-        }
-      }
-    });
-    
-    // Second pass: assign remaining tickets based on subcategory (first matching agency wins)
-    categoryStatsBase.forEach((ticket: any) => {
-      const ticketId = ticket._id || ticket.ticketId;
-      if (!map.has(ticketId)) {
-        // Find ticket's subcategory
-        const ticketSubCategory = subCategories.find((s: any) =>
-          s.name.toLowerCase() === (ticket.subCategory || "").toLowerCase()
-        );
-        
-        // EXCLUSION: If ticket is explicitly marked as NO agency, don't try to auto-assign it
-        if (["NONE", "__NONE__"].includes(ticket.agencyName || "")) {
-          map.set(ticketId, "none");
-          return;
-        }
-
-        if (ticketSubCategory) {
-          // Find first agency that has this subcategory linked
-          const matchingAgency = agencies.find((agency: any) => {
-            const linkedSubCategoryIds = agency.subCategories?.map((s: any) => s._id || s) || [];
-            return linkedSubCategoryIds.includes(ticketSubCategory._id);
-          });
-          
-          if (matchingAgency) {
-            map.set(ticketId, matchingAgency._id);
-          } else {
-            // Not explicitly assigned and no matching agency for subcategory
-            map.set(ticketId, "none");
-          }
+          map.set(ticketId, agency._id);
         } else {
-          // No subcategory to use for auto-assignment
           map.set(ticketId, "none");
         }
+      } else {
+        map.set(ticketId, "none");
       }
     });
     
@@ -614,21 +636,6 @@ function DashboardContent() {
         stats: calculateStats(agencyTickets),
       };
     }).filter((a: any) => a.stats.total > 0); // Only show agencies with pending work
-
-    // Add "Not Assigned" pseudo-agency if there are tickets
-    const notAssignedTickets = categoryStatsBase.filter((t: any) => {
-      const ticketId = t._id || t.ticketId;
-      return ticketToAgencyMap.get(ticketId) === "none";
-    });
-
-    if (notAssignedTickets.length > 0) {
-      agencyStats.push({
-        id: "none",
-        name: "Not Assigned",
-        stats: calculateStats(notAssignedTickets),
-        isSpecial: true
-      });
-    }
 
     return { totalStats, pendingStats, completedStats, categoryStats, userStats, subCategoryStats, agencyStats };
   }, [fullyFiltered, baseFiltered, categoryStatsBase, globalStatsBase, categories, users, subCategories, selectedCategory, calculateStats, agencies, ticketToAgencyMap]);
@@ -1118,15 +1125,8 @@ function DashboardContent() {
           {fullyFiltered.map((t: any) => {
             const cat = categories.find((c: any) => c.name.toLowerCase() === (t.category || "").toLowerCase());
             
-            // Derive agency name from the mapping if not explicitly set
-            const ticketId = t._id || t.ticketId;
-            const mappedAgencyId = ticketToAgencyMap.get(ticketId);
-            const mappedAgency = mappedAgencyId ? agencies.find((a: any) => a._id === mappedAgencyId) : null;
-            const derivedAgencyName = mappedAgency?.name || null;
-            
-            // Use explicit agencyName if set (including placeholders like __NONE__ or NONE), 
-            // otherwise use derived name from subcategory mapping
-            const displayAgencyName = t.agencyName || derivedAgencyName;
+            // Use explicit agencyName if set (including placeholders like __NONE__ or NONE)
+            const displayAgencyName = t.agencyName || null;
             
             return (
               <TicketCard
@@ -1138,6 +1138,12 @@ function DashboardContent() {
                 onStatusChange={() => mutate()}
                 categoryColor={cat?.color}
                 onScrollBack={scrollBackToTop}
+                onEditClick={() => {
+                  setSelectedTicketId(t.ticketId);
+                  setIsEditMode(true);
+                }}
+                onExcludeFromSummary={() => toggleExcludeTicket(t.ticketId)}
+                isExcludedFromSummary={excludedTicketIds.has(t.ticketId)}
               />
             );
           })}
@@ -1342,6 +1348,351 @@ function DashboardContent() {
           </div>
         </div>
       )}
+
+      {/* Edit Ticket Modal */}
+      {selectedTicketId && (() => {
+        const selectedTicket = tickets.find((t: any) => t.ticketId === selectedTicketId);
+        if (!selectedTicket) return null;
+
+        // Get subcategories for selected category
+        const selectedCategoryData = categories.find((c: any) => c.name === editFormData.category);
+        const availableSubcategories = selectedCategoryData 
+          ? subCategories
+              .filter((sub: any) => sub.categoryId === selectedCategoryData._id)
+              .map((sub: any) => sub.name)
+          : [];
+
+        return (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4" 
+            onClick={() => {
+              setSelectedTicketId(null);
+              setIsEditMode(false);
+            }}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            
+            {!isEditMode ? (
+              /* Step 1: Preview/Read-Only View */
+              <div
+                className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <TicketCard
+                  ticket={selectedTicket}
+                  onStatusChange={() => {
+                    mutate();
+                  }}
+                  categoryColor={
+                    categories.find((c: any) => c.name.toLowerCase() === (selectedTicket.category || "").toLowerCase())?.color
+                  }
+                  onEditClick={() => setIsEditMode(true)}
+                  onExcludeFromSummary={() => toggleExcludeTicket(selectedTicket.ticketId)}
+                  isExcludedFromSummary={excludedTicketIds.has(selectedTicket.ticketId)}
+                />
+              </div>
+            ) : (
+              /* Step 2: Full Edit Form */
+              <div
+                className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-orange-50 via-white to-purple-50 rounded-3xl shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b-2 border-gray-200 px-8 py-6 rounded-t-3xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-gradient-to-br from-orange-500 to-pink-500 rounded-xl shadow-lg">
+                        <BarChart3 className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Edit Ticket</h2>
+                        <p className="text-sm text-gray-600 mt-1">Ticket ID: {selectedTicket.ticketId}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setIsEditMode(false)}
+                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors flex items-center gap-2"
+                        title="Back to Preview"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                        Back
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedTicketId(null);
+                          setIsEditMode(false);
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Content */}
+                <div className="p-8 space-y-8">
+                  {/* Description Section */}
+                  <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-orange-200">
+                    <label className="block text-sm font-bold text-gray-700 mb-3">
+                      Description
+                    </label>
+                    <textarea
+                      defaultValue={selectedTicket.description}
+                      className="w-full px-4 py-3 bg-orange-50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none"
+                      rows={4}
+                      placeholder="Enter ticket description..."
+                    />
+                  </div>
+
+                  {/* Details Section */}
+                  <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-blue-200">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Info className="w-5 h-5 text-blue-600" />
+                      Ticket Details
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Category */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Category
+                        </label>
+                        <select
+                          value={editFormData.category}
+                          onChange={(e) => {
+                            const newCategory = e.target.value;
+                            setEditFormData({
+                              category: newCategory,
+                              subCategory: '', // Reset subcategory when category changes
+                            });
+                          }}
+                          className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
+                        >
+                          <option value="">Select Category</option>
+                          {categories.map((cat: any) => (
+                            <option key={cat._id} value={cat.name}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Subcategory */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Subcategory
+                        </label>
+                        <select
+                          value={editFormData.subCategory}
+                          onChange={(e) => {
+                            setEditFormData({
+                              ...editFormData,
+                              subCategory: e.target.value,
+                            });
+                          }}
+                          disabled={!editFormData.category || availableSubcategories.length === 0}
+                          className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Select Subcategory</option>
+                          {availableSubcategories.map((sub: any) => (
+                            <option key={sub} value={sub}>{sub}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Priority */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Priority
+                        </label>
+                        <select
+                          defaultValue={selectedTicket.priority}
+                          className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
+                        >
+                          <option value="HIGH">🔴 High</option>
+                          <option value="MEDIUM">🟡 Medium</option>
+                          <option value="LOW">🟢 Low</option>
+                        </select>
+                      </div>
+
+                      {/* Status */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Status
+                        </label>
+                        <select
+                          defaultValue={selectedTicket.status}
+                          className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
+                        >
+                          <option value="PENDING">Pending</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="COMPLETED">Completed</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Location & Assignment Section */}
+                  <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-purple-200">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-purple-600" />
+                      Location & Assignment
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Location */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Location
+                        </label>
+                        <select
+                          defaultValue={selectedTicket.location || ''}
+                          className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium"
+                        >
+                          <option value="">Select Location</option>
+                          {(locationsData?.data || []).map((loc: any) => (
+                            <option key={loc._id} value={loc.fullPath || loc.name}>
+                              {loc.fullPath || loc.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Agency */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Assigned Agency
+                        </label>
+                        <select
+                          defaultValue={selectedTicket.agencyName || 'In-House Team'}
+                          className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium"
+                        >
+                          <option value="In-House Team">In-House Team</option>
+                          {agencies.map((agency: any) => (
+                            <option key={agency._id} value={agency.name}>
+                              {agency.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notes Section */}
+                  <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-indigo-200">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Notes
+                    </h3>
+                    <div className="space-y-3">
+                      {(selectedTicket as any).notes && (selectedTicket as any).notes.length > 0 ? (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {(selectedTicket as any).notes.map((note: any, index: number) => (
+                            <div key={index} className="p-4 bg-indigo-50 border-2 border-indigo-200 rounded-xl">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold text-indigo-900">{note.addedBy || 'Unknown'}</span>
+                                <span className="text-xs text-indigo-600">
+                                  {note.timestamp ? new Date(note.timestamp).toLocaleString() : 'No date'}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-700">{note.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic py-4 text-center">No notes yet</p>
+                      )}
+                      <div className="pt-3 border-t-2 border-indigo-200">
+                        <textarea
+                          className="w-full px-4 py-3 bg-indigo-50 border-2 border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all resize-none"
+                          rows={3}
+                          placeholder="Add a new note..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Actions */}
+                <div className="sticky bottom-0 bg-white/95 backdrop-blur-sm border-t-2 border-gray-200 px-8 py-6 rounded-b-3xl">
+                  <div className="flex items-center justify-end gap-4">
+                    <button
+                      onClick={() => setIsEditMode(false)}
+                      className="px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all shadow-md hover:shadow-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Collect form data
+                          const formElement = document.querySelector('form') as HTMLFormElement;
+                          if (!formElement) {
+                            // If no form element, collect data from individual inputs
+                            const descriptionEl = document.querySelector('textarea[placeholder="Enter ticket description..."]') as HTMLTextAreaElement;
+                            const priorityEl = document.querySelector('select[defaultValue="' + selectedTicket.priority + '"]') as HTMLSelectElement;
+                            const statusEl = document.querySelectorAll('select')[3] as HTMLSelectElement; // Status is 4th select
+                            const locationEl = document.querySelectorAll('select')[4] as HTMLSelectElement; // Location is 5th select
+                            const agencyEl = document.querySelectorAll('select')[5] as HTMLSelectElement; // Agency is 6th select
+                            const newNoteEl = document.querySelector('textarea[placeholder="Add a new note..."]') as HTMLTextAreaElement;
+
+                            const updateData: any = {
+                              description: descriptionEl?.value || selectedTicket.description,
+                              category: editFormData.category,
+                              subCategory: editFormData.subCategory,
+                              priority: priorityEl?.value || selectedTicket.priority,
+                              status: statusEl?.value || selectedTicket.status,
+                              location: locationEl?.value || selectedTicket.location,
+                              agencyName: agencyEl?.value || selectedTicket.agencyName,
+                            };
+
+                            // Add new note if provided
+                            if (newNoteEl?.value.trim()) {
+                              updateData.newNote = newNoteEl.value.trim();
+                            }
+
+                            // Send PATCH request to update ticket
+                            const response = await fetch(`/api/tickets/${selectedTicket.ticketId}`, {
+                              method: 'PATCH',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify(updateData),
+                            });
+
+                            if (!response.ok) {
+                              throw new Error('Failed to update ticket');
+                            }
+
+                            // Success - refresh data and close modal
+                            await mutate();
+                            setSelectedTicketId(null);
+                            setIsEditMode(false);
+                            
+                            // Show success message
+                            alert('Ticket updated successfully!');
+                          }
+                        } catch (error) {
+                          console.error('Error updating ticket:', error);
+                          alert('Failed to update ticket. Please try again.');
+                        }
+                      }}
+                      className="px-8 py-3 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -18,7 +18,9 @@ import {
   Building2,
   Calendar,
   Timer,
-  RotateCcw
+  RotateCcw,
+  EyeOff,
+  Eye
 } from "lucide-react";
 
 interface Note {
@@ -63,7 +65,23 @@ function darkenColor(hex: string, percent: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-export default function TicketCard({ ticket, onStatusChange, categoryColor, onScrollBack, onEditClick }: { ticket: any; onStatusChange?: () => void; categoryColor?: string; onScrollBack?: () => void; onEditClick?: () => void }) {
+export default function TicketCard({ 
+  ticket, 
+  onStatusChange, 
+  categoryColor, 
+  onScrollBack, 
+  onEditClick,
+  onExcludeFromSummary,
+  isExcludedFromSummary
+}: { 
+  ticket: any; 
+  onStatusChange?: () => void; 
+  categoryColor?: string; 
+  onScrollBack?: () => void; 
+  onEditClick?: () => void;
+  onExcludeFromSummary?: () => void;
+  isExcludedFromSummary?: boolean;
+}) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -232,7 +250,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
             borderBottomColor: colors.border
           }}
         >
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 relative">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {/* Ticket ID */}
               <span className="text-base font-black" style={{ color: colors.textDark }}>
@@ -273,6 +291,25 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
                 )}
               </div>
             </div>
+
+            {/* Exclude from Summary Button - Icon Only, Top Middle (Absolute Centered) */}
+            {onExcludeFromSummary && (
+              <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+                <button
+                  onClick={onExcludeFromSummary}
+                  className={`p-1.5 sm:p-2 rounded-full transition-all hover:scale-110 shadow-sm ${
+                    isExcludedFromSummary ? 'ring-2 ring-purple-400' : ''
+                  }`}
+                  style={{ 
+                    backgroundColor: isExcludedFromSummary ? '#a855f7' : colors.accentMedium, 
+                    color: isExcludedFromSummary ? 'white' : colors.textDark 
+                  }}
+                  title={isExcludedFromSummary ? "Include in summary calculations" : "Exclude from summary calculations"}
+                >
+                  {isExcludedFromSummary ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex items-center gap-1.5">
@@ -531,6 +568,7 @@ export default function TicketCard({ ticket, onStatusChange, categoryColor, onSc
               </div>
             </div>
           )}
+
 
           {/* Notes Section */}
           <div className="pt-3" style={{ borderTopWidth: '1px', borderTopColor: colors.border }}>

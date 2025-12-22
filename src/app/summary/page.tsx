@@ -154,10 +154,13 @@ export default function SummaryPage() {
     fetch(url).then(r => r.json()));
   const { data: agenciesData } = useSWR("/api/masters/agencies?limit=100", (url: string) =>
     fetch(url).then(r => r.json()));
+  const { data: subCategoriesData } = useSWR("/api/masters/subcategories?limit=100", (url: string) =>
+    fetch(url).then(r => r.json()));
 
   const categories = categoriesData?.data || [];
   const locations = locationsData?.data || [];
   const agencies = agenciesData?.data || [];
+  const subCategories = subCategoriesData?.data || [];
 
   // State for filtering subcategory charts by category
   const [selectedSubCategoryFilter, setSelectedSubCategoryFilter] = useState<string>('all');
@@ -180,6 +183,26 @@ export default function SummaryPage() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const selectedTicket = Array.isArray(tickets) ? tickets.find((t: any) => t.ticketId === selectedTicketId) : undefined;
+  const [editFormData, setEditFormData] = useState({
+    category: '',
+    subCategory: '',
+  });
+  
+  // State for excluded tickets from summary calculations (persisted in localStorage)
+  const [excludedTicketIds, setExcludedTicketIds] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('excludedTicketIds');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    }
+    return new Set();
+  });
+
+  // Sync excluded tickets to localStorage
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('excludedTicketIds', JSON.stringify(Array.from(excludedTicketIds)));
+    }
+  }, [excludedTicketIds]);
   
   // State for stable subcategory tooltip
   const [activeTooltip, setActiveTooltip] = useState<{
@@ -188,11 +211,34 @@ export default function SummaryPage() {
     chartId: string;
   } | null>(null);
 
+  // Sync edit form data when selected ticket changes
+  React.useEffect(() => {
+    if (selectedTicket) {
+      setEditFormData({
+        category: selectedTicket.category || '',
+        subCategory: selectedTicket.subCategory || '',
+      });
+    }
+  }, [selectedTicket]);
+
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  // Toggle ticket exclusion from summary calculations
+  const toggleExcludeTicket = (ticketId: string) => {
+    setExcludedTicketIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(ticketId)) {
+        newSet.delete(ticketId);
+      } else {
+        newSet.add(ticketId);
+      }
+      return newSet;
+    });
   };
 
   // Calculate time difference in hours
@@ -220,7 +266,7 @@ export default function SummaryPage() {
     if (!Array.isArray(tickets)) return [];
 
     const completedTickets = tickets.filter(
-      (t) => t.status === "COMPLETED" && t.completedAt && t.createdAt
+      (t) => t.status === "COMPLETED" && t.completedAt && t.createdAt && !excludedTicketIds.has(t.ticketId)
     );
 
     const categoryMap = new Map<string, CategorySummary>();
@@ -264,7 +310,7 @@ export default function SummaryPage() {
     });
 
     return Array.from(categoryMap.values()).sort((a, b) => b.totalCompleted - a.totalCompleted);
-  }, [tickets, categories]);
+  }, [tickets, categories, excludedTicketIds]);
 
   // Calculate overall stats
   const overallStats = useMemo(() => {
@@ -272,7 +318,7 @@ export default function SummaryPage() {
       return { total: 0, priority: { high: 0, medium: 0, low: 0 }, source: { inHouse: 0, outsource: 0 } };
     }
 
-    const completedTickets = tickets.filter(t => t.status === "COMPLETED");
+    const completedTickets = tickets.filter(t => t.status === "COMPLETED" && !excludedTicketIds.has(t.ticketId));
     const totalTimeHours = completedTickets.reduce((acc, t) => acc + calculateTimeDiff(t.createdAt, t.completedAt!), 0);
 
     return {
@@ -288,14 +334,14 @@ export default function SummaryPage() {
         outsource: completedTickets.filter(t => t.agencyName && !["NONE", "__NONE__"].includes(t.agencyName)).length,
       }
     };
-  }, [tickets]);
+  }, [tickets, excludedTicketIds]);
 
   // Calculate subcategory breakdown for each category (count, avg time, and ticket IDs)
   const subcategoryBreakdown = useMemo(() => {
     if (!Array.isArray(tickets)) return new Map();
 
     const completedTickets = tickets.filter(
-      (t) => t.status === "COMPLETED" && t.completedAt && t.createdAt
+      (t) => t.status === "COMPLETED" && t.completedAt && t.createdAt && !excludedTicketIds.has(t.ticketId)
     );
 
     // Map: category -> subcategory -> { count, totalTime, avgTime, ticketIds }
@@ -323,7 +369,7 @@ export default function SummaryPage() {
     });
 
     return categorySubMap;
-  }, [tickets]);
+  }, [tickets, excludedTicketIds]);
 
   // Prepare chart data with subcategory breakdown (for ticket counts)
   const barChartData = summary.map(cat => {
@@ -371,6 +417,34 @@ export default function SummaryPage() {
     return data;
   }, [summary, subcategoryBreakdown]);
 
+  // Prepare combined subcategories data for "All Categories" view
+  const allSubcategoriesCombined = useMemo(() => {
+    const combinedMap = new Map<string, { avgTime: number; count: number; ticketIds: string[]; category: string; color: string }>();
+    
+    subcategoryAvgTimeData.forEach((catData) => {
+      catData.subcategories.forEach((sub) => {
+        const key = `${sub.name} (${catData.displayName})`;
+        combinedMap.set(key, {
+          avgTime: sub.avgTime,
+          count: sub.count,
+          ticketIds: sub.ticketIds,
+          category: catData.category,
+          color: catData.color,
+        });
+      });
+    });
+
+    return Array.from(combinedMap.entries())
+      .map(([name, data]) => ({
+        name,
+        avgTime: data.avgTime,
+        count: data.count,
+        ticketIds: data.ticketIds,
+        color: data.color,
+      }))
+      .sort((a, b) => b.avgTime - a.avgTime);
+  }, [subcategoryAvgTimeData]);
+
   // Get all unique subcategories for the legend
   const allSubCategories = useMemo(() => {
     const subCats = new Set<string>();
@@ -414,9 +488,12 @@ export default function SummaryPage() {
     }>();
 
     completedTickets.forEach((ticket) => {
-      const agencyName = ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName) 
-        ? ticket.agencyName 
-        : "In-House Team";
+      // EXCLUDE tickets without an explicit agency selected
+      if (!ticket.agencyName || ["NONE", "__NONE__"].includes(ticket.agencyName)) {
+        return; // Skip this ticket for agency analytics
+      }
+
+      const agencyName = ticket.agencyName;
       const timeDiff = calculateTimeDiff(ticket.createdAt, ticket.completedAt!);
       const category = ticket.category || "Uncategorized";
 
@@ -1397,8 +1474,156 @@ export default function SummaryPage() {
                     </div>
                 </div>
                 <div className="space-y-3">
-                    {subcategoryAvgTimeData
-                      .filter(catData => selectedSubCategoryFilter === 'all' || catData.category === selectedSubCategoryFilter)
+                  {selectedSubCategoryFilter === 'all' ? (
+                    /* Show combined chart for all categories */
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center gap-2 mb-4">
+                        <h5 className="font-semibold text-gray-800 text-sm">
+                          All Subcategories Combined
+                          <span className="ml-2 text-xs font-normal text-gray-500">
+                            ({allSubcategoriesCombined.length} subcategories)
+                          </span>
+                        </h5>
+                      </div>
+
+                      <div 
+                        className="h-auto relative"
+                        onMouseLeave={() => {
+                          setActiveTooltip(prev => prev?.chartId === 'all-combined' ? null : prev);
+                        }}
+                      >
+                        <ResponsiveContainer width="100%" height={400}>
+                          <BarChart
+                            data={allSubcategoriesCombined}
+                            margin={{ top: 20, right: 30, left: 50, bottom: 120 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e5e7eb" />
+                            <XAxis
+                              dataKey="name"
+                              type="category"
+                              angle={-45}
+                              textAnchor="end"
+                              height={100}
+                              interval={0}
+                              tick={{ fontSize: 9, fill: '#6b7280', fontWeight: 400 }}
+                              axisLine={{ stroke: '#d1d5db' }}
+                              tickLine={{ stroke: '#d1d5db' }}
+                            />
+                            <YAxis 
+                              type="number"
+                              tick={{ fontSize: 10, fill: '#6b7280' }}
+                              axisLine={{ stroke: '#d1d5db' }}
+                              tickLine={{ stroke: '#d1d5db' }}
+                              label={{ 
+                                value: 'Avg Time (Hours)', 
+                                angle: -90, 
+                                position: 'insideLeft',
+                                style: { fontSize: 11, fill: '#6b7280', fontWeight: 500 } 
+                              }}
+                            />
+                            <Bar
+                              dataKey="avgTime"
+                              radius={[4, 4, 0, 0]}
+                              barSize={40}
+                              isAnimationActive={false}
+                              style={{ cursor: 'pointer', transition: 'filter 0.3s' }}
+                              onMouseEnter={(data: any) => {
+                                if (data) {
+                                  setActiveTooltip({
+                                    data: data.payload,
+                                    pos: { x: data.x + data.width / 2, y: data.y },
+                                    chartId: 'all-combined'
+                                  });
+                                }
+                              }}
+                              onClick={() => {
+                                if (activeTooltip?.data?.ticketIds?.length === 1) {
+                                  setSelectedTicketId(activeTooltip.data.ticketIds[0]);
+                                }
+                              }}
+                              activeBar={{ filter: 'brightness(1.1) saturate(1.2)' }}
+                              label={(props: any) => {
+                                const { x, y, width, value } = props;
+                                if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number') return null;
+                                return (
+                                  <text
+                                    x={x + width / 2}
+                                    y={y - 4}
+                                    fill="#6b7280"
+                                    fontSize={9}
+                                    fontWeight="600"
+                                    textAnchor="middle"
+                                    className="opacity-90 pointer-events-none"
+                                  >
+                                    {formatTime(value as number)}
+                                  </text>
+                                );
+                              }}
+                            >
+                              {allSubcategoriesCombined.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+
+                        {/* Manual Stable Tooltip for Combined Chart */}
+                        {activeTooltip && activeTooltip.chartId === 'all-combined' && (
+                          <div 
+                            style={{ 
+                              position: 'absolute',
+                              left: activeTooltip.pos.x + 15,
+                              top: activeTooltip.pos.y,
+                              transform: 'translateY(-50%)',
+                              zIndex: 100,
+                              pointerEvents: 'auto'
+                            }}
+                            className="animate-in fade-in zoom-in duration-200"
+                          >
+                            <div className="bg-white p-4 rounded-xl shadow-[0_20px_50px_rgba(109,40,217,0.15)] border border-purple-100 max-w-sm pointer-events-auto">
+                              <div className="flex items-center justify-between gap-4 mb-3">
+                                <p className="font-bold text-gray-900 text-sm">{activeTooltip.data.name}</p>
+                                <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 rounded-full border border-purple-100">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                                  <span className="text-[10px] font-bold text-purple-700">{formatTime(activeTooltip.data.avgTime || 0)}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 mb-4 text-[11px] text-gray-500">
+                                <span className="font-medium text-gray-700">Total Samples: {activeTooltip.data.count}</span>
+                                <span>•</span>
+                                <span>Click a ticket ID below</span>
+                              </div>
+
+                              {activeTooltip.data.ticketIds && activeTooltip.data.ticketIds.length > 0 && (
+                                <div className="pt-3 border-t border-gray-50">
+                                  <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1 thin-scrollbar">
+                                    {activeTooltip.data.ticketIds.map((ticketId: string) => (
+                                      <button
+                                        key={ticketId}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          e.preventDefault();
+                                          setSelectedTicketId(ticketId);
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-purple-600 text-purple-700 hover:text-white rounded-lg text-xs font-bold transition-all border border-purple-100 hover:border-purple-600 shadow-sm hover:shadow-md active:scale-95 group"
+                                      >
+                                        <span className="text-[10px] opacity-60 group-hover:opacity-100">🎫</span>
+                                        <span>{ticketId}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Show individual category charts */
+                    subcategoryAvgTimeData
+                      .filter(catData => catData.category === selectedSubCategoryFilter)
                       .map((catData) => (
                   <div key={catData.category} className="bg-white rounded-lg border border-gray-200 p-2">
                     <div className="flex items-center gap-1.5 mb-2">
@@ -1546,7 +1771,8 @@ export default function SummaryPage() {
                       )}
                     </div>
                   </div>
-                ))}
+                ))
+                  )}
                   </div>
                 </div>
               )}
@@ -1939,132 +2165,157 @@ export default function SummaryPage() {
         </div>
       </div>
       {/* Two-Step Ticket Modal: Preview → Edit */}
-      {selectedTicket && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4" 
-          onClick={() => {
-            setSelectedTicketId(null);
-            setIsEditMode(false); // Reset edit mode when closing
-          }}
-        >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          
-          {!isEditMode ? (
-            /* Step 1: Preview/Read-Only View */
-            <div
-              className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <TicketCard
-                ticket={selectedTicket}
-                onStatusChange={() => {
-                  mutate(); // Refresh data if status changes
-                }}
-                categoryColor={
-                  summary.find(c => c.category === selectedTicket.category)?.color || 
-                  (categoriesData as any[])?.find(c => c.name === selectedTicket.category)?.color
-                }
-                onEditClick={() => setIsEditMode(true)}
-              />
-            </div>
-          ) : (
-            /* Step 2: Full Edit Form */
-            <div
-              className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-orange-50 via-white to-purple-50 rounded-3xl shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b-2 border-gray-200 px-8 py-6 rounded-t-3xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-gradient-to-br from-orange-500 to-pink-500 rounded-xl shadow-lg">
-                      <BarChart3 className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900">Edit Ticket</h2>
-                      <p className="text-sm text-gray-600 mt-1">Ticket ID: {selectedTicket.ticketId}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setIsEditMode(false)}
-                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors flex items-center gap-2"
-                      title="Back to Preview"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                      </svg>
-                      Back
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedTicketId(null);
-                        setIsEditMode(false);
-                      }}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+      {selectedTicket && (() => {
+        // Get subcategories for selected category
+        const selectedCategoryData = categories.find((c: any) => c.name === editFormData.category);
+        const availableSubcategories = selectedCategoryData 
+          ? subCategories
+              .filter((sub: any) => sub.categoryId === selectedCategoryData._id)
+              .map((sub: any) => sub.name)
+          : [];
+
+        return (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4" 
+            onClick={() => {
+              setSelectedTicketId(null);
+              setIsEditMode(false); // Reset edit mode when closing
+            }}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            
+            {!isEditMode ? (
+              /* Step 1: Preview/Read-Only View */
+              <div
+                className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <TicketCard
+                  ticket={selectedTicket}
+                  onStatusChange={() => {
+                    mutate(); // Refresh data if status changes
+                  }}
+                  categoryColor={
+                    summary.find(c => c.category === selectedTicket.category)?.color || 
+                    (categoriesData as any[])?.find(c => c.name === selectedTicket.category)?.color
+                  }
+                  onEditClick={() => setIsEditMode(true)}
+                  onExcludeFromSummary={() => toggleExcludeTicket(selectedTicket.ticketId)}
+                  isExcludedFromSummary={excludedTicketIds.has(selectedTicket.ticketId)}
+                />
               </div>
-
-              {/* Form Content */}
-              <div className="p-8 space-y-8">
-                {/* Description Section */}
-                <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-orange-200">
-                  <label className="block text-sm font-bold text-gray-700 mb-3">
-                    Description
-                  </label>
-                  <textarea
-                    defaultValue={selectedTicket.description}
-                    className="w-full px-4 py-3 bg-orange-50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none"
-                    rows={4}
-                    placeholder="Enter ticket description..."
-                  />
+            ) : (
+              /* Step 2: Full Edit Form */
+              <div
+                className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-orange-50 via-white to-purple-50 rounded-3xl shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b-2 border-gray-200 px-8 py-6 rounded-t-3xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-gradient-to-br from-orange-500 to-pink-500 rounded-xl shadow-lg">
+                        <BarChart3 className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Edit Ticket</h2>
+                        <p className="text-sm text-gray-600 mt-1">Ticket ID: {selectedTicket.ticketId}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setIsEditMode(false)}
+                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors flex items-center gap-2"
+                        title="Back to Preview"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                        Back
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedTicketId(null);
+                          setIsEditMode(false);
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Details Section */}
-                <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-blue-200">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <Info className="w-5 h-5 text-blue-600" />
-                    Ticket Details
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Category */}
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Category
-                      </label>
-                      <select
-                        defaultValue={selectedTicket.category || undefined}
-                        className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
-                      >
-                        {categories.map((cat: any) => (
-                          <option key={cat._id} value={cat.name}>{cat.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                {/* Form Content */}
+                <div className="p-8 space-y-8">
+                  {/* Description Section */}
+                  <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-orange-200">
+                    <label className="block text-sm font-bold text-gray-700 mb-3">
+                      Description
+                    </label>
+                    <textarea
+                      defaultValue={selectedTicket.description}
+                      className="w-full px-4 py-3 bg-orange-50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none"
+                      rows={4}
+                      placeholder="Enter ticket description..."
+                    />
+                  </div>
 
-                    {/* Subcategory */}
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Subcategory
-                      </label>
-                      <select
-                        defaultValue={selectedTicket.subCategory || undefined}
-                        className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
-                      >
-                        {categories
-                          .find((c: any) => c.name === selectedTicket.category)
-                          ?.subcategories?.map((sub: any) => (
+                  {/* Details Section */}
+                  <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-blue-200">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Info className="w-5 h-5 text-blue-600" />
+                      Ticket Details
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Category */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Category
+                        </label>
+                        <select
+                          value={editFormData.category}
+                          onChange={(e) => {
+                            const newCategory = e.target.value;
+                            setEditFormData({
+                              category: newCategory,
+                              subCategory: '', // Reset subcategory when category changes
+                            });
+                          }}
+                          className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
+                        >
+                          <option value="">Select Category</option>
+                          {categories.map((cat: any) => (
+                            <option key={cat._id} value={cat.name}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Subcategory */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Subcategory
+                        </label>
+                        <select
+                          value={editFormData.subCategory}
+                          onChange={(e) => {
+                            setEditFormData({
+                              ...editFormData,
+                              subCategory: e.target.value,
+                            });
+                          }}
+                          disabled={!editFormData.category || availableSubcategories.length === 0}
+                          className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Select Subcategory</option>
+                          {availableSubcategories.map((sub: any) => (
                             <option key={sub} value={sub}>{sub}</option>
-                          )) || <option value={selectedTicket.subCategory ?? ''}>{selectedTicket.subCategory}</option>
-                        }
-                      </select>
-                    </div>
+                          ))}
+                        </select>
+                      </div>
+
 
                     {/* Priority */}
                     <div>
@@ -2191,12 +2442,54 @@ export default function SummaryPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      // TODO: Implement save functionality
-                      // This should collect all form data and send PUT request to /api/tickets/[id]
-                      alert('Save functionality to be implemented');
-                      setSelectedTicketId(null);
-                      setIsEditMode(false);
-                      mutate(); // Refresh data
+                      try {
+                        // Collect form data from individual inputs
+                        const descriptionEl = document.querySelector('textarea[placeholder="Enter ticket description..."]') as HTMLTextAreaElement;
+                        const priorityEl = document.querySelector('select[defaultValue="' + selectedTicket.priority + '"]') as HTMLSelectElement;
+                        const statusEl = document.querySelectorAll('select')[3] as HTMLSelectElement; // Status is 4th select
+                        const locationEl = document.querySelectorAll('select')[4] as HTMLSelectElement; // Location is 5th select
+                        const agencyEl = document.querySelectorAll('select')[5] as HTMLSelectElement; // Agency is 6th select
+                        const newNoteEl = document.querySelector('textarea[placeholder="Add a new note..."]') as HTMLTextAreaElement;
+
+                        const updateData: any = {
+                          description: descriptionEl?.value || selectedTicket.description,
+                          category: editFormData.category,
+                          subCategory: editFormData.subCategory,
+                          priority: priorityEl?.value || selectedTicket.priority,
+                          status: statusEl?.value || selectedTicket.status,
+                          location: locationEl?.value || selectedTicket.location,
+                          agencyName: agencyEl?.value || selectedTicket.agencyName,
+                        };
+
+                        // Add new note if provided
+                        if (newNoteEl?.value.trim()) {
+                          updateData.newNote = newNoteEl.value.trim();
+                        }
+
+                        // Send PATCH request to update ticket
+                        const response = await fetch(`/api/tickets/${selectedTicket.ticketId}`, {
+                          method: 'PATCH',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify(updateData),
+                        });
+
+                        if (!response.ok) {
+                          throw new Error('Failed to update ticket');
+                        }
+
+                        // Success - refresh data and close modal
+                        await mutate();
+                        setSelectedTicketId(null);
+                        setIsEditMode(false);
+                        
+                        // Show success message
+                        alert('Ticket updated successfully!');
+                      } catch (error) {
+                        console.error('Error updating ticket:', error);
+                        alert('Failed to update ticket. Please try again.');
+                      }
                     }}
                     className="px-8 py-3 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
                   >
@@ -2208,7 +2501,8 @@ export default function SummaryPage() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

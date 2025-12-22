@@ -321,6 +321,35 @@ export default function BuildingMapPage() {
     const [highlightTickets, setHighlightTickets] = useState(false);
     const [selectedPriority, setSelectedPriority] = useState<"high" | "medium" | "low" | null>(null);
 
+    // Global state for excluded tickets from summary (persisted in localStorage)
+    const [excludedTicketIds, setExcludedTicketIds] = useState<Set<string>>(() => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem('excludedTicketIds');
+            return stored ? new Set(JSON.parse(stored)) : new Set();
+        }
+        return new Set();
+    });
+
+    // Sync excluded tickets to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('excludedTicketIds', JSON.stringify(Array.from(excludedTicketIds)));
+        }
+    }, [excludedTicketIds]);
+
+    // Toggle ticket exclusion from summary calculations
+    const toggleExcludeTicket = (ticketId: string) => {
+        setExcludedTicketIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(ticketId)) {
+                newSet.delete(ticketId);
+            } else {
+                newSet.add(ticketId);
+            }
+            return newSet;
+        });
+    };
+
     // Refs for scrolling
     const treeViewRef = useRef<HTMLDivElement>(null);
     const ticketsPanelRef = useRef<HTMLDivElement>(null);
@@ -640,7 +669,13 @@ export default function BuildingMapPage() {
                                             className={`transition-all duration-300 ${highlightTickets ? "animate-pulse ring-2 ring-orange-400 ring-offset-2 rounded-xl" : ""}`}
                                             style={{ animationDelay: `${index * 100}ms` }}
                                         >
-                                            <TicketCard ticket={ticket} onStatusChange={() => mutate()} categoryColor={cat?.color} />
+                                            <TicketCard 
+                                                ticket={ticket} 
+                                                onStatusChange={() => mutate()} 
+                                                categoryColor={cat?.color} 
+                                                onExcludeFromSummary={() => toggleExcludeTicket(ticket.ticketId)}
+                                                isExcludedFromSummary={excludedTicketIds.has(ticket.ticketId)}
+                                            />
                                         </div>
                                     );
                                 })
