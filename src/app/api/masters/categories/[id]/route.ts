@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { Category } from "@/models/Category";
+import { Agency } from "@/models/AgencyMaster";
 import { connectToDB } from "@/lib/mongodb";
 import { z } from "zod";
 
@@ -116,7 +117,7 @@ export async function PUT(
 
 /**
  * DELETE /api/masters/categories/[id]
- * Delete a category
+ * Delete a category and clean up all references
  */
 export async function DELETE(
   req: NextRequest,
@@ -126,6 +127,14 @@ export async function DELETE(
     await connectToDB();
 
     const { id } = await params;
+    
+    // First, remove this category from all agencies that have it linked
+    await Agency.updateMany(
+      { categories: id },
+      { $pull: { categories: id } }
+    );
+    
+    // Now delete the category
     const category = await Category.findByIdAndDelete(id);
 
     if (!category) {

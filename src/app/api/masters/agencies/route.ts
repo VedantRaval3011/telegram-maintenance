@@ -24,7 +24,14 @@ export async function GET() {
       .sort({ name: 1 })
       .lean();
 
-    return NextResponse.json({ success: true, data: agencies });
+    // Filter out null/deleted category references from each agency
+    const cleanedAgencies = agencies.map((agency: any) => ({
+      ...agency,
+      categories: (agency.categories || []).filter((cat: any) => cat !== null && cat !== undefined),
+      subCategories: (agency.subCategories || []).filter((sub: any) => sub !== null && sub !== undefined),
+    }));
+
+    return NextResponse.json({ success: true, data: cleanedAgencies });
   } catch (error: any) {
     console.error("Error fetching agencies:", error);
     return NextResponse.json(

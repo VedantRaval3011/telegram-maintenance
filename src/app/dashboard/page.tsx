@@ -7,7 +7,8 @@ import FilterBar from "@/components/FilterBar";
 import SyncUsersButton from "@/components/SyncUsersButton";
 import TicketCard from "@/components/TicketCard";
 import Capsule from "@/components/Capsule";
-import { BarChart3, Info, Activity, CheckCircle2 } from "lucide-react";
+import SharePendingWorkModal from "@/components/SharePendingWorkModal";
+import { BarChart3, Info, Activity, CheckCircle2, Share2 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -44,7 +45,7 @@ function DashboardContent() {
   const ticketListRef = useRef<HTMLDivElement>(null); // Ref for ticket list section
   const [showAgencyCapsules, setShowAgencyCapsules] = useState(false); // Toggle agency capsules visibility
   const [filtersInitialized, setFiltersInitialized] = useState(false); // Track if filters have been initialized from URL
-  
+  const [shareModalAgency, setShareModalAgency] = useState<{ name: string; id: string } | null>(null); // Track which agency's share modal is open
   // State for ticket editing
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
@@ -710,6 +711,7 @@ function DashboardContent() {
     return <div className="p-10 text-center text-gray-500 animate-pulse">Loading…</div>;
 
   return (
+    <>
     <div className="min-h-screen bg-gray-50 pb-16 sm:pb-20">
       <Navbar />
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 dashboard-content">
@@ -1117,6 +1119,21 @@ function DashboardContent() {
                     className={filters.agency === agency.id ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                     onScrollBack={scrollBackToTop}
                   />
+                    {/* Share Button - Top Right */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent capsule click
+                        setShareModalAgency({ name: agency.name, id: agency.id });
+                      }}
+                      className="absolute top-2 right-2 p-1.5 sm:p-2 bg-white/90 hover:bg-amber-100 rounded-full shadow-md border border-gray-200 transition-all hover:scale-110 group z-10"
+                      title="Share Pending Work"
+                    >
+                      <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
+                      {/* Tooltip */}
+                      <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                        Share Pending Work
+                      </span>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1789,6 +1806,15 @@ function DashboardContent() {
         );
       })()}
     </div>
+    
+    {/* Share Pending Work Modal */}
+    <SharePendingWorkModal
+      isOpen={!!shareModalAgency}
+      onClose={() => setShareModalAgency(null)}
+      agencyName={shareModalAgency?.name || ""}
+      tickets={tickets}
+    />
+    </>
   );
 }
 
