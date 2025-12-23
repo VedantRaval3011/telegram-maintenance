@@ -103,7 +103,7 @@ export default function Capsule({
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`rounded-xl sm:rounded-2xl shadow-sm overflow-hidden flex flex-row h-24 sm:h-32 border transition-all duration-200 ${onClick ? "cursor-pointer" : ""
+      className={`rounded-xl sm:rounded-2xl shadow-sm overflow-hidden flex flex-row h-28 sm:h-32 border transition-all duration-200 ${onClick ? "cursor-pointer" : ""
         } ${isHovered ? "shadow-md" : ""} ${className}`}
       style={{
         borderTopWidth: '1px',

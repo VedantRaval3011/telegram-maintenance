@@ -45,6 +45,8 @@ interface Ticket {
   completedBy?: string | null;
   completedAt?: string | null;
   agencyName?: string | null;
+  agencyDate?: string | null;
+  agencyTime?: string | null;
 }
 
 interface CategorySummary {
@@ -186,7 +188,15 @@ export default function SummaryPage() {
   const [editFormData, setEditFormData] = useState({
     category: '',
     subCategory: '',
+    location: '',
+    agencyName: '',
+    agencyDate: '',
+    agencyTime: '',
+    priority: '',
+    status: '',
+    description: '',
   });
+  const [initialAgencyName, setInitialAgencyName] = useState<string>('');
   
   // State for excluded tickets from summary calculations (persisted in localStorage)
   const [excludedTicketIds, setExcludedTicketIds] = useState<Set<string>>(() => {
@@ -232,7 +242,15 @@ export default function SummaryPage() {
       setEditFormData({
         category: selectedTicket.category || '',
         subCategory: selectedTicket.subCategory || '',
+        location: selectedTicket.location || '',
+        agencyName: selectedTicket.agencyName || '',
+        agencyDate: selectedTicket.agencyDate ? new Date(selectedTicket.agencyDate).toISOString().split('T')[0] : '',
+        agencyTime: selectedTicket.agencyTime || '',
+        priority: (selectedTicket.priority || 'medium').toLowerCase(),
+        status: selectedTicket.status || 'PENDING',
+        description: selectedTicket.description || '',
       });
+      setInitialAgencyName(selectedTicket.agencyName || '');
     }
   }, [selectedTicket]);
 
@@ -596,17 +614,17 @@ export default function SummaryPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Work Summary & Analytics</h1>
-          <p className="text-sm sm:text-base text-gray-600">
-            Comprehensive performance metrics and insights for completed maintenance work
+        <div className="mb-4 sm:mb-8 text-center sm:text-left">
+          <h1 className="text-xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">Work Summary & Analytics</h1>
+          <p className="text-xs sm:text-base text-gray-600 px-2 sm:px-0">
+            Performance metrics for completed maintenance work
           </p>
         </div>
 
         {/* Overall Stats Capsule */}
-        <div className="mb-8 sm:mb-12">
+        <div className="mb-6 sm:mb-12">
           <Capsule
             title="Total Completed Work"
             {...overallStats}
@@ -615,55 +633,59 @@ export default function SummaryPage() {
         </div>
 
         {/* Enhanced Unified Analytics Overview Chart */}
-        <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl sm:rounded-2xl shadow-xl sm:shadow-2xl border-2 border-indigo-200 p-4 sm:p-10 mb-8 sm:mb-12">
-          <div className="mb-4 sm:mb-8">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6 mb-3">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="p-1.5 sm:p-2 bg-indigo-100 rounded-lg flex-shrink-0">
-                  <BarChart3 className="w-4 h-4 sm:w-6 sm:h-6 text-indigo-600" />
-                </div>
+        {/* Enhanced Unified Analytics Overview Chart */}
+        <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl sm:rounded-2xl shadow-lg sm:shadow-2xl border border-indigo-200 sm:border-2 p-3 sm:p-10 mb-6 sm:mb-12">
+          <div className="mb-3 sm:mb-8">
+            {/* Title Section */}
+            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-6">
+              <div className="p-1.5 sm:p-2 bg-indigo-100 rounded-lg flex-shrink-0">
+                <BarChart3 className="w-4 h-4 sm:w-6 sm:h-6 text-indigo-600" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-2xl font-bold text-gray-900">Complete Analytics</h3>
+                <p className="text-[9px] sm:text-sm text-gray-600 mt-0.5 hidden sm:block">
+                  Benchmarks across categories
+                </p>
+              </div>
+            </div>
+            
+            {/* Stats Grid - Mobile Optimized: 2x2 on mobile, 4-col on desktop */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+              <div className="flex items-center gap-2 bg-gradient-to-r from-teal-50 to-teal-100 px-3 sm:px-4 py-2.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-teal-300 shadow-sm">
+                <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-teal-600 flex-shrink-0" />
                 <div>
-                  <h3 className="text-lg sm:text-2xl font-bold text-gray-900">Complete Analytics</h3>
-                  <p className="text-[10px] sm:text-sm text-gray-600 mt-0.5">
-                    Benchmarks across categories
-                  </p>
+                  <div className="text-[9px] sm:text-[10px] text-teal-600 font-bold uppercase leading-none">Tickets</div>
+                  <div className="text-base sm:text-lg font-bold text-teal-900 leading-none mt-0.5">{overallStats.total}</div>
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 lg:flex items-center gap-2 sm:gap-3">
-                <div className="flex items-center gap-2 bg-gradient-to-r from-teal-50 to-teal-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-teal-300 shadow-sm transition-all hover:shadow-md">
-                  <CheckCircle2 className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-teal-600" />
-                  <div className="text-left">
-                    <div className="text-[7px] sm:text-[10px] text-teal-600 font-bold uppercase leading-none mb-0.5">Tickets</div>
-                    <div className="text-xs sm:text-lg font-bold text-teal-900 leading-none">{overallStats.total}</div>
-                  </div>
+              <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-purple-100 px-3 sm:px-4 py-2.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-purple-300 shadow-sm">
+                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                <div>
+                  <div className="text-[9px] sm:text-[10px] text-purple-600 font-bold uppercase leading-none">Avg Time</div>
+                  <div className="text-base sm:text-lg font-bold text-purple-900 leading-none mt-0.5">{formatTime(overallStats.avgTime || 0)}</div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-purple-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-purple-300 shadow-sm transition-all hover:shadow-md">
-                  <Clock className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-purple-600" />
-                  <div className="text-left">
-                    <div className="text-[7px] sm:text-[10px] text-purple-600 font-bold uppercase leading-none mb-0.5">Avg Time</div>
-                    <div className="text-xs sm:text-lg font-bold text-purple-900 leading-none">{formatTime(overallStats.avgTime || 0)}</div>
-                  </div>
+              </div>
+              <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-blue-100 px-3 sm:px-4 py-2.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-blue-300 shadow-sm">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+                <div>
+                  <div className="text-[9px] sm:text-[10px] text-blue-600 font-bold uppercase leading-none">In-House</div>
+                  <div className="text-base sm:text-lg font-bold text-blue-900 leading-none mt-0.5">{overallStats.source.inHouse}</div>
                 </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-blue-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-blue-300 shadow-sm transition-all hover:shadow-md">
-                  <Users className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-blue-600" />
-                  <div className="text-left">
-                    <div className="text-[7px] sm:text-[10px] text-blue-600 font-bold uppercase leading-none mb-0.5">In-House</div>
-                    <div className="text-xs sm:text-lg font-bold text-blue-900 leading-none">{overallStats.source.inHouse}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-orange-100 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-orange-300 shadow-sm transition-all hover:shadow-md">
-                  <Building2 className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-orange-600" />
-                  <div className="text-left">
-                    <div className="text-[7px] sm:text-[10px] text-orange-600 font-bold uppercase leading-none mb-0.5">Outsource</div>
-                    <div className="text-xs sm:text-lg font-bold text-orange-900 leading-none">{overallStats.source.outsource}</div>
-                  </div>
+              </div>
+              <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-orange-100 px-3 sm:px-4 py-2.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-orange-300 shadow-sm">
+                <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 flex-shrink-0" />
+                <div>
+                  <div className="text-[9px] sm:text-[10px] text-orange-600 font-bold uppercase leading-none">Outsource</div>
+                  <div className="text-base sm:text-lg font-bold text-orange-900 leading-none mt-0.5">{overallStats.source.outsource}</div>
                 </div>
               </div>
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={isMobile ? 320 : 600}>
+          {/* Chart Container - Scrollable on mobile for better readability */}
+          <div className={isMobile ? "overflow-x-auto -mx-3 px-3 pb-2" : ""}>
+            <div style={{ minWidth: isMobile ? Math.max(500, summary.length * 80) : '100%' }}>
+          <ResponsiveContainer width="100%" height={isMobile ? 300 : 600}>
             <ComposedChart 
               data={summary} 
               onClick={(data: any) => {
@@ -673,10 +695,10 @@ export default function SummaryPage() {
                 }
               }}
               margin={{ 
-                top: 30, 
-                right: isMobile ? 5 : 100, 
-                left: isMobile ? -30 : 30, 
-                bottom: isMobile ? 40 : 120 
+                top: 20, 
+                right: isMobile ? 20 : 100, 
+                left: isMobile ? 0 : 30, 
+                bottom: isMobile ? 60 : 120 
               }}
             >
               <defs>
@@ -690,11 +712,11 @@ export default function SummaryPage() {
               
               <XAxis
                 dataKey="displayName"
-                height={isMobile ? 60 : 100}
+                height={isMobile ? 70 : 100}
                 interval={0}
-                angle={isMobile ? 0 : -35}
-                textAnchor={isMobile ? "middle" : "end"}
-                tick={isMobile ? <CustomXAxisTick isMobile={true} /> : { fontSize: 13, fill: '#1e293b', fontWeight: 600 }}
+                angle={isMobile ? -45 : -35}
+                textAnchor="end"
+                tick={{ fontSize: isMobile ? 10 : 13, fill: '#1e293b', fontWeight: 600 }}
                 axisLine={{ stroke: '#94a3b8', strokeWidth: 2 }}
                 tickLine={{ stroke: '#94a3b8', strokeWidth: 1.5 }}
               />
@@ -753,7 +775,7 @@ export default function SummaryPage() {
                       .sort((a, b) => (b?.count || 0) - (a?.count || 0));
 
                     return (
-                      <div className={`bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-2xl border-2 sm:border-3 border-indigo-300 min-w-0 ${isMobile ? 'w-[calc(100vw-40px)]' : 'min-w-[420px] max-w-[480px]'}`}>
+                      <div className={`bg-white p-3 sm:p-6 rounded-xl sm:rounded-2xl shadow-2xl border-2 sm:border-3 border-indigo-300 ${isMobile ? 'w-[280px] max-w-[90vw]' : 'min-w-[420px] max-w-[480px]'}`}>
                         <div className="flex items-center justify-between mb-4 pb-4 border-b-2 border-slate-200">
                           <div className="flex items-center gap-3">
                             <div 
@@ -1004,6 +1026,8 @@ export default function SummaryPage() {
               />
             </ComposedChart>
           </ResponsiveContainer>
+            </div>
+          </div>
 
           {/* Mobile Interaction Insight Card - Shows only when a bar is tapped */}
           {isMobile && selectedUnifiedCategory && (
@@ -2372,6 +2396,7 @@ export default function SummaryPage() {
                           onChange={(e) => {
                             const newCategory = e.target.value;
                             setEditFormData({
+                              ...editFormData,
                               category: newCategory,
                               subCategory: '', // Reset subcategory when category changes
                             });
@@ -2415,12 +2440,13 @@ export default function SummaryPage() {
                         Priority
                       </label>
                       <select
-                        defaultValue={selectedTicket.priority}
+                        value={editFormData.priority}
+                        onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value })}
                         className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
                       >
-                        <option value="HIGH">🔴 High</option>
-                        <option value="MEDIUM">🟡 Medium</option>
-                        <option value="LOW">🟢 Low</option>
+                        <option value="high">🔴 High</option>
+                        <option value="medium">🟡 Medium</option>
+                        <option value="low">🟢 Low</option>
                       </select>
                     </div>
 
@@ -2430,11 +2456,11 @@ export default function SummaryPage() {
                         Status
                       </label>
                       <select
-                        defaultValue={selectedTicket.status}
+                        value={editFormData.status}
+                        onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
                         className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium"
                       >
-                        <option value="OPEN">Open</option>
-                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="PENDING">Pending</option>
                         <option value="COMPLETED">Completed</option>
                       </select>
                     </div>
@@ -2472,7 +2498,8 @@ export default function SummaryPage() {
                         Assigned Agency
                       </label>
                       <select
-                        defaultValue={selectedTicket.agencyName || 'In-House Team'}
+                        value={editFormData.agencyName}
+                        onChange={(e) => setEditFormData({ ...editFormData, agencyName: e.target.value })}
                         className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium"
                       >
                         <option value="In-House Team">In-House Team</option>
@@ -2483,6 +2510,42 @@ export default function SummaryPage() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Date & Time Selection (Only if agency changed) */}
+                    {editFormData.agencyName !== initialAgencyName && (
+                      <>
+                        <div className="animate-fadeIn">
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Schedule Date
+                          </label>
+                          <input
+                            type="date"
+                            value={editFormData.agencyDate}
+                            onChange={(e) => setEditFormData({ ...editFormData, agencyDate: e.target.value })}
+                            className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium"
+                          />
+                        </div>
+
+                        <div className={`animate-fadeIn transition-opacity duration-300 ${!editFormData.agencyDate ? 'opacity-50' : 'opacity-100'}`}>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Time Slot
+                          </label>
+                          <select
+                            value={editFormData.agencyTime}
+                            onChange={(e) => setEditFormData({ ...editFormData, agencyTime: e.target.value })}
+                            disabled={!editFormData.agencyDate}
+                            className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium disabled:cursor-not-allowed"
+                          >
+                            <option value="">Select Time Slot</option>
+                            <option value="First Half">First Half</option>
+                            <option value="Second Half">Second Half</option>
+                          </select>
+                          {!editFormData.agencyDate && (
+                            <p className="text-[10px] text-gray-400 mt-1 italic">Please select a date first</p>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -2543,15 +2606,17 @@ export default function SummaryPage() {
                         const agencyEl = document.querySelectorAll('select')[5] as HTMLSelectElement; // Agency is 6th select
                         const newNoteEl = document.querySelector('textarea[placeholder="Add a new note..."]') as HTMLTextAreaElement;
 
-                        const updateData: any = {
-                          description: descriptionEl?.value || selectedTicket.description,
-                          category: editFormData.category,
-                          subCategory: editFormData.subCategory,
-                          priority: priorityEl?.value || selectedTicket.priority,
-                          status: statusEl?.value || selectedTicket.status,
-                          location: locationEl?.value || selectedTicket.location,
-                          agencyName: agencyEl?.value || selectedTicket.agencyName,
-                        };
+                      const updateData: any = {
+                        description: editFormData.description,
+                        category: editFormData.category,
+                        subCategory: editFormData.subCategory,
+                        priority: editFormData.priority,
+                        status: editFormData.status,
+                        location: editFormData.location,
+                        agencyName: editFormData.agencyName,
+                        agencyDate: editFormData.agencyDate || null,
+                        agencyTime: editFormData.agencyTime || null,
+                      };
 
                         // Add new note if provided
                         if (newNoteEl?.value.trim()) {

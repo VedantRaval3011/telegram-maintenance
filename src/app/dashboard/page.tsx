@@ -53,10 +53,14 @@ function DashboardContent() {
     subCategory: '',
     location: '',
     agencyName: '',
+    agencyDate: '',
+    agencyTime: '',
     priority: '',
     status: '',
     description: '',
   });
+
+  const [initialAgencyName, setInitialAgencyName] = useState<string>('');
 
   // Global state for excluded tickets from summary (persisted in localStorage)
   const [excludedTicketIds, setExcludedTicketIds] = useState<Set<string>>(() => {
@@ -258,10 +262,13 @@ function DashboardContent() {
           subCategory: ticket.subCategory || '',
           location: ticket.location || '',
           agencyName: ticket.agencyName || '',
+          agencyDate: ticket.agencyDate ? new Date(ticket.agencyDate).toISOString().split('T')[0] : '',
+          agencyTime: ticket.agencyTime || '',
           priority: (ticket.priority || 'medium').toLowerCase(),
           status: ticket.status || 'PENDING',
           description: ticket.description || '',
         });
+        setInitialAgencyName(ticket.agencyName || '');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1641,6 +1648,42 @@ function DashboardContent() {
                           ))}
                         </select>
                       </div>
+
+                      {/* Date & Time Selection (Only if agency changed) */}
+                      {editFormData.agencyName !== initialAgencyName && (
+                        <>
+                          <div className="animate-fadeIn">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Schedule Date
+                            </label>
+                            <input
+                              type="date"
+                              value={editFormData.agencyDate}
+                              onChange={(e) => setEditFormData({ ...editFormData, agencyDate: e.target.value })}
+                              className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium"
+                            />
+                          </div>
+
+                          <div className={`animate-fadeIn transition-opacity duration-300 ${!editFormData.agencyDate ? 'opacity-50' : 'opacity-100'}`}>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Time Slot
+                            </label>
+                            <select
+                              value={editFormData.agencyTime}
+                              onChange={(e) => setEditFormData({ ...editFormData, agencyTime: e.target.value })}
+                              disabled={!editFormData.agencyDate}
+                              className="w-full px-4 py-3 bg-purple-50 border-2 border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-medium disabled:cursor-not-allowed"
+                            >
+                              <option value="">Select Time Slot</option>
+                              <option value="First Half">First Half</option>
+                              <option value="Second Half">Second Half</option>
+                            </select>
+                            {!editFormData.agencyDate && (
+                              <p className="text-[10px] text-gray-400 mt-1 italic">Please select a date first</p>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1702,6 +1745,8 @@ function DashboardContent() {
                               status: editFormData.status,
                               location: editFormData.location,
                               agencyName: editFormData.agencyName,
+                              agencyDate: editFormData.agencyDate || null,
+                              agencyTime: editFormData.agencyTime || null,
                             };
                             
                             const newNoteEl = document.querySelector('textarea[placeholder="Add a new note..."]') as HTMLTextAreaElement;

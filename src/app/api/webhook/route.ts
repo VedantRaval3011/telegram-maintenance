@@ -1067,6 +1067,14 @@ async function createTicketFromSession(session: any, createdBy: string) {
   }
   const nextTicketId = `T${nextTicketNumber}`;
 
+  // 🔍 DEBUG: Log session data before creating ticket
+  console.log(`[CREATE TICKET] Creating ${nextTicketId}:`, {
+    description: session.originalText,
+    photosCount: session.photos?.length || 0,
+    videosCount: session.videos?.length || 0,
+    photos: session.photos,
+  });
+
   const ticketData: any = {
     ticketId: nextTicketId,
     description: session.originalText || "No description",
@@ -1113,6 +1121,13 @@ async function createTicketFromSession(session: any, createdBy: string) {
   }
 
   const ticket = await Ticket.create(ticketData);
+  
+  // 🔍 DEBUG: Log created ticket data
+  console.log(`[CREATE TICKET] Created ${nextTicketId} in DB:`, {
+    description: ticket.description,
+    photosCount: ticket.photos?.length || 0,
+    videosCount: ticket.videos?.length || 0,
+  });
 
   // ✅ Trigger WhatsApp notification to users assigned to this sub-category
   try {
@@ -1902,27 +1917,42 @@ export async function POST(req: NextRequest) {
               } else if (tf === "description") {
                 updateData.description = sessionData.originalText;
               }
+              // Note: In partial edit mode, we DON'T update photos/videos unless explicitly editing them
+              // This ensures the original attachments are preserved
             } else {
-              // Full update: Rebuild everything from session (matches current behavior)
-              const category = await Category.findById(sessionData.category).lean();
-              const subcategory = sessionData.subCategoryId ? await SubCategory.findById(sessionData.subCategoryId).lean() : null;
-
+              // Full edit mode: Update all fields that have been filled in the wizard
               // Build location string
-              let locationStr = "Not specified";
+              let locationStr = null;
               const dedupedPath = deduplicateLocationPath(sessionData.locationPath);
               if (dedupedPath.length > 0) {
                 locationStr = dedupedPath.map((n: any) => n.name).join(" → ");
               }
 
-              updateData = {
-                description: sessionData.originalText || "No description",
-                category: category?.name || "unknown",
-                subCategory: subcategory?.name,
-                priority: sessionData.priority || "medium",
-                location: locationStr,
-                photos: sessionData.photos || [],
-                videos: sessionData.videos || [],
-              };
+              // Fetch category and subcategory
+              const category = await Category.findById(sessionData.category).lean();
+              const subcategory = sessionData.subCategoryId ? await SubCategory.findById(sessionData.subCategoryId).lean() : null;
+
+              // Build smart update object - only update fields that have values
+              updateData = {};
+              
+              // Only update description if it's not a placeholder
+              if (sessionData.originalText && !["Photo attachment", "Video attachment", "New Ticket", "New entry"].includes(sessionData.originalText)) {
+                updateData.description = sessionData.originalText;
+              }
+              
+              // Only update photos/videos if they exist in the session
+              // This prevents accidentally clearing them if they weren't loaded
+              if (sessionData.photos && sessionData.photos.length > 0) {
+                updateData.photos = sessionData.photos;
+              }
+              if (sessionData.videos && sessionData.videos.length > 0) {
+                updateData.videos = sessionData.videos;
+              }
+
+              if (category) updateData.category = category.name;
+              if (subcategory) updateData.subCategory = subcategory.name;
+              if (sessionData.priority) updateData.priority = sessionData.priority;
+              if (locationStr) updateData.location = locationStr;
 
               // Add agency info if present
               if (sessionData.agencyRequired) {
@@ -1956,11 +1986,27 @@ export async function POST(req: NextRequest) {
               }
             }
 
+            // 🔍 DEBUG: Log update data before applying
+            console.log(`[EDIT UPDATE] Updating ticket ${sessionData.editingTicketId}:`, {
+              isPartialEdit: sessionData.isPartialEdit,
+              targetField: sessionData.targetField,
+              updateFields: Object.keys(updateData),
+              descriptionUpdate: updateData.description,
+              photosUpdate: updateData.photos?.length || 0,
+            });
+            
             ticket = await Ticket.findOneAndUpdate(
               { ticketId: sessionData.editingTicketId },
               updateData,
               { new: true }
             );
+            
+            // 🔍 DEBUG: Log ticket data after update
+            console.log(`[EDIT COMPLETE] Ticket ${sessionData.editingTicketId} after update:`, {
+              description: ticket.description,
+              photosCount: ticket.photos?.length || 0,
+              videosCount: ticket.videos?.length || 0,
+            });
           } else {
             // Check if category is "information" - save to Information model instead of creating ticket
             const categoryDoc = await Category.findById(sessionData.category).lean();
@@ -2152,68 +2198,184 @@ if (incomingText.toLowerCase().startsWith("/info ")) {
   return NextResponse.json({ ok: true });
 }
 
-// ========== REOPEN TICKET COMMAND HANDLING ==========
-// Supports: "open T123" or "/open T123" or "reopen T123" or "/edit T123"
-const reopenMatch = incomingText.match(/^(?:open|reopen|edit|\/open|\/reopen|\/edit)\s*(t\d+)?/i);
-if (reopenMatch && !msg.reply_to_message) {
-  // Extract ticket number from message
-  const ticketMatch = incomingText.match(/T(\d+)/i);
-  
-  if (!ticketMatch) {
-    // Ask for ticket number
-    await telegramSendMessage(
-      chat.id,
-      "📝 Please provide the ticket number.\n\nExample: <code>open T123</code>",
-      msg.message_id
-    );
-    return NextResponse.json({ ok: true });
-  }
-  
-  const ticketId = `T${ticketMatch[1]}`;
+// ========== EDIT/OPEN TICKET COMMAND HANDLING (Non-Reply) ==========
+const editMatch = incomingText.match(/^(?:edit|\/edit)\s*(t\d+)/i);
+if (editMatch && !msg.reply_to_message) {
+  const ticketId = editMatch[1].toUpperCase();
   const ticket = await Ticket.findOne({ ticketId });
   
   if (!ticket) {
-    await telegramSendMessage(
-      chat.id,
-      `❌ Ticket <b>${ticketId}</b> not found.`,
-      msg.message_id
-    );
+    await telegramSendMessage(chat.id, `❌ Ticket <b>${ticketId}</b> not found.`, msg.message_id);
     return NextResponse.json({ ok: true });
   }
   
-  if (ticket.status === "PENDING") {
-    await telegramSendMessage(
-      chat.id,
-      `⚠️ Ticket <b>${ticketId}</b> is already pending/open.`,
-      msg.message_id
-    );
-    return NextResponse.json({ ok: true });
+  // 🔍 DEBUG: Log original ticket data before edit
+  console.log(`[EDIT START] Ticket ${ticketId} original data:`, {
+    description: ticket.description,
+    photosCount: ticket.photos?.length || 0,
+    videosCount: ticket.videos?.length || 0,
+    photos: ticket.photos,
+  });
+
+  // Determine if it was just "/edit T123" or "/edit T123 priority"
+  const remainingText = incomingText.substring(editMatch[0].length).trim();
+  const fieldMapping: Record<string, string> = {
+    "priority": "priority", "category": "category", "location": "location",
+    "subcategory": "subcategory", "subcat": "subcategory", "agency": "agency",
+    "date": "agency_date", "time": "agency_time_slot", "description": "description", "desc": "description"
+  };
+  const targetField = fieldMapping[remainingText.toLowerCase()] || null;
+
+  // Start the edit wizard
+  const editHeader = targetField ? `✏️ <b>Change ${remainingText} for #${ticketId}</b>` : `✏️ <b>Edit Ticket #${ticketId}</b>`;
+  const initialMsg = `${editHeader}\n⚡ Loading wizard...\n\n${targetField ? 'Updating specific field...' : '📝 Fill out the form to update ticket data.'}`;
+  const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
+  const botMessageId = (botRes as any)?.result?.message_id;
+
+  if (botMessageId) {
+    let categoryId = null;
+    let categoryDisplay = ticket.category;
+    let subCategoryId = null;
+    let subCategoryDisplay = ticket.subCategory;
+    
+    if (ticket.category) {
+      const catDoc = await Category.findOne({ $or: [{ name: ticket.category }, { displayName: ticket.category }] }).lean();
+      categoryId = catDoc ? String(catDoc._id) : null;
+      categoryDisplay = catDoc?.displayName || ticket.category;
+      
+      if (ticket.subCategory) {
+        const subDoc = await SubCategory.findOne({ categoryId, name: ticket.subCategory }).lean();
+        subCategoryId = subDoc ? String(subDoc._id) : null;
+        subCategoryDisplay = subDoc?.name || ticket.subCategory;
+      }
+    }
+
+    // Parse location back to path format if it exists
+    let locationPath: { id: string; name: string }[] = [];
+    if (ticket.location) {
+      // Convert "Floor → Room → Item" back to path array
+      const locationParts = ticket.location.split(' → ');
+      locationPath = locationParts.map((name, idx) => ({
+        id: `location_${idx}`, // Placeholder ID since we don't have the original IDs
+        name: name.trim()
+      }));
+    }
+
+    // Parse source/target locations if they exist (for transfer category)
+    let sourceLocationPath: { id: string; name: string }[] = [];
+    let targetLocationPath: { id: string; name: string }[] = [];
+    if (ticket.sourceLocation) {
+      const sourceParts = ticket.sourceLocation.split(' → ');
+      sourceLocationPath = sourceParts.map((name, idx) => ({
+        id: `source_${idx}`,
+        name: name.trim()
+      }));
+    }
+    if (ticket.targetLocation) {
+      const targetParts = ticket.targetLocation.split(' → ');
+      targetLocationPath = targetParts.map((name, idx) => ({
+        id: `target_${idx}`,
+        name: name.trim()
+      }));
+    }
+
+    // Parse agency date to month/year if it exists
+    let agencyMonth = null;
+    let agencyYear = null;
+    if (ticket.agencyDate) {
+      const agencyDateObj = new Date(ticket.agencyDate);
+      agencyMonth = agencyDateObj.getMonth();
+      agencyYear = agencyDateObj.getFullYear();
+    }
+
+    // Parse agency time slot
+    let agencyTimeSlot = null;
+    if (ticket.agencyTime) {
+      agencyTimeSlot = ticket.agencyTime.toLowerCase().includes('first') ? 'first_half' : 'second_half';
+    }
+
+    await WizardSession.create({
+      chatId: chat.id, 
+      userId: msg.from.id, 
+      botMessageId, 
+      originalMessageId: msg.message_id,
+      originalText: ticket.description, 
+      editingTicketId: ticket.ticketId,
+      category: categoryId, 
+      categoryDisplay, 
+      subCategoryId, 
+      subCategoryDisplay,
+      priority: ticket.priority,
+      isPartialEdit: !!targetField, 
+      targetField,
+      photos: ticket.photos || [], 
+      videos: ticket.videos || [],
+      // Preserve location data
+      locationPath,
+      locationComplete: locationPath.length > 0,
+      sourceLocationPath,
+      sourceLocationComplete: sourceLocationPath.length > 0,
+      targetLocationPath,
+      targetLocationComplete: targetLocationPath.length > 0,
+      // Preserve agency data
+      agencyRequired: ticket.agencyName && ticket.agencyName !== 'NONE' && ticket.agencyName !== '__NONE__',
+      agencyName: ticket.agencyName || null,
+      agencyMonth,
+      agencyYear,
+      agencyDate: ticket.agencyDate || null,
+      agencyDateSkipped: !ticket.agencyDate && ticket.agencyName && ticket.agencyName !== 'NONE',
+      agencyTimeSlot,
+      // Preserve add/repair choice
+      addOrRepairChoice: ticket.addOrRepairChoice || null,
+    });
+    
+    // 🔍 DEBUG: Log edit session creation
+    console.log(`[EDIT SESSION] Created edit session for ${ticketId}:`, {
+      isPartialEdit: !!targetField,
+      targetField,
+      originalText: ticket.description,
+      photosCount: ticket.photos?.length || 0,
+      videosCount: ticket.videos?.length || 0,
+      locationPreserved: locationPath.length > 0,
+      agencyPreserved: !!ticket.agencyName,
+    });
+    
+    await refreshWizardUI({ botMessageId }, chat.id, botMessageId);
   }
-  
-  // Reopen the ticket
-  const reopenedBy = msg.from?.username || 
-                    `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
-                    "Unknown";
-  
-  ticket.status = "PENDING";
-  ticket.completedBy = null;
-  ticket.completedAt = null;
-  await ticket.save();
-  
-  // Send confirmation
-  const msgText = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n` +
-                 `📝 ${ticket.description}\n` +
-                 `📂 ${ticket.category || "Unknown"}\n` +
-                 `📍 ${ticket.location || "No location"}\n\n` +
-                 `👤 Reopened by: ${reopenedBy}`;
-  
-  await telegramSendMessage(
-    chat.id,
-    msgText,
-    msg.message_id
-  );
-  
   return NextResponse.json({ ok: true });
+}
+
+// ========== REOPEN TICKET COMMAND HANDLING ==========
+// Supports: "open T123" or "/open T123" or "reopen T123" or "/reopen T123"
+const reopenMatch = incomingText.match(/^(?:open|reopen|\/open|\/reopen)\s*(t\d+)?/i);
+if (reopenMatch && !msg.reply_to_message) {
+    // Extract ticket number from message
+    const ticketMatch = incomingText.match(/T(\d+)/i);
+    if (!ticketMatch) {
+      await telegramSendMessage(chat.id, "📝 Please provide the ticket number.\n\nExample: <code>open T123</code>", msg.message_id);
+      return NextResponse.json({ ok: true });
+    }
+  
+    const ticketId = `T${ticketMatch[1]}`;
+    const ticket = await Ticket.findOne({ ticketId });
+    if (!ticket) {
+      await telegramSendMessage(chat.id, `❌ Ticket <b>${ticketId}</b> not found.`, msg.message_id);
+      return NextResponse.json({ ok: true });
+    }
+    
+    if (ticket.status === "PENDING") {
+      await telegramSendMessage(chat.id, `⚠️ Ticket <b>${ticketId}</b> is already pending/open.`, msg.message_id);
+      return NextResponse.json({ ok: true });
+    }
+    
+    // Reopen the ticket
+    ticket.status = "PENDING";
+    ticket.completedBy = null; ticket.completedAt = null;
+    await ticket.save();
+    
+    const msgText = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n📝 ${ticket.description}\n👤 Reopened by: ${msg.from?.username || "Unknown"}`;
+    await telegramSendMessage(chat.id, msgText, msg.message_id);
+    return NextResponse.json({ ok: true });
 }
 
 // ========== ASSIGN AGENCY COMMAND HANDLING ==========
@@ -2393,62 +2555,143 @@ if (msg.reply_to_message) {
       ]
     });
     
-    if (ticket) {
-      // For targeted edits, we need the original category ID to build the field list
-      let categoryId = null;
-      let categoryDisplay = ticket.category;
-      if (ticket.category) {
-        const catDoc = await Category.findOne({ 
-          $or: [{ name: ticket.category }, { displayName: ticket.category }] 
-        }).lean();
-        categoryId = catDoc ? String(catDoc._id) : null;
-        categoryDisplay = catDoc?.displayName || ticket.category;
-      }
-
-      // Send initial "Processing" message
-      const editHeader = targetField ? `✏️ <b>Change ${remainingText} for #${ticket.ticketId}</b>` : `✏️ <b>Edit Ticket #${ticket.ticketId}</b>`;
-      const initialMsg = `${editHeader}\n⚡ Loading wizard...\n\n${targetField ? 'Updating specific field...' : '📝 Fill out the form to replace all ticket data.'}`;
-      const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
-      
-      const botMessageId = (botRes as any)?.result?.message_id;
-      
-      if (botMessageId) {
-        const newSession = await WizardSession.create({
-          chatId: chat.id,
-          userId: msg.from.id,
-          botMessageId,
-          originalMessageId: msg.message_id,
-          originalText: ticket.description, 
-          editingTicketId: ticket.ticketId, 
+      if (ticket) {
+        // For targeted edits, we need the original category ID to build the field list
+        let categoryId = null;
+        let categoryDisplay = ticket.category;
+        let subCategoryId = null;
+        let subCategoryDisplay = ticket.subCategory;
+        
+        if (ticket.category) {
+          const catDoc = await Category.findOne({ 
+            $or: [{ name: ticket.category }, { displayName: ticket.category }] 
+          }).lean();
+          categoryId = catDoc ? String(catDoc._id) : null;
+          categoryDisplay = catDoc?.displayName || ticket.category;
           
-          // Pre-fill category if possible so rules load correctly
-          category: categoryId,
-          categoryDisplay,
-          
-          // If a specific field is targeted, mark it as a partial edit
-          isPartialEdit: !!targetField,
-          targetField,
+          if (ticket.subCategory) {
+            const subDoc = await SubCategory.findOne({ categoryId, name: ticket.subCategory }).lean();
+            subCategoryId = subDoc ? String(subDoc._id) : null;
+            subCategoryDisplay = subDoc?.name || ticket.subCategory;
+          }
+        }
 
-          // Other fields start blank
-          subCategoryId: null,
-          subCategoryDisplay: null,
-          priority: null,
-          locationComplete: false,
-          locationPath: [],
-          sourceLocationComplete: false,
-          sourceLocationPath: [],
-          targetLocationComplete: false,
-          targetLocationPath: [],
-          agencyRequired: null,
-          agencyName: null,
-          agencyDate: null,
-          agencyTimeSlot: null,
-          addOrRepairChoice: null,
-          photos: [],
-          videos: [],
-          additionalFieldValues: {},
-          createdAt: new Date(),
-        });
+        // Send initial "Processing" message
+        const editHeader = targetField ? `✏️ <b>Change ${remainingText} for #${ticket.ticketId}</b>` : `✏️ <b>Edit Ticket #${ticket.ticketId}</b>`;
+        const initialMsg = `${editHeader}\n⚡ Loading wizard...\n\n${targetField ? 'Updating specific field...' : '📝 Fill out the form to replace all ticket data.'}`;
+        const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
+        
+        const botMessageId = (botRes as any)?.result?.message_id;
+        
+        if (botMessageId) {
+          // Process any media attached to the /edit command message itself
+          const hasPhoto = !!(msg.photo || (msg.document && msg.document.mime_type?.startsWith('image/')));
+          const hasVideo = !!msg.video;
+          
+          let initialPhotos = [...(ticket.photos || [])];
+          let initialVideos = [...(ticket.videos || [])];
+          
+          if (hasPhoto) {
+            const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
+            if (fileId) {
+              const photoUrl = await fastProcessTelegramPhoto(fileId);
+              if (photoUrl) initialPhotos.push(photoUrl);
+            }
+          }
+          
+          if (hasVideo && msg.video?.file_id) {
+            const videoUrl = await fastProcessTelegramVideo(msg.video.file_id);
+            if (videoUrl) initialVideos.push(videoUrl);
+          }
+
+          // Parse location back to path format if it exists
+          let locationPath: { id: string; name: string }[] = [];
+          if (ticket.location) {
+            const locationParts = ticket.location.split(' → ');
+            locationPath = locationParts.map((name, idx) => ({
+              id: `location_${idx}`,
+              name: name.trim()
+            }));
+          }
+
+          // Parse source/target locations if they exist (for transfer category)
+          let sourceLocationPath: { id: string; name: string }[] = [];
+          let targetLocationPath: { id: string; name: string }[] = [];
+          if (ticket.sourceLocation) {
+            const sourceParts = ticket.sourceLocation.split(' → ');
+            sourceLocationPath = sourceParts.map((name, idx) => ({
+              id: `source_${idx}`,
+              name: name.trim()
+            }));
+          }
+          if (ticket.targetLocation) {
+            const targetParts = ticket.targetLocation.split(' → ');
+            targetLocationPath = targetParts.map((name, idx) => ({
+              id: `target_${idx}`,
+              name: name.trim()
+            }));
+          }
+
+          // Parse agency date to month/year if it exists
+          let agencyMonth = null;
+          let agencyYear = null;
+          if (ticket.agencyDate) {
+            const agencyDateObj = new Date(ticket.agencyDate);
+            agencyMonth = agencyDateObj.getMonth();
+            agencyYear = agencyDateObj.getFullYear();
+          }
+
+          // Parse agency time slot
+          let agencyTimeSlot = null;
+          if (ticket.agencyTime) {
+            agencyTimeSlot = ticket.agencyTime.toLowerCase().includes('first') ? 'first_half' : 'second_half';
+          }
+
+          const newSession = await WizardSession.create({
+            chatId: chat.id,
+            userId: msg.from.id,
+            botMessageId,
+            originalMessageId: msg.message_id,
+            originalText: ticket.description, 
+            editingTicketId: ticket.ticketId, 
+            
+            // Pre-fill fields so they are not reset to defaults
+            category: categoryId,
+            categoryDisplay,
+            subCategoryId,
+            subCategoryDisplay,
+            priority: ticket.priority,
+            
+            // If a specific field is targeted, mark it as a partial edit
+            isPartialEdit: !!targetField,
+            targetField,
+
+            // Pre-fill media from existing ticket + any new media in the /edit message
+            photos: initialPhotos,
+            videos: initialVideos,
+
+            // Preserve location data
+            locationPath,
+            locationComplete: locationPath.length > 0,
+            sourceLocationPath,
+            sourceLocationComplete: sourceLocationPath.length > 0,
+            targetLocationPath,
+            targetLocationComplete: targetLocationPath.length > 0,
+            
+            // Preserve agency data
+            agencyRequired: ticket.agencyName && ticket.agencyName !== 'NONE' && ticket.agencyName !== '__NONE__',
+            agencyName: ticket.agencyName || null,
+            agencyMonth,
+            agencyYear,
+            agencyDate: ticket.agencyDate || null,
+            agencyDateSkipped: !ticket.agencyDate && ticket.agencyName && ticket.agencyName !== 'NONE',
+            agencyTimeSlot,
+            
+            // Preserve add/repair choice
+            addOrRepairChoice: ticket.addOrRepairChoice || null,
+            additionalFieldValues: {},
+            createdAt: new Date(),
+          });
         
         // Refresh UI with the wizard
         await refreshWizardUI(newSession, chat.id, botMessageId);
@@ -2658,6 +2901,19 @@ if (msg.reply_to_message) {
     const hasText = incomingText.length > 1; // Responsive threshold
     
     if (hasPhoto || hasVideo || hasText) {
+      // Check if this is a reply to an existing ticket
+      let replyTicket = null;
+      if (msg.reply_to_message) {
+        const replyId = msg.reply_to_message.message_id;
+        replyTicket = await Ticket.findOne({
+          $or: [
+            { telegramMessageId: replyId },
+            { originalMessageId: replyId },
+            { completionMessageId: replyId }
+          ]
+        });
+      }
+
       // 🔍 CRITICAL FIX: Check if THIS USER has an existing active session
       // This prevents photos from being attached to the wrong user's ticket
       const existingSession = await WizardSession.findOne({
@@ -2667,54 +2923,150 @@ if (msg.reply_to_message) {
 
       // === CASE 1: User has an existing session - add media to it ===
       if (existingSession && (hasPhoto || hasVideo)) {
-        // Process media in parallel
         let photoUrl: string | null = null;
         let videoUrl: string | null = null;
         
         if (hasPhoto) {
           const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
-          if (fileId) {
-            photoUrl = await fastProcessTelegramPhoto(fileId);
-          }
+          if (fileId) photoUrl = await fastProcessTelegramPhoto(fileId);
         }
-        
         if (hasVideo && msg.video?.file_id) {
           videoUrl = await fastProcessTelegramVideo(msg.video.file_id);
         }
         
-        // Add media to existing session
         const updateData: any = {};
-        if (photoUrl) {
-          updateData.$push = { ...updateData.$push, photos: photoUrl };
-        }
-        if (videoUrl) {
-          updateData.$push = { ...updateData.$push, videos: videoUrl };
-        }
+        if (photoUrl) updateData.$push = { ...updateData.$push, photos: photoUrl };
+        if (videoUrl) updateData.$push = { ...updateData.$push, videos: videoUrl };
         
-        // Also update description if text was provided with the media
-        if (hasText && incomingText) {
-          // Append to existing description or replace if it was just "Photo attachment"
-          const currentText = existingSession.originalText;
-          if (currentText === "Photo attachment" || currentText === "Video attachment" || currentText === "New Ticket") {
-            updateData.originalText = incomingText;
-          }
+        // Update description only if it's currently a placeholder
+        const currentText = existingSession.originalText;
+        const isPlaceholder = !currentText || ["Photo attachment", "Video attachment", "New Ticket", "New entry"].includes(currentText);
+        if (isPlaceholder && hasText) {
+          updateData.originalText = incomingText;
         }
         
         if (Object.keys(updateData).length > 0) {
           await WizardSession.findByIdAndUpdate(existingSession._id, updateData);
         }
         
-        // Refresh the wizard UI to show updated media count
         await refreshWizardUI(existingSession, chat.id, existingSession.botMessageId);
-        
-        // Send a brief confirmation that media was added (without creating new wizard)
-        const mediaType = photoUrl ? "📸 Photo" : "🎬 Video";
-        await telegramSendMessage(
-          chat.id,
-          `${mediaType} added to your ticket. Total: ${(existingSession.photos?.length || 0) + (photoUrl ? 1 : 0)} photos, ${(existingSession.videos?.length || 0) + (videoUrl ? 1 : 0)} videos`,
-          msg.message_id
-        );
-        
+        return NextResponse.json({ ok: true });
+      }
+
+      // === CASE 1.5: Reply to ticket with media (but no active session) ===
+      if (replyTicket && (hasPhoto || hasVideo)) {
+        // Auto-start an edit session so media is linked to THIS ticket
+        const initialMsg = `✏️ <b>Adding media to #${replyTicket.ticketId}</b>\n⚡ Processing...`;
+        const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
+        const botMessageId = (botRes as any)?.result?.message_id;
+
+        if (botMessageId) {
+          let photoUrl: string | null = null;
+          let videoUrl: string | null = null;
+          
+          if (hasPhoto) {
+            const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
+            if (fileId) photoUrl = await fastProcessTelegramPhoto(fileId);
+          }
+          if (hasVideo && msg.video?.file_id) {
+            videoUrl = await fastProcessTelegramVideo(msg.video.file_id);
+          }
+
+          let categoryId = null;
+          let categoryDisplay = replyTicket.category;
+          let subCategoryId = null;
+          let subCategoryDisplay = replyTicket.subCategory;
+          
+          if (replyTicket.category) {
+            const catDoc = await Category.findOne({ $or: [{ name: replyTicket.category }, { displayName: replyTicket.category }] }).lean();
+            categoryId = catDoc ? String(catDoc._id) : null;
+            categoryDisplay = catDoc?.displayName || replyTicket.category;
+            
+            if (replyTicket.subCategory) {
+              const subDoc = await SubCategory.findOne({ categoryId, name: replyTicket.subCategory }).lean();
+              subCategoryId = subDoc ? String(subDoc._id) : null;
+              subCategoryDisplay = subDoc?.name || replyTicket.subCategory;
+            }
+          }
+
+          // Parse location back to path format if it exists
+          let locationPath: { id: string; name: string }[] = [];
+          if (replyTicket.location) {
+            const locationParts = replyTicket.location.split(' → ');
+            locationPath = locationParts.map((name, idx) => ({
+              id: `location_${idx}`,
+              name: name.trim()
+            }));
+          }
+
+          // Parse source/target locations if they exist (for transfer category)
+          let sourceLocationPath: { id: string; name: string }[] = [];
+          let targetLocationPath: { id: string; name: string }[] = [];
+          if (replyTicket.sourceLocation) {
+            const sourceParts = replyTicket.sourceLocation.split(' → ');
+            sourceLocationPath = sourceParts.map((name, idx) => ({
+              id: `source_${idx}`,
+              name: name.trim()
+            }));
+          }
+          if (replyTicket.targetLocation) {
+            const targetParts = replyTicket.targetLocation.split(' → ');
+            targetLocationPath = targetParts.map((name, idx) => ({
+              id: `target_${idx}`,
+              name: name.trim()
+            }));
+          }
+
+          // Parse agency date to month/year if it exists
+          let agencyMonth = null;
+          let agencyYear = null;
+          if (replyTicket.agencyDate) {
+            const agencyDateObj = new Date(replyTicket.agencyDate);
+            agencyMonth = agencyDateObj.getMonth();
+            agencyYear = agencyDateObj.getFullYear();
+          }
+
+          // Parse agency time slot
+          let agencyTimeSlot = null;
+          if (replyTicket.agencyTime) {
+            agencyTimeSlot = replyTicket.agencyTime.toLowerCase().includes('first') ? 'first_half' : 'second_half';
+          }
+
+          const newSession = await WizardSession.create({
+            chatId: chat.id, 
+            userId: msg.from.id, 
+            botMessageId, 
+            originalMessageId: msg.message_id,
+            originalText: replyTicket.description, 
+            editingTicketId: replyTicket.ticketId,
+            category: categoryId, 
+            categoryDisplay,
+            subCategoryId, 
+            subCategoryDisplay,
+            priority: replyTicket.priority,
+            photos: [...(replyTicket.photos || []), ...(photoUrl ? [photoUrl] : [])],
+            videos: [...(replyTicket.videos || []), ...(videoUrl ? [videoUrl] : [])],
+            // Preserve location data
+            locationPath,
+            locationComplete: locationPath.length > 0,
+            sourceLocationPath,
+            sourceLocationComplete: sourceLocationPath.length > 0,
+            targetLocationPath,
+            targetLocationComplete: targetLocationPath.length > 0,
+            // Preserve agency data
+            agencyRequired: replyTicket.agencyName && replyTicket.agencyName !== 'NONE' && replyTicket.agencyName !== '__NONE__',
+            agencyName: replyTicket.agencyName || null,
+            agencyMonth,
+            agencyYear,
+            agencyDate: replyTicket.agencyDate || null,
+            agencyDateSkipped: !replyTicket.agencyDate && replyTicket.agencyName && replyTicket.agencyName !== 'NONE',
+            agencyTimeSlot,
+            // Preserve add/repair choice
+            addOrRepairChoice: replyTicket.addOrRepairChoice || null,
+          });
+          
+          await refreshWizardUI(newSession, chat.id, botMessageId);
+        }
         return NextResponse.json({ ok: true });
       }
       
@@ -2771,6 +3123,15 @@ if (msg.reply_to_message) {
         const description = incomingText || (photoUrl ? "Photo attachment" : (videoUrl ? "Video attachment" : "New Ticket"));
         const initialPhotos = photoUrl ? [photoUrl] : [];
         const initialVideos = videoUrl ? [videoUrl] : [];
+        
+        // 🔍 DEBUG: Log new ticket session creation
+        console.log('[NEW TICKET] Creating wizard session:', {
+          description,
+          photoUrl,
+          videoUrl,
+          photosCount: initialPhotos.length,
+          videosCount: initialVideos.length,
+        });
         
         // Create session with THIS user's ID to ensure proper association
         const newSession = await WizardSession.create({
