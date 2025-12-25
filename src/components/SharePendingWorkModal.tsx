@@ -11,6 +11,8 @@ interface Ticket {
   photos?: string[];
   videos?: string[];
   status: string;
+  category?: string;
+  subCategory?: string;
 }
 
 interface SharePendingWorkModalProps {
@@ -57,6 +59,15 @@ export function generatePendingWorkMessage(agencyName: string, tickets: Ticket[]
   const formatTicket = (ticket: Ticket, index: number): string => {
     let text = `${ticketNumber}) Ticket: *${ticket.ticketId}*\n`;
     text += `   Issue: ${ticket.description || "No description"}\n`;
+    
+    // Add category and subcategory
+    if (ticket.category) {
+      const categoryDisplay = ticket.subCategory
+        ? `${ticket.category} → ${ticket.subCategory}`
+        : ticket.category;
+      text += `   Category: ${categoryDisplay}\n`;
+    }
+    
     text += `   Location: ${ticket.location || "Not specified"}\n`;
     
     // Determine source (In-house vs Outsource)

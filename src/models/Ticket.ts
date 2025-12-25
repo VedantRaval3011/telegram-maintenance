@@ -27,6 +27,8 @@ export interface ITicket extends Document {
   sourceLocation?: string | null; // For transfer category - from location
   targetLocation?: string | null; // For transfer category - to location
   addOrRepairChoice?: "add" | "repair" | null; // Add new or Repair choice
+  assignedTo?: mongoose.Types.ObjectId | null; // Assigned user for purchase tickets
+  assignedAt?: Date | null; // When the ticket was assigned
 }
 
 const TicketSchema = new mongoose.Schema<ITicket>({
@@ -65,6 +67,8 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   sourceLocation: { type: String, default: null },
   targetLocation: { type: String, default: null },
   addOrRepairChoice: { type: String, enum: ["add", "repair", null], default: null },
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  assignedAt: { type: Date, default: null },
 });
 
 export const Ticket: Model<ITicket> =

@@ -19,6 +19,7 @@ export default function Navbar() {
     { name: "Workflows", path: "/masters/workflow-rules" },
     { name: "Informations", path: "/masters/informations" },
     { name: "Agencies", path: "/masters/agencies" },
+    { name: "Purchase", path: "/purchase" },
     { name: "Summary", path: "/summary" },
     { name: "Settings", path: "/settings" },
   ];

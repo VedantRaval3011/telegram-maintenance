@@ -2301,30 +2301,31 @@ if (editMatch && !msg.reply_to_message) {
       originalMessageId: msg.message_id,
       originalText: ticket.description, 
       editingTicketId: ticket.ticketId,
-      category: categoryId, 
-      categoryDisplay, 
-      subCategoryId, 
-      subCategoryDisplay,
-      priority: ticket.priority,
+      // Pre-fill fields - but RESET if this is a partial edit for that specific field
+      category: targetField === "category" ? null : categoryId, 
+      categoryDisplay: targetField === "category" ? null : categoryDisplay, 
+      subCategoryId: targetField === "subcategory" ? null : subCategoryId, 
+      subCategoryDisplay: targetField === "subcategory" ? null : subCategoryDisplay,
+      priority: targetField === "priority" ? null : ticket.priority,
       isPartialEdit: !!targetField, 
       targetField,
       photos: ticket.photos || [], 
       videos: ticket.videos || [],
-      // Preserve location data
-      locationPath,
-      locationComplete: locationPath.length > 0,
-      sourceLocationPath,
-      sourceLocationComplete: sourceLocationPath.length > 0,
-      targetLocationPath,
-      targetLocationComplete: targetLocationPath.length > 0,
-      // Preserve agency data
-      agencyRequired: ticket.agencyName && ticket.agencyName !== 'NONE' && ticket.agencyName !== '__NONE__',
-      agencyName: ticket.agencyName || null,
-      agencyMonth,
-      agencyYear,
-      agencyDate: ticket.agencyDate || null,
-      agencyDateSkipped: !ticket.agencyDate && ticket.agencyName && ticket.agencyName !== 'NONE',
-      agencyTimeSlot,
+      // Preserve location data - but RESET if this is a partial edit for that field
+      locationPath: targetField === "location" ? [] : locationPath,
+      locationComplete: targetField === "location" ? false : locationPath.length > 0,
+      sourceLocationPath: targetField === "source_location" ? [] : sourceLocationPath,
+      sourceLocationComplete: targetField === "source_location" ? false : sourceLocationPath.length > 0,
+      targetLocationPath: targetField === "target_location" ? [] : targetLocationPath,
+      targetLocationComplete: targetField === "target_location" ? false : targetLocationPath.length > 0,
+      // Preserve agency data - but RESET if this is a partial edit for that field
+      agencyRequired: targetField === "agency" ? null : (ticket.agencyName && ticket.agencyName !== 'NONE' && ticket.agencyName !== '__NONE__'),
+      agencyName: targetField === "agency" ? null : (ticket.agencyName || null),
+      agencyMonth: (targetField === "agency" || targetField === "agency_date") ? null : agencyMonth,
+      agencyYear: (targetField === "agency" || targetField === "agency_date") ? null : agencyYear,
+      agencyDate: targetField === "agency_date" ? null : (ticket.agencyDate || null),
+      agencyDateSkipped: targetField === "agency_date" ? false : (!ticket.agencyDate && ticket.agencyName && ticket.agencyName !== 'NONE'),
+      agencyTimeSlot: targetField === "agency_time_slot" ? null : agencyTimeSlot,
       // Preserve add/repair choice
       addOrRepairChoice: ticket.addOrRepairChoice || null,
     });
@@ -2655,12 +2656,12 @@ if (msg.reply_to_message) {
             originalText: ticket.description, 
             editingTicketId: ticket.ticketId, 
             
-            // Pre-fill fields so they are not reset to defaults
-            category: categoryId,
-            categoryDisplay,
-            subCategoryId,
-            subCategoryDisplay,
-            priority: ticket.priority,
+            // Pre-fill fields - but RESET if this is a partial edit for that specific field
+            category: targetField === "category" ? null : categoryId,
+            categoryDisplay: targetField === "category" ? null : categoryDisplay,
+            subCategoryId: targetField === "subcategory" ? null : subCategoryId,
+            subCategoryDisplay: targetField === "subcategory" ? null : subCategoryDisplay,
+            priority: targetField === "priority" ? null : ticket.priority,
             
             // If a specific field is targeted, mark it as a partial edit
             isPartialEdit: !!targetField,
@@ -2670,22 +2671,22 @@ if (msg.reply_to_message) {
             photos: initialPhotos,
             videos: initialVideos,
 
-            // Preserve location data
-            locationPath,
-            locationComplete: locationPath.length > 0,
-            sourceLocationPath,
-            sourceLocationComplete: sourceLocationPath.length > 0,
-            targetLocationPath,
-            targetLocationComplete: targetLocationPath.length > 0,
+            // Preserve location data - but RESET if this is a partial edit for that field
+            locationPath: targetField === "location" ? [] : locationPath,
+            locationComplete: targetField === "location" ? false : locationPath.length > 0,
+            sourceLocationPath: targetField === "source_location" ? [] : sourceLocationPath,
+            sourceLocationComplete: targetField === "source_location" ? false : sourceLocationPath.length > 0,
+            targetLocationPath: targetField === "target_location" ? [] : targetLocationPath,
+            targetLocationComplete: targetField === "target_location" ? false : targetLocationPath.length > 0,
             
-            // Preserve agency data
-            agencyRequired: ticket.agencyName && ticket.agencyName !== 'NONE' && ticket.agencyName !== '__NONE__',
-            agencyName: ticket.agencyName || null,
-            agencyMonth,
-            agencyYear,
-            agencyDate: ticket.agencyDate || null,
-            agencyDateSkipped: !ticket.agencyDate && ticket.agencyName && ticket.agencyName !== 'NONE',
-            agencyTimeSlot,
+            // Preserve agency data - but RESET if this is a partial edit for that field
+            agencyRequired: targetField === "agency" ? null : (ticket.agencyName && ticket.agencyName !== 'NONE' && ticket.agencyName !== '__NONE__'),
+            agencyName: targetField === "agency" ? null : (ticket.agencyName || null),
+            agencyMonth: (targetField === "agency" || targetField === "agency_date") ? null : agencyMonth,
+            agencyYear: (targetField === "agency" || targetField === "agency_date") ? null : agencyYear,
+            agencyDate: targetField === "agency_date" ? null : (ticket.agencyDate || null),
+            agencyDateSkipped: targetField === "agency_date" ? false : (!ticket.agencyDate && ticket.agencyName && ticket.agencyName !== 'NONE'),
+            agencyTimeSlot: targetField === "agency_time_slot" ? null : agencyTimeSlot,
             
             // Preserve add/repair choice
             addOrRepairChoice: ticket.addOrRepairChoice || null,

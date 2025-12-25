@@ -261,6 +261,16 @@ export default function UserMasterPage() {
     categories: [] as string[],
   });
 
+  // Add User Modal state
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [addUserFormData, setAddUserFormData] = useState({
+    username: "",
+    firstName: "",
+    lastName: "",
+    phone: "",
+  });
+  const [isAddingUser, setIsAddingUser] = useState(false);
+
   // Fetch categories and subcategories
   useEffect(() => {
     const fetchData = async () => {
@@ -442,6 +452,48 @@ export default function UserMasterPage() {
     }
   };
 
+  // Handle Add User
+  const handleAddUser = async () => {
+    if (!addUserFormData.username && !addUserFormData.firstName) {
+      toast.error("Please enter at least a username or first name");
+      return;
+    }
+
+    setIsAddingUser(true);
+    try {
+      // Generate a unique telegramId for manual users (negative to avoid conflicts with real IDs)
+      const manualTelegramId = -Math.floor(Date.now() + Math.random() * 10000);
+
+      const res = await fetch("/api/masters/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telegramId: manualTelegramId,
+          username: addUserFormData.username || undefined,
+          firstName: addUserFormData.firstName || undefined,
+          lastName: addUserFormData.lastName || undefined,
+          phone: addUserFormData.phone || undefined,
+          role: "member",
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        toast.success("User added successfully!");
+        setIsAddUserModalOpen(false);
+        setAddUserFormData({ username: "", firstName: "", lastName: "", phone: "" });
+        mutate();
+      } else {
+        toast.error(data.error || "Failed to add user");
+      }
+    } catch (err) {
+      console.error("Error adding user", err);
+      toast.error("An error occurred while adding user");
+    } finally {
+      setIsAddingUser(false);
+    }
+  };
+
   const hasActiveFilters = search || roleFilter || sourceFilter;
 
   if (error)
@@ -512,6 +564,22 @@ export default function UserMasterPage() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Add User Button */}
+              <button
+                onClick={() => setIsAddUserModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all border shadow-sm bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                  />
+                </svg>
+                Add User
+              </button>
+
               <button
                 onClick={handleSyncFromTelegram}
                 disabled={syncing}
@@ -1156,6 +1224,152 @@ export default function UserMasterPage() {
                   <button onClick={() => setFormData(prev => ({ ...prev, subCategories: [] }))} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">Clear All</button>
                   <button onClick={() => setIsChartPopupOpen(false)} className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-lg shadow-lg active:scale-95">Done</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add User Modal */}
+        {isAddUserModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-green-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900">Add New User</h2>
+                      <p className="text-xs text-gray-500">Manually add a user for Telegram access</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsAddUserModalOpen(false);
+                      setAddUserFormData({ username: "", firstName: "", lastName: "", phone: "" });
+                    }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 hover:bg-gray-100 rounded-lg"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Form Content */}
+              <div className="p-6 space-y-4">
+                {/* Username */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                    <svg className="w-4 h-4 inline-block mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                    </svg>
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={addUserFormData.username}
+                    onChange={(e) => setAddUserFormData({ ...addUserFormData, username: e.target.value.replace(/^@/, '') })}
+                    placeholder="e.g., john_doe (without @)"
+                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all placeholder:text-gray-400"
+                  />
+                </div>
+
+                {/* First Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                    <svg className="w-4 h-4 inline-block mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={addUserFormData.firstName}
+                    onChange={(e) => setAddUserFormData({ ...addUserFormData, firstName: e.target.value })}
+                    placeholder="e.g., John"
+                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all placeholder:text-gray-400"
+                  />
+                </div>
+
+                {/* Last Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    value={addUserFormData.lastName}
+                    onChange={(e) => setAddUserFormData({ ...addUserFormData, lastName: e.target.value })}
+                    placeholder="e.g., Doe (optional)"
+                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all placeholder:text-gray-400"
+                  />
+                </div>
+
+                {/* Phone Number */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                    <svg className="w-4 h-4 inline-block mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Mobile Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={addUserFormData.phone}
+                    onChange={(e) => setAddUserFormData({ ...addUserFormData, phone: e.target.value })}
+                    placeholder="e.g., 919876543210"
+                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all placeholder:text-gray-400"
+                  />
+                  <p className="text-xs text-gray-500 mt-1.5">Include country code without + sign</p>
+                </div>
+
+                {/* Info Note */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+                  <svg className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-blue-700">
+                    This user will be added as a <strong>Manual</strong> source user. They will appear in the user list and can be assigned subcategories for receiving relevant ticket notifications.
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setIsAddUserModalOpen(false);
+                    setAddUserFormData({ username: "", firstName: "", lastName: "", phone: "" });
+                  }}
+                  className="px-5 py-2.5 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddUser}
+                  disabled={isAddingUser || (!addUserFormData.username && !addUserFormData.firstName)}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAddingUser ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      Add User
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
