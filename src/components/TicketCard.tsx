@@ -255,99 +255,99 @@ export default function TicketCard({
       >
         {/* Header Section */}
         <div
-          className="px-4 py-2.5"
+          className="px-3 py-2"
           style={{
             backgroundColor: colors.accentLight,
             borderBottomWidth: '1px',
             borderBottomColor: colors.border
           }}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Row 1: Ticket Info */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               {/* Ticket ID */}
-              <span className="text-base font-black" style={{ color: colors.textDark }}>
+              <span className="text-sm font-black" style={{ color: colors.textDark }}>
                 {ticket.ticketId}
               </span>
 
               {/* Priority Badge */}
               <span className={getPriorityBadgeClass(ticket.priority)}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: priorityColor }}></span>
+                <span className="w-1 h-1 rounded-full" style={{ backgroundColor: priorityColor }}></span>
                 {ticket.priority?.toUpperCase() || "MED"}
               </span>
 
               {/* Status */}
-              <div className="flex items-center gap-1">
-                <span
-                  className={statusClass()}
-                  style={ticket.status === "PENDING" ? { backgroundColor: colors.accent, borderColor: colors.borderDark } : {}}
+              <span
+                className={statusClass()}
+                style={ticket.status === "PENDING" ? { backgroundColor: colors.accent, borderColor: colors.borderDark } : {}}
+              >
+                {ticket.status}
+              </span>
+              
+              {onScrollBack && (
+                <button
+                  onClick={() => onScrollBack()}
+                  className="p-0.5 rounded-full hover:bg-black/10 transition-colors"
+                  title="Scroll back to category"
                 >
-                  {ticket.status}
-                </span>
-                {onScrollBack && (
-                  <button
-                    onClick={() => onScrollBack()}
-                    className="p-1 rounded-full hover:bg-black/10 transition-colors"
-                    title="Scroll back to category"
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    style={{ color: colors.textDark }}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-7 w-7"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      style={{ color: colors.textDark }}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z" />
-                    </svg>
-                  </button>
-                )}
-              </div>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z" />
+                  </svg>
+                </button>
+              )}
             </div>
 
-            {/* Action Buttons - Hidden for read-only users */}
+            {/* Action Buttons - Compact icon-only buttons */}
             {!isReadOnly && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   onClick={() => onEditClick ? onEditClick() : setShowEditModal(true)}
-                  className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
+                  className="p-1.5 rounded-md hover:opacity-80 transition-all"
                   style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
                   title="Edit ticket"
                 >
-                  <Edit2 size={14} />
+                  <Edit2 size={12} />
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
+                  className="p-1.5 rounded-md hover:opacity-80 transition-all"
                   style={{ backgroundColor: colors.borderDark, color: colors.bgLight }}
                   title="Delete ticket"
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={12} />
                 </button>
                 <button
                   onClick={() => setShowShareModal(true)}
-                  className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
+                  className="p-1.5 rounded-md hover:opacity-80 transition-all"
                   style={{ backgroundColor: '#f97316', color: 'white' }}
                   title="Share ticket"
                 >
-                  <Share2 size={14} />
+                  <Share2 size={12} />
                 </button>
                 {ticket.status !== "COMPLETED" && (
                   <button
                     onClick={markCompleted}
-                    className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1"
+                    className="p-1.5 rounded-md hover:opacity-95 transition-all text-white"
                     style={{ backgroundColor: colors.textDark }}
                     title="Mark as completed"
                   >
-                    <Check size={14} />
+                    <Check size={12} />
                   </button>
                 )}
                 {ticket.status === "COMPLETED" && (
                   <button
                     onClick={reopenTicket}
-                    className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1 bg-amber-500"
+                    className="p-1.5 rounded-md hover:opacity-95 transition-all text-white bg-amber-500"
                     title="Reopen ticket"
                   >
-                    <RotateCcw size={14} />
+                    <RotateCcw size={12} />
                   </button>
                 )}
               </div>
