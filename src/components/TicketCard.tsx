@@ -20,7 +20,11 @@ import {
   Timer,
   RotateCcw,
   EyeOff,
-  Eye
+  Eye,
+  Share2,
+  MessageCircle,
+  Send,
+  Copy
 } from "lucide-react";
 
 interface Note {
@@ -72,7 +76,10 @@ export default function TicketCard({
   onScrollBack, 
   onEditClick,
   onExcludeFromSummary,
-  isExcludedFromSummary
+  isExcludedFromSummary,
+  // Access control props
+  isReadOnly = false,
+  hideTimeDetails = false
 }: { 
   ticket: any; 
   onStatusChange?: () => void; 
@@ -81,12 +88,17 @@ export default function TicketCard({
   onEditClick?: () => void;
   onExcludeFromSummary?: () => void;
   isExcludedFromSummary?: boolean;
+  // Access control
+  isReadOnly?: boolean;
+  hideTimeDetails?: boolean;
 }) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [notes, setNotes] = useState<Note[]>(ticket.notes || []);
   const [newNote, setNewNote] = useState("");
 
@@ -292,44 +304,54 @@ export default function TicketCard({
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => onEditClick ? onEditClick() : setShowEditModal(true)}
-                className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
-                style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
-                title="Edit ticket"
-              >
-                <Edit2 size={14} />
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
-                style={{ backgroundColor: colors.borderDark, color: colors.bgLight }}
-                title="Delete ticket"
-              >
-                <Trash2 size={14} />
-              </button>
-              {ticket.status !== "COMPLETED" && (
+            {/* Action Buttons - Hidden for read-only users */}
+            {!isReadOnly && (
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={markCompleted}
-                  className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1"
-                  style={{ backgroundColor: colors.textDark }}
-                  title="Mark as completed"
+                  onClick={() => onEditClick ? onEditClick() : setShowEditModal(true)}
+                  className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
+                  style={{ backgroundColor: colors.accentMedium, color: colors.textDark }}
+                  title="Edit ticket"
                 >
-                  <Check size={14} />
+                  <Edit2 size={14} />
                 </button>
-              )}
-              {ticket.status === "COMPLETED" && (
                 <button
-                  onClick={reopenTicket}
-                  className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1 bg-amber-500"
-                  title="Reopen ticket"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
+                  style={{ backgroundColor: colors.borderDark, color: colors.bgLight }}
+                  title="Delete ticket"
                 >
-                  <RotateCcw size={14} />
+                  <Trash2 size={14} />
                 </button>
-              )}
-            </div>
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  className="px-2.5 py-1.5 rounded-lg hover:opacity-80 transition-all flex items-center gap-1"
+                  style={{ backgroundColor: '#f97316', color: 'white' }}
+                  title="Share ticket"
+                >
+                  <Share2 size={14} />
+                </button>
+                {ticket.status !== "COMPLETED" && (
+                  <button
+                    onClick={markCompleted}
+                    className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1"
+                    style={{ backgroundColor: colors.textDark }}
+                    title="Mark as completed"
+                  >
+                    <Check size={14} />
+                  </button>
+                )}
+                {ticket.status === "COMPLETED" && (
+                  <button
+                    onClick={reopenTicket}
+                    className="px-2.5 py-1.5 rounded-lg hover:opacity-95 transition-all text-white flex items-center gap-1 bg-amber-500"
+                    title="Reopen ticket"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -394,7 +416,7 @@ export default function TicketCard({
             )}
           </div>
 
-          {/* Time and People Info */}
+          {/* Time and People Info - Conditionally hide time details */}
           <div
             className="rounded-lg p-3 mb-3 grid grid-cols-3 gap-3 text-sm"
             style={{ backgroundColor: colors.accentMedium }}
@@ -407,26 +429,34 @@ export default function TicketCard({
               <div className="font-bold truncate" style={{ color: colors.textDark }}>
                 {ticket.createdBy || "-"}
               </div>
-              <div className="text-[10px]" style={{ color: colors.text }}>
-                {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}
-              </div>
+              {!hideTimeDetails && (
+                <div className="text-[10px]" style={{ color: colors.text }}>
+                  {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}
+                </div>
+              )}
             </div>
 
-            {/* Time */}
-            <div>
-              <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.text }}>
-                <Clock size={12} /> Time
+            {/* Time - Hidden when hideTimeDetails is true */}
+            {!hideTimeDetails ? (
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.text }}>
+                  <Clock size={12} /> Time
+                </div>
+                <div className="font-bold" style={{ color: colors.textDark }}>
+                  {ticket.createdAt
+                    ? `${Math.floor((Date.now() - new Date(ticket.createdAt).getTime()) / (1000 * 60 * 60))}h ago`
+                    : "-"
+                  }
+                </div>
+                <div className="text-[10px]" style={{ color: colors.text }}>
+                  {ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
+                </div>
               </div>
-              <div className="font-bold" style={{ color: colors.textDark }}>
-                {ticket.createdAt
-                  ? `${Math.floor((Date.now() - new Date(ticket.createdAt).getTime()) / (1000 * 60 * 60))}h ago`
-                  : "-"
-                }
+            ) : (
+              <div className="flex items-center justify-center">
+                <span className="text-[10px] italic text-slate-400">Time hidden</span>
               </div>
-              <div className="text-[10px]" style={{ color: colors.text }}>
-                {ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
-              </div>
-            </div>
+            )}
 
             {/* Completed By */}
             {ticket.status === "COMPLETED" && ticket.completedBy ? (
@@ -437,9 +467,11 @@ export default function TicketCard({
                 <div className="font-bold truncate" style={{ color: colors.textDark }}>
                   {ticket.completedBy}
                 </div>
-                <div className="text-[10px]" style={{ color: colors.text }}>
-                  {ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString() : ""}
-                </div>
+                {!hideTimeDetails && (
+                  <div className="text-[10px]" style={{ color: colors.text }}>
+                    {ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString() : ""}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex items-center justify-center">
@@ -830,6 +862,224 @@ export default function TicketCard({
             autoPlay
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* Share Ticket Modal */}
+      {showShareModal && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowShareModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-orange-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 rounded-xl">
+                  <Share2 className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Share Ticket</h2>
+                  <p className="text-sm text-gray-600">{ticket.ticketId}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 sm:p-6">
+              {/* Message Preview */}
+              <div className="mb-6">
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Message Preview</label>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-48 overflow-y-auto text-sm text-gray-800 font-mono whitespace-pre-wrap">
+                  {(() => {
+                    const dateStr = ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
+                    let msg = `🎫 Ticket: ${ticket.ticketId}\n`;
+                    msg += `📋 Status: ${ticket.status}\n`;
+                    msg += `🔴 Priority: ${ticket.priority?.toUpperCase() || "MEDIUM"}\n\n`;
+                    msg += `📝 Issue: ${ticket.description || "No description"}\n\n`;
+                    if (ticket.category) {
+                      msg += `📂 Category: ${ticket.category}${ticket.subCategory ? " → " + ticket.subCategory : ""}\n`;
+                    }
+                    msg += `📍 Location: ${ticket.location || "Not specified"}\n`;
+                    if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
+                      msg += `🏢 Agency: ${ticket.agencyName}\n`;
+                      if (ticket.agencyDate) {
+                        msg += `📅 Scheduled: ${new Date(ticket.agencyDate).toLocaleDateString()}${ticket.agencyTime ? " at " + ticket.agencyTime : ""}\n`;
+                      }
+                    }
+                    msg += `\n👤 Created By: ${ticket.createdBy || "Unknown"}\n`;
+                    msg += `📅 Date: ${dateStr}\n`;
+                    if (ticket.status === "COMPLETED" && ticket.completedBy) {
+                      const completedDateStr = ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "";
+                      msg += `\n✅ Completed By: ${ticket.completedBy}${completedDateStr ? " on " + completedDateStr : ""}\n`;
+                    }
+                    if (ticket.photos && ticket.photos.length > 0) {
+                      msg += `\n📷 Photos (${ticket.photos.length}):\n`;
+                      ticket.photos.forEach((url: string) => { msg += `${url}\n`; });
+                    }
+                    if (ticket.videos && ticket.videos.length > 0) {
+                      msg += `\n🎬 Videos (${ticket.videos.length}):\n`;
+                      ticket.videos.forEach((url: string) => { msg += `${url}\n`; });
+                    }
+                    return msg;
+                  })()}
+                </div>
+              </div>
+
+              {/* Share Options */}
+              <div className="space-y-3">
+                {/* WhatsApp */}
+                <button
+                  onClick={() => {
+                    const dateStr = ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
+                    let msg = `🎫 Ticket: ${ticket.ticketId}\n`;
+                    msg += `📋 Status: ${ticket.status}\n`;
+                    msg += `🔴 Priority: ${ticket.priority?.toUpperCase() || "MEDIUM"}\n\n`;
+                    msg += `📝 Issue: ${ticket.description || "No description"}\n\n`;
+                    if (ticket.category) {
+                      msg += `📂 Category: ${ticket.category}${ticket.subCategory ? " → " + ticket.subCategory : ""}\n`;
+                    }
+                    msg += `📍 Location: ${ticket.location || "Not specified"}\n`;
+                    if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
+                      msg += `🏢 Agency: ${ticket.agencyName}\n`;
+                    }
+                    msg += `\n👤 Created By: ${ticket.createdBy || "Unknown"}\n`;
+                    msg += `📅 Date: ${dateStr}\n`;
+                    if (ticket.status === "COMPLETED" && ticket.completedBy) {
+                      const completedDateStr = ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "";
+                      msg += `\n✅ Completed By: ${ticket.completedBy}${completedDateStr ? " on " + completedDateStr : ""}\n`;
+                    }
+                    if (ticket.photos && ticket.photos.length > 0) {
+                      msg += `\n📷 Photos (${ticket.photos.length}):\n`;
+                      ticket.photos.forEach((url: string) => { msg += `${url}\n`; });
+                    }
+                    const encodedMessage = encodeURIComponent(msg);
+                    window.open(`https://wa.me/?text=${encodedMessage}`, "_blank");
+                  }}
+                  className="w-full flex items-center gap-3 p-4 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl transition-all group"
+                >
+                  <div className="p-2 bg-green-500 rounded-lg shadow-sm group-hover:scale-110 transition-transform">
+                    <MessageCircle className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="font-semibold text-green-800">Share on WhatsApp</div>
+                    <div className="text-xs text-green-600">Opens WhatsApp with message</div>
+                  </div>
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+
+                {/* Telegram */}
+                <button
+                  onClick={() => {
+                    const dateStr = ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
+                    let msg = `🎫 Ticket: ${ticket.ticketId}\n`;
+                    msg += `📋 Status: ${ticket.status}\n`;
+                    msg += `🔴 Priority: ${ticket.priority?.toUpperCase() || "MEDIUM"}\n\n`;
+                    msg += `📝 Issue: ${ticket.description || "No description"}\n\n`;
+                    if (ticket.category) {
+                      msg += `📂 Category: ${ticket.category}${ticket.subCategory ? " → " + ticket.subCategory : ""}\n`;
+                    }
+                    msg += `📍 Location: ${ticket.location || "Not specified"}\n`;
+                    if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
+                      msg += `🏢 Agency: ${ticket.agencyName}\n`;
+                    }
+                    msg += `\n👤 Created By: ${ticket.createdBy || "Unknown"}\n`;
+                    msg += `📅 Date: ${dateStr}\n`;
+                    if (ticket.status === "COMPLETED" && ticket.completedBy) {
+                      const completedDateStr = ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "";
+                      msg += `\n✅ Completed By: ${ticket.completedBy}${completedDateStr ? " on " + completedDateStr : ""}\n`;
+                    }
+                    if (ticket.photos && ticket.photos.length > 0) {
+                      msg += `\n📷 Photos (${ticket.photos.length}):\n`;
+                      ticket.photos.forEach((url: string) => { msg += `${url}\n`; });
+                    }
+                    const encodedMessage = encodeURIComponent(msg);
+                    window.open(`https://t.me/share/url?text=${encodedMessage}`, "_blank");
+                  }}
+                  className="w-full flex items-center gap-3 p-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all group"
+                >
+                  <div className="p-2 bg-blue-500 rounded-lg shadow-sm group-hover:scale-110 transition-transform">
+                    <Send className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="font-semibold text-blue-800">Share on Telegram</div>
+                    <div className="text-xs text-blue-600">Opens Telegram with message</div>
+                  </div>
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+
+                {/* Copy */}
+                <button
+                  onClick={async () => {
+                    const dateStr = ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
+                    let msg = `🎫 Ticket: ${ticket.ticketId}\n`;
+                    msg += `📋 Status: ${ticket.status}\n`;
+                    msg += `🔴 Priority: ${ticket.priority?.toUpperCase() || "MEDIUM"}\n\n`;
+                    msg += `📝 Issue: ${ticket.description || "No description"}\n\n`;
+                    if (ticket.category) {
+                      msg += `📂 Category: ${ticket.category}${ticket.subCategory ? " → " + ticket.subCategory : ""}\n`;
+                    }
+                    msg += `📍 Location: ${ticket.location || "Not specified"}\n`;
+                    if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
+                      msg += `🏢 Agency: ${ticket.agencyName}\n`;
+                    }
+                    msg += `\n👤 Created By: ${ticket.createdBy || "Unknown"}\n`;
+                    msg += `📅 Date: ${dateStr}\n`;
+                    if (ticket.status === "COMPLETED" && ticket.completedBy) {
+                      const completedDateStr = ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "";
+                      msg += `\n✅ Completed By: ${ticket.completedBy}${completedDateStr ? " on " + completedDateStr : ""}\n`;
+                    }
+                    if (ticket.photos && ticket.photos.length > 0) {
+                      msg += `\n📷 Photos (${ticket.photos.length}):\n`;
+                      ticket.photos.forEach((url: string) => { msg += `${url}\n`; });
+                    }
+                    try {
+                      await navigator.clipboard.writeText(msg);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    } catch (err) {
+                      console.error("Failed to copy:", err);
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 p-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all group"
+                >
+                  <div className={`p-2 rounded-lg shadow-sm group-hover:scale-110 transition-all ${copied ? "bg-green-500" : "bg-gray-500"}`}>
+                    {copied ? (
+                      <Check className="w-5 h-5 text-white" />
+                    ) : (
+                      <Copy className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="font-semibold text-gray-800">
+                      {copied ? "Copied!" : "Copy Message"}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {copied ? "Message copied to clipboard" : "Copy to clipboard"}
+                    </div>
+                  </div>
+                  {!copied && (
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>
