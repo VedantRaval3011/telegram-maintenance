@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
-import { telegramSendMessage } from "@/lib/telegram";
+import { telegramSendMessage, escapeHTML } from "@/lib/telegram";
 
 export async function DELETE(req: Request, { params }: { params: { id: string } | Promise<{ id: string }> }) {
   await connectToDB();
@@ -23,9 +23,9 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   if (ticket.telegramChatId) {
     try {
       const msgText = `🗑️ <b>Ticket #${ticket.ticketId} Deleted</b>\n\n` +
-                     `📝 ${ticket.description}\n` +
-                     `📂 ${ticket.category || "Unknown"}\n` +
-                     `📍 ${ticket.location || "No location"}\n\n` +
+                     `📝 ${escapeHTML(ticket.description)}\n` +
+                     `📂 ${escapeHTML(ticket.category || "Unknown")}\n` +
+                     `📍 ${escapeHTML(ticket.location || "No location")}\n\n` +
                      `This ticket has been removed from the system.`;
       
       await telegramSendMessage(
@@ -94,10 +94,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
     if (ticket.telegramChatId) {
       const reopenedBy = payload.reopenedBy || "Dashboard";
       const msgText = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n` +
-                     `📝 ${ticket.description}\n` +
-                     `📂 ${ticket.category || "Unknown"}\n` +
-                     `📍 ${ticket.location || "No location"}\n\n` +
-                     `👤 Reopened by: ${reopenedBy}`;
+                     `📝 ${escapeHTML(ticket.description)}\n` +
+                     `📂 ${escapeHTML(ticket.category || "Unknown")}\n` +
+                     `📍 ${escapeHTML(ticket.location || "No location")}\n\n` +
+                     `👤 Reopened by: ${escapeHTML(reopenedBy)}`;
       
       await telegramSendMessage(
         ticket.telegramChatId, 

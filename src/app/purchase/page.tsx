@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
 import { toast } from "react-hot-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   ShoppingCart,
   Package,
@@ -128,6 +129,9 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function PurchasePage() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.isSuperAdmin || false;
+  
   const [statusFilter, setStatusFilter] = useState("");
   const [assignedFilter, setAssignedFilter] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -348,8 +352,8 @@ export default function PurchasePage() {
               </p>
             </div>
 
-            {/* Global Assign User Button */}
-            {stats.unassigned > 0 && (
+            {/* Global Assign User Button - Only for Super Admin */}
+            {isSuperAdmin && stats.unassigned > 0 && (
               <button
                 onClick={() => setAssignModalOpen(true)}
                 className="flex items-center gap-2 px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-purple-600/20"
@@ -494,32 +498,41 @@ export default function PurchasePage() {
                     <div className="flex items-center gap-3 ml-auto lg:ml-0 lg:flex-shrink-0">
                       {ticket.assignedTo ? (
                         <>
-                          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
-                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                              {(ticket.assignedTo.firstName?.[0] || ticket.assignedTo.username?.[0] || "U").toUpperCase()}
-                            </div>
-                            <div className="text-sm">
-                              <div className="font-semibold text-gray-900">
-                                {ticket.assignedTo.firstName || ticket.assignedTo.username}
+                          {/* Show full user details only for super admin */}
+                          {isSuperAdmin ? (
+                            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
+                              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                                {(ticket.assignedTo.firstName?.[0] || ticket.assignedTo.username?.[0] || "U").toUpperCase()}
                               </div>
-                              {ticket.assignedTo.phone && (
-                                <div className="text-gray-500 flex items-center gap-1">
-                                  <Phone className="w-3 h-3" />
-                                  {ticket.assignedTo.phone}
+                              <div className="text-sm">
+                                <div className="font-semibold text-gray-900">
+                                  {ticket.assignedTo.firstName || ticket.assignedTo.username}
                                 </div>
-                              )}
+                                {ticket.assignedTo.phone && (
+                                  <div className="text-gray-500 flex items-center gap-1">
+                                    <Phone className="w-3 h-3" />
+                                    {ticket.assignedTo.phone}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => handleUnassign(ticket.ticketId)}
+                                className="ml-2 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="Unassign user"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
                             </div>
-                            <button
-                              onClick={() => handleUnassign(ticket.ticketId)}
-                              className="ml-2 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                              title="Unassign user"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
+                          ) : (
+                            /* Non-super-admin sees only 'Assigned' status */
+                            <span className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4" />
+                              Assigned
+                            </span>
+                          )}
 
-                          {/* Send to WhatsApp button for already assigned tickets */}
-                          {ticket.assignedTo.phone && (
+                          {/* Send to WhatsApp button - only for super admin */}
+                          {isSuperAdmin && ticket.assignedTo.phone && (
                             <button
                               onClick={() => {
                                 const phone = ticket.assignedTo?.phone?.replace(/\D/g, '');
@@ -547,8 +560,8 @@ export default function PurchasePage() {
         </div>
       </div>
 
-      {/* Assign User Modal */}
-      {assignModalOpen && (
+      {/* Assign User Modal - Only for Super Admin */}
+      {isSuperAdmin && assignModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200 max-h-[80vh] flex flex-col">
             {/* Header */}
