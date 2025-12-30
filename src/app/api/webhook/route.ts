@@ -17,7 +17,6 @@ import {
   answerCallbackQuery,
   downloadTelegramFile,
   telegramDeleteMessage,
-  escapeHTML,
 } from "@/lib/telegram";
 import { uploadBufferToCloudinary } from "@/lib/uploadBufferToCloudinary";
 import { fastProcessTelegramPhoto, fastProcessTelegramVideo } from "@/lib/fastImageUpload";
@@ -1577,8 +1576,8 @@ export async function POST(req: NextRequest) {
       // ⚡ OPTIMIZATION: Use lean() for faster session query
       const session = await WizardSession.findOne({ botMessageId });
       if (!session) {
-        // Session not found - just return silently
-        // Don't delete the message as it might be a ticket or other important message
+        // Session expired or deleted - remove the message
+        telegramDeleteMessage(chatId, messageId).catch(() => {}); // Fire and forget
         return NextResponse.json({ ok: true });
       }
 
@@ -1877,8 +1876,9 @@ export async function POST(req: NextRequest) {
         const createdBy = callback.from?.username || 
                          `${callback.from?.first_name || ""} ${callback.from?.last_name || ""}`.trim();
 
-        // Capture session data but DON'T delete yet
+        // Delete session FIRST to prevent duplicate submissions
         const sessionData = session.toObject();
+        await WizardSession.deleteOne({ botMessageId });
 
         try {
           let ticket: any;
@@ -2028,22 +2028,15 @@ export async function POST(req: NextRequest) {
               // Send confirmation message for information saved
               const typeDisplay = infoType === "general" ? "📄 General" : "🔍 Audit";
               let infoMsg = `ℹ️ <b>Information Saved</b>\n\n` +
-                           `📝 ${escapeHTML(informationData.content)}\n` +
+                           `📝 ${informationData.content}\n` +
                            `${typeDisplay}\n` +
-                           `👤 ${escapeHTML(createdBy)}`;
+                           `👤 ${createdBy}`;
               
               // Reply to the original message
               const replyToMessageId = sessionData.originalMessageId;
-              const infoRes = await telegramSendMessage(chatId, infoMsg, replyToMessageId);
-              
-              if (infoRes.ok) {
-                await WizardSession.deleteOne({ botMessageId });
-                await telegramDeleteMessage(chatId, botMessageId);
-                await answerCallbackQuery(callback.id, "Information saved!");
-              } else {
-                console.error("Failed to send info confirmation:", infoRes.description);
-                await answerCallbackQuery(callback.id, "Error saving information confirmation", true);
-              }
+              await telegramSendMessage(chatId, infoMsg, replyToMessageId);
+              await telegramDeleteMessage(chatId, botMessageId);
+              await answerCallbackQuery(callback.id, "Information saved!");
               
               return NextResponse.json({ ok: true });
             }
@@ -2062,35 +2055,35 @@ export async function POST(req: NextRequest) {
           }
 
           let ticketMsg = `🎫 <b>Ticket #${ticket.ticketId} ${isEditing ? 'Updated' : 'Created'}</b>\n\n` +
-                           `📝 ${escapeHTML(ticket.description)}\n` +
-                           `📂 Category: ${escapeHTML(ticket.category)}\n`;
+                           `📝 ${ticket.description}\n` +
+                           `📂 Category: ${ticket.category}\n`;
           
           // Add subcategory if present
           if (ticket.subCategory) {
-            ticketMsg += `🧩 Subcategory: ${escapeHTML(ticket.subCategory)}\n`;
+            ticketMsg += `🧩 Subcategory: ${ticket.subCategory}\n`;
           }
           
-          ticketMsg += `⚡ Priority: ${escapeHTML(ticket.priority)}\n`;
+          ticketMsg += `⚡ Priority: ${ticket.priority}\n`;
           
           // Show source/target locations for transfer, otherwise show regular location
           if (ticket.sourceLocation && ticket.targetLocation) {
-            ticketMsg += `📤 From: ${escapeHTML(ticket.sourceLocation)}\n`;
-            ticketMsg += `📥 To: ${escapeHTML(ticket.targetLocation)}\n`;
+            ticketMsg += `📤 From: ${ticket.sourceLocation}\n`;
+            ticketMsg += `📥 To: ${ticket.targetLocation}\n`;
           } else {
-            ticketMsg += `📍 Location: ${escapeHTML(ticket.location)}\n`;
+            ticketMsg += `📍 Location: ${ticket.location}\n`;
           }
           
           // Add agency info if present
           if (ticket.agencyName && !["NONE", "__NONE__"].includes(ticket.agencyName)) {
-            ticketMsg += `👷 Agency: ${escapeHTML(ticket.agencyName)}\n`;
+            ticketMsg += `👷 Select Agency: ${ticket.agencyName}\n`;
             if (formattedAgencyMonth) {
-              ticketMsg += `🗓 Month: ${escapeHTML(formattedAgencyMonth)}\n`;
+              ticketMsg += `🗓 Select Month: ${formattedAgencyMonth}\n`;
             }
             if (formattedAgencyDate) {
-              ticketMsg += `📅 Date: ${escapeHTML(formattedAgencyDate)}\n`;
+              ticketMsg += `📅 Agency Date: ${formattedAgencyDate}\n`;
             }
             if (ticket.agencyTime) {
-              ticketMsg += `⏰ Time Slot: 🏢 ${escapeHTML(ticket.agencyTime)}\n`;
+              ticketMsg += `⏰ Time Slot: 🏢 ${ticket.agencyTime}\n`;
             }
           }
           
@@ -2109,14 +2102,8 @@ export async function POST(req: NextRequest) {
 
           // For editing, just show the message - no need to reply to original message
           if (isEditing) {
-            const editRes = await editMessageText(chatId, botMessageId, ticketMsg, []);
-            if (editRes.ok) {
-              await WizardSession.deleteOne({ botMessageId });
-              await answerCallbackQuery(callback.id, "Ticket updated!");
-            } else {
-              console.error("Failed to update ticket message:", editRes.description);
-              await answerCallbackQuery(callback.id, "Error updating ticket message", true);
-            }
+            await editMessageText(chatId, botMessageId, ticketMsg, []);
+            await answerCallbackQuery(callback.id, "Ticket updated!");
           } else {
             // CRITICAL: Reply to the original message (the image) so users know which image the ticket was created for
             const replyToMessageId = sessionData.originalMessageId;
@@ -2127,15 +2114,9 @@ export async function POST(req: NextRequest) {
                 telegramMessageId: sentMsg.result.message_id,
                 telegramChatId: chatId
               });
-              
-              // Only delete session and wizard if the message was sent successfully
-              await WizardSession.deleteOne({ botMessageId });
-              await telegramDeleteMessage(chatId, botMessageId);
-              await answerCallbackQuery(callback.id, "Ticket created!");
-            } else {
-              console.error("Failed to send ticket confirmation:", sentMsg.description);
-              await answerCallbackQuery(callback.id, "Error sending confirmation: " + (sentMsg.description || "Unknown error"), true);
             }
+            await telegramDeleteMessage(chatId, botMessageId);
+            await answerCallbackQuery(callback.id, "Ticket created!");
           }
         } catch (err) {
           console.error("Ticket creation/update error:", err);
@@ -2191,12 +2172,10 @@ if (incomingText.toLowerCase().startsWith("/info ")) {
         telegramChatId: chat.id,
       });
       
-      const displayContent = infoContent.length > 100 ? infoContent.substring(0, 100) + "..." : infoContent;
-      
       // Send confirmation
       await telegramSendMessage(
         chat.id,
-        `✅ <b>Information Saved</b>\n\n📝 ${escapeHTML(displayContent)}\n\n👤 By: ${escapeHTML(createdBy)}`,
+        `✅ <b>Information Saved</b>\n\n📝 ${infoContent.length > 100 ? infoContent.substring(0, 100) + "..." : infoContent}\n\n👤 By: ${createdBy}`,
         msg.message_id
       );
     } catch (error) {
@@ -2395,7 +2374,7 @@ if (reopenMatch && !msg.reply_to_message) {
     ticket.completedBy = null; ticket.completedAt = null;
     await ticket.save();
     
-    const msgText = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n📝 ${escapeHTML(ticket.description)}\n👤 Reopened by: ${escapeHTML(msg.from?.username || "Unknown")}`;
+    const msgText = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n📝 ${ticket.description}\n👤 Reopened by: ${msg.from?.username || "Unknown"}`;
     await telegramSendMessage(chat.id, msgText, msg.message_id);
     return NextResponse.json({ ok: true });
 }
@@ -2516,18 +2495,18 @@ if (msg.reply_to_message) {
       
       // Send confirmation with full ticket details
       let reopenMsg = `🔄 <b>Ticket #${ticket.ticketId} Reopened</b>\n\n` +
-                     `📝 ${escapeHTML(ticket.description)}\n` +
-                     `📂 ${escapeHTML(ticket.category || "Unknown")}\n`;
+                     `📝 ${ticket.description}\n` +
+                     `📂 ${ticket.category || "Unknown"}\n`;
       
       // Show source/target locations for transfer, otherwise show regular location
       if (ticket.sourceLocation && ticket.targetLocation) {
-        reopenMsg += `📤 From: ${escapeHTML(ticket.sourceLocation)}\n`;
-        reopenMsg += `📥 To: ${escapeHTML(ticket.targetLocation)}\n`;
+        reopenMsg += `📤 From: ${ticket.sourceLocation}\n`;
+        reopenMsg += `📥 To: ${ticket.targetLocation}\n`;
       } else {
-        reopenMsg += `📍 ${escapeHTML(ticket.location || "No location")}\n`;
+        reopenMsg += `📍 ${ticket.location || "No location"}\n`;
       }
       
-      reopenMsg += `\n👤 Reopened by: ${escapeHTML(reopenedBy)}`;
+      reopenMsg += `\n👤 Reopened by: ${reopenedBy}`;
       
       await telegramSendMessage(
         chat.id,
@@ -2856,7 +2835,7 @@ if (msg.reply_to_message) {
       await ticket.save();
 
       let completionMsg = `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
-                         `👤 Completed by: ${escapeHTML(completedBy)}`;
+                         `👤 Completed by: ${completedBy}`;
       
       if (completionPhotoUrl) {
         completionMsg += `\n📸 After-fix photo attached`;

@@ -11,17 +11,6 @@ if (!TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_BOT_TOKEN not defined");
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const TELEGRAM_FILE_API = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}`;
 
-/**
- * Helper to escape HTML characters for Telegram HTML parse mode
- */
-export function escapeHTML(text: string | null | undefined): string {
-  if (!text) return "";
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 /** Telegram response types */
 type TelegramApiResponse<T = any> = {
   ok: boolean;
@@ -76,19 +65,15 @@ export async function telegramSendMessage(
 export async function telegramSendPhoto(
   chatId: number | string,
   photoPathOrUrl: string,
-  caption?: string,
-  replyToMessageId?: number
+  caption?: string
 ): Promise<TelegramApiResponse> {
   const isUrl = /^https?:\/\//i.test(photoPathOrUrl);
 
   if (isUrl) {
-    const body: any = { chat_id: chatId, photo: photoPathOrUrl, caption, parse_mode: "HTML" };
-    if (replyToMessageId) body.reply_to_message_id = replyToMessageId;
-    
     const res = await fetch(`${TELEGRAM_API}/sendPhoto`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ chat_id: chatId, photo: photoPathOrUrl, caption }),
     });
     const json = (await res.json()) as TelegramApiResponse;
     if (!json.ok) console.error("telegramSendPhoto (url) error:", json);
@@ -104,11 +89,7 @@ export async function telegramSendPhoto(
   const form = new FormData();
   form.append("chat_id", String(chatId));
   form.append("photo", fs.createReadStream(photoPathOrUrl));
-  if (caption) {
-    form.append("caption", caption);
-    form.append("parse_mode", "HTML");
-  }
-  if (replyToMessageId) form.append("reply_to_message_id", String(replyToMessageId));
+  if (caption) form.append("caption", caption);
 
   const res = await fetch(`${TELEGRAM_API}/sendPhoto`, {
     method: "POST",
