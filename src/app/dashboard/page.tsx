@@ -8,6 +8,7 @@ import SyncUsersButton from "@/components/SyncUsersButton";
 import TicketCard from "@/components/TicketCard";
 import Capsule from "@/components/Capsule";
 import SharePendingWorkModal from "@/components/SharePendingWorkModal";
+import { useAuth } from "@/contexts/AuthContext";
 import { BarChart3, Info, Activity, CheckCircle2, Share2 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
@@ -26,6 +27,7 @@ function DashboardLoading() {
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isReadOnly, hideTimeDetails } = useAuth();
   const { data, error, mutate } = useSWR("/api/tickets", fetcher, { refreshInterval: 3000 });
   const { data: usersData } = useSWR("/api/masters/users?limit=100", fetcher);
   const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
@@ -1148,48 +1150,66 @@ function DashboardContent() {
         <div className="mb-6 sm:mb-8">
           <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-3 sm:p-6">
             <div className="flex flex-col gap-3 sm:gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                <h3 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide">Priority:</h3>
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                  <button
-                    onClick={() => setFilters({ priority: "" })}
-                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 ${filters.priority === ""
-                      ? "bg-gray-800 text-white border-gray-800 shadow-md"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
-                      }`}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                  <h3 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide">Priority:</h3>
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <button
+                      onClick={() => setFilters({ priority: "" })}
+                      className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 ${filters.priority === ""
+                        ? "bg-gray-800 text-white border-gray-800 shadow-md"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                        }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setFilters({ priority: "high" })}
+                      className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "high"
+                        ? "bg-red-500 text-white border-red-500 shadow-md"
+                        : "bg-red-50 text-red-700 border-red-300 hover:border-red-400"
+                        }`}
+                    >
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500"></span>
+                      High
+                    </button>
+                    <button
+                      onClick={() => setFilters({ priority: "medium" })}
+                      className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "medium"
+                        ? "bg-amber-500 text-white border-amber-500 shadow-md"
+                        : "bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400"
+                        }`}
+                    >
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500"></span>
+                      Med
+                    </button>
+                    <button
+                      onClick={() => setFilters({ priority: "low" })}
+                      className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "low"
+                        ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-400"
+                        }`}
+                    >
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500"></span>
+                      Low
+                    </button>
+                  </div>
+                </div>
+                {/* Sort Dropdown */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="sort-select" className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wide whitespace-nowrap">
+                    Sort:
+                  </label>
+                  <select
+                    id="sort-select"
+                    value={filters.sortBy}
+                    onChange={(e) => setFilters({ sortBy: e.target.value })}
+                    className="px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all hover:border-gray-400"
                   >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setFilters({ priority: "high" })}
-                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "high"
-                      ? "bg-red-500 text-white border-red-500 shadow-md"
-                      : "bg-red-50 text-red-700 border-red-300 hover:border-red-400"
-                      }`}
-                  >
-                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500"></span>
-                    High
-                  </button>
-                  <button
-                    onClick={() => setFilters({ priority: "medium" })}
-                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "medium"
-                      ? "bg-amber-500 text-white border-amber-500 shadow-md"
-                      : "bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-400"
-                      }`}
-                  >
-                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500"></span>
-                    Med
-                  </button>
-                  <button
-                    onClick={() => setFilters({ priority: "low" })}
-                    className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all border-2 flex items-center gap-1 sm:gap-2 ${filters.priority === "low"
-                      ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
-                      : "bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-400"
-                      }`}
-                  >
-                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500"></span>
-                    Low
-                  </button>
+                    <option value="">Default</option>
+                    <option value="created_desc">Newest First</option>
+                    <option value="created_asc">Oldest First</option>
+                  </select>
                 </div>
               </div>
               <div className="flex items-center">
@@ -1225,6 +1245,8 @@ function DashboardContent() {
                 }}
                 onExcludeFromSummary={() => toggleExcludeTicket(t.ticketId)}
                 isExcludedFromSummary={excludedTicketIds.has(t.ticketId)}
+                isReadOnly={isReadOnly}
+                hideTimeDetails={hideTimeDetails}
               />
             );
           })}
@@ -1470,6 +1492,8 @@ function DashboardContent() {
                   onEditClick={() => setIsEditMode(true)}
                   onExcludeFromSummary={() => toggleExcludeTicket(selectedTicket.ticketId)}
                   isExcludedFromSummary={excludedTicketIds.has(selectedTicket.ticketId)}
+                  isReadOnly={isReadOnly}
+                  hideTimeDetails={hideTimeDetails}
                 />
               </div>
             ) : (
