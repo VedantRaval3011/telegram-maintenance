@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
 import TicketCard from "@/components/TicketCard";
+import { useAuth } from "@/contexts/AuthContext";
 import {
     Building2,
     MapPin,
@@ -310,6 +311,7 @@ function VisualBuilding({ building, selectedLocation, onSelectLocation }: {
 }
 
 export default function BuildingMapPage() {
+    const { isReadOnly, hideTimeDetails } = useAuth();
     const { data: hierarchyData, error: hierarchyError } = useSWR("/api/locations/hierarchy", fetcher, { refreshInterval: 5000 });
     const { data: ticketsData, error: ticketsError, mutate } = useSWR("/api/tickets", fetcher, { refreshInterval: 5000 });
     const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
@@ -675,6 +677,8 @@ export default function BuildingMapPage() {
                                                 categoryColor={cat?.color} 
                                                 onExcludeFromSummary={() => toggleExcludeTicket(ticket.ticketId)}
                                                 isExcludedFromSummary={excludedTicketIds.has(ticket.ticketId)}
+                                                isReadOnly={isReadOnly}
+                                                hideTimeDetails={hideTimeDetails}
                                             />
                                         </div>
                                     );

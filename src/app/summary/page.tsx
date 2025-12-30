@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Capsule from "@/components/Capsule";
 import TicketCard from "@/components/TicketCard";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart,
   Bar,
@@ -149,6 +150,7 @@ const CustomXAxisTick = ({ x, y, payload, isMobile }: any) => {
 
 export default function SummaryPage() {
   const router = useRouter();
+  const { isReadOnly, hideTimeDetails } = useAuth();
   const { data: tickets = [], error, isLoading, mutate } = useSWR<Ticket[]>("/api/tickets", fetcher, { refreshInterval: 3000 });
   const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", (url: string) =>
     fetch(url).then(r => r.json()));
@@ -2318,6 +2320,8 @@ export default function SummaryPage() {
                   onEditClick={() => setIsEditMode(true)}
                   onExcludeFromSummary={() => toggleExcludeTicket(selectedTicket.ticketId)}
                   isExcludedFromSummary={excludedTicketIds.has(selectedTicket.ticketId)}
+                  isReadOnly={isReadOnly}
+                  hideTimeDetails={hideTimeDetails}
                 />
               </div>
             ) : (
