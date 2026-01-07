@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import Navbar from "@/components/Navbar";
+import TicketCard from "@/components/TicketCard";
 import { toast } from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -15,12 +16,8 @@ import {
   Send,
   X,
   Phone,
-  MapPin,
-  Tag,
   AlertCircle,
   Search,
-  Filter,
-  ExternalLink,
 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -50,15 +47,20 @@ interface Ticket {
 }
 
 // Stat Card Component
+// Stat Card Component
 function StatCard({
   label,
   value,
   icon,
+  onClick,
+  isActive = false,
   color = "blue",
 }: {
   label: string;
   value: number;
   icon: React.ReactNode;
+  onClick?: () => void;
+  isActive?: boolean;
   color?: "blue" | "green" | "orange" | "purple" | "red";
 }) {
   const colorStyles = {
@@ -67,6 +69,14 @@ function StatCard({
     orange: "from-amber-50 to-amber-100 border-amber-200 text-amber-700",
     purple: "from-purple-50 to-purple-100 border-purple-200 text-purple-700",
     red: "from-red-50 to-red-100 border-red-200 text-red-700",
+  };
+
+  const activeStyles = {
+    blue: "ring-2 ring-blue-500 shadow-blue-100",
+    green: "ring-2 ring-emerald-500 shadow-emerald-100",
+    orange: "ring-2 ring-amber-500 shadow-amber-100",
+    purple: "ring-2 ring-purple-500 shadow-purple-100",
+    red: "ring-2 ring-red-500 shadow-red-100",
   };
 
   const iconColors = {
@@ -78,13 +88,18 @@ function StatCard({
   };
 
   return (
-    <div className={`bg-gradient-to-br ${colorStyles[color]} border rounded-2xl p-5 transition-all hover:shadow-lg`}>
+    <div 
+      onClick={onClick}
+      className={`bg-gradient-to-br ${colorStyles[color]} border rounded-2xl p-5 transition-all hover:shadow-lg cursor-pointer ${
+        isActive ? `${activeStyles[color]} shadow-md scale-[1.02]` : "hover:scale-[1.01]"
+      }`}
+    >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-500 mb-1">{label}</p>
+          <p className={`text-sm font-semibold mb-1 ${isActive ? 'text-gray-900' : 'text-gray-500'}`}>{label}</p>
           <p className={`text-3xl font-bold ${colorStyles[color].split(' ').pop()}`}>{value}</p>
         </div>
-        <div className={`${iconColors[color]} w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg`}>
+        <div className={`${iconColors[color]} w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform ${isActive ? 'scale-110' : ''}`}>
           {icon}
         </div>
       </div>
@@ -92,41 +107,7 @@ function StatCard({
   );
 }
 
-// Priority Badge
-function PriorityBadge({ priority }: { priority: string }) {
-  const styles = {
-    high: "bg-red-100 text-red-700 border-red-200",
-    medium: "bg-amber-100 text-amber-700 border-amber-200",
-    low: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  }[priority.toLowerCase()] || "bg-gray-100 text-gray-700 border-gray-200";
 
-  const emoji = {
-    high: "🔴",
-    medium: "🟡",
-    low: "🟢",
-  }[priority.toLowerCase()] || "⚪";
-
-  return (
-    <span className={`${styles} px-2.5 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1`}>
-      {emoji} {priority.charAt(0).toUpperCase() + priority.slice(1)}
-    </span>
-  );
-}
-
-// Status Badge
-function StatusBadge({ status }: { status: string }) {
-  const isPending = status === "PENDING";
-  return (
-    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
-      isPending 
-        ? "bg-amber-100 text-amber-700 border border-amber-200" 
-        : "bg-emerald-100 text-emerald-700 border border-emerald-200"
-    }`}>
-      {isPending ? <Clock className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-      {status}
-    </span>
-  );
-}
 
 export default function PurchasePage() {
   const { user } = useAuth();
@@ -150,6 +131,9 @@ export default function PurchasePage() {
     `/api/tickets/purchase?${queryParams}`,
     fetcher
   );
+  
+  const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
+  const categories = categoriesData?.data || [];
 
   // Fetch users when modal opens
   useEffect(() => {
@@ -375,30 +359,55 @@ export default function PurchasePage() {
             value={stats.total}
             color="purple"
             icon={<Package className="w-6 h-6" />}
+            onClick={() => {
+              setStatusFilter("");
+              setAssignedFilter("");
+            }}
+            isActive={!statusFilter && !assignedFilter}
           />
           <StatCard
             label="Pending"
             value={stats.pending}
             color="orange"
             icon={<Clock className="w-6 h-6" />}
+            onClick={() => {
+              setStatusFilter("PENDING");
+              setAssignedFilter("");
+            }}
+            isActive={statusFilter === "PENDING" && !assignedFilter}
           />
           <StatCard
             label="Completed"
             value={stats.completed}
             color="green"
             icon={<CheckCircle2 className="w-6 h-6" />}
+            onClick={() => {
+              setStatusFilter("COMPLETED");
+              setAssignedFilter("");
+            }}
+            isActive={statusFilter === "COMPLETED" && !assignedFilter}
           />
           <StatCard
             label="Assigned"
             value={stats.assigned}
             color="blue"
             icon={<UserIcon className="w-6 h-6" />}
+            onClick={() => {
+              setAssignedFilter("true");
+              setStatusFilter("");
+            }}
+            isActive={assignedFilter === "true" && !statusFilter}
           />
           <StatCard
             label="Unassigned"
             value={stats.unassigned}
             color="red"
             icon={<AlertCircle className="w-6 h-6" />}
+            onClick={() => {
+              setAssignedFilter("false");
+              setStatusFilter("");
+            }}
+            isActive={assignedFilter === "false" && !statusFilter}
           />
         </div>
 
@@ -466,95 +475,36 @@ export default function PurchasePage() {
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
-              {filteredTickets.map((ticket: Ticket) => (
-                <div key={ticket._id} className="p-5 hover:bg-gray-50 transition-colors">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-                    {/* Ticket Info */}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-bold text-gray-900">{ticket.ticketId}</span>
-                        <PriorityBadge priority={ticket.priority} />
-                        <StatusBadge status={ticket.status} />
-                      </div>
-                      <p className="text-gray-700 mb-2 line-clamp-2">{ticket.description}</p>
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
-                        {ticket.category && (
-                          <span className="flex items-center gap-1">
-                            <Tag className="w-4 h-4" />
-                            {ticket.subCategory ? `${ticket.category} → ${ticket.subCategory}` : ticket.category}
-                          </span>
-                        )}
-                        {ticket.location && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-4 h-4" />
-                            {ticket.location}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Assignment Section - Aligned Right */}
-                    <div className="flex items-center gap-3 ml-auto lg:ml-0 lg:flex-shrink-0">
-                      {ticket.assignedTo ? (
-                        <>
-                          {/* Show full user details only for super admin */}
-                          {isSuperAdmin ? (
-                            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
-                              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                                {(ticket.assignedTo.firstName?.[0] || ticket.assignedTo.username?.[0] || "U").toUpperCase()}
-                              </div>
-                              <div className="text-sm">
-                                <div className="font-semibold text-gray-900">
-                                  {ticket.assignedTo.firstName || ticket.assignedTo.username}
-                                </div>
-                                {ticket.assignedTo.phone && (
-                                  <div className="text-gray-500 flex items-center gap-1">
-                                    <Phone className="w-3 h-3" />
-                                    {ticket.assignedTo.phone}
-                                  </div>
-                                )}
-                              </div>
-                              <button
-                                onClick={() => handleUnassign(ticket.ticketId)}
-                                className="ml-2 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                                title="Unassign user"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            /* Non-super-admin sees only 'Assigned' status */
-                            <span className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4" />
-                              Assigned
-                            </span>
-                          )}
-
-                          {/* Send to WhatsApp button - only for super admin */}
-                          {isSuperAdmin && ticket.assignedTo.phone && (
-                            <button
-                              onClick={() => {
-                                const phone = ticket.assignedTo?.phone?.replace(/\D/g, '');
-                                const message = `🛒 *Purchase Request Reminder*\n\nTicket: ${ticket.ticketId}\nDescription: ${ticket.description}\nPriority: ${ticket.priority.toUpperCase()}\n\nPlease update the status once completed.`;
-                                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
-                              }}
-                              className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl transition-all shadow-sm"
-                              title="Send WhatsApp reminder"
-                            >
-                              <Send className="w-4 h-4" />
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <span className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-sm font-medium rounded-lg">
-                          Unassigned
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="p-4 grid grid-cols-1 gap-6">
+              {filteredTickets.map((ticket: Ticket) => {
+                const cat = categories.find((c: any) => c.name.toLowerCase() === (ticket.category || "").toLowerCase());
+                
+                return (
+                  <TicketCard
+                    key={ticket._id}
+                    ticket={ticket}
+                    onStatusChange={() => mutate()}
+                    categoryColor={cat?.color}
+                    isAdmin={isSuperAdmin}
+                    onUnassign={handleUnassign}
+                    customActions={
+                      isSuperAdmin && ticket.assignedTo?.phone && (
+                        <button
+                          onClick={() => {
+                            const phone = ticket.assignedTo?.phone?.replace(/\D/g, '');
+                            const message = `🛒 *Purchase Request Reminder*\n\nTicket: ${ticket.ticketId}\nDescription: ${ticket.description}\nPriority: ${ticket.priority.toUpperCase()}\n\nPlease update the status once completed.`;
+                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+                          }}
+                          className="p-1.5 rounded-md hover:opacity-95 transition-all text-white bg-green-600"
+                          title="Send WhatsApp reminder"
+                        >
+                          <Send size={12} />
+                        </button>
+                      )
+                    }
+                  />
+                );
+              })}
             </div>
           )}
         </div>

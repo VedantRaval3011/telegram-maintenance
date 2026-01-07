@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Edit2,
   Trash2,
@@ -24,7 +25,8 @@ import {
   Share2,
   MessageCircle,
   Send,
-  Copy
+  Copy,
+  Phone
 } from "lucide-react";
 
 interface Note {
@@ -79,7 +81,11 @@ export default function TicketCard({
   isExcludedFromSummary,
   // Access control props
   isReadOnly = false,
-  hideTimeDetails = false
+  hideTimeDetails = false,
+  // Custom actions
+  onUnassign,
+  isAdmin,
+  customActions
 }: { 
   ticket: any; 
   onStatusChange?: () => void; 
@@ -91,7 +97,14 @@ export default function TicketCard({
   // Access control
   isReadOnly?: boolean;
   hideTimeDetails?: boolean;
+  // Custom actions
+  onUnassign?: (ticketId: string) => void;
+  isAdmin?: boolean;
+  customActions?: React.ReactNode;
 }) {
+  const { user: authUser } = useAuth();
+  const currentUsername = authUser?.displayName || authUser?.username || "Dashboard User";
+  
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -147,7 +160,7 @@ export default function TicketCard({
     await fetch(`/api/tickets/${ticket.ticketId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "COMPLETED", completedBy: "DashboardUser" }),
+      body: JSON.stringify({ status: "COMPLETED", completedBy: currentUsername }),
     });
     onStatusChange?.();
   };
@@ -156,7 +169,7 @@ export default function TicketCard({
     await fetch(`/api/tickets/${ticket.ticketId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "PENDING", reopen: true, reopenedBy: "DashboardUser" }),
+      body: JSON.stringify({ status: "PENDING", reopen: true, reopenedBy: currentUsername }),
     });
     onStatusChange?.();
   };
@@ -193,7 +206,7 @@ export default function TicketCard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content: newNote,
-        createdBy: "Dashboard User",
+        createdBy: currentUsername,
       }),
     });
 
@@ -307,6 +320,7 @@ export default function TicketCard({
             {/* Action Buttons - Compact icon-only buttons */}
             {!isReadOnly && (
               <div className="flex items-center gap-1 flex-shrink-0">
+                {customActions}
                 <button
                   onClick={() => onEditClick ? onEditClick() : setShowEditModal(true)}
                   className="p-1.5 rounded-md hover:opacity-80 transition-all"
@@ -458,7 +472,7 @@ export default function TicketCard({
               </div>
             )}
 
-            {/* Completed By */}
+            {/* Assigned To or Completed By */}
             {ticket.status === "COMPLETED" && ticket.completedBy ? (
               <div className="-m-3 p-3 rounded-lg" style={{ backgroundColor: `${colors.accent}20` }}>
                 <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.textDark }}>
@@ -473,9 +487,31 @@ export default function TicketCard({
                   </div>
                 )}
               </div>
+            ) : ticket.assignedTo ? (
+              <div className="-m-3 p-3 rounded-lg" style={{ backgroundColor: `${colors.accent}20` }}>
+                <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.textDark }}>
+                  <User size={12} /> Assigned To
+                </div>
+                <div className="font-bold truncate" style={{ color: colors.textDark }}>
+                  {ticket.assignedTo.firstName || ticket.assignedTo.username || "Assigned"}
+                </div>
+                {ticket.assignedTo.phone && isAdmin && (
+                  <div className="text-[10px] flex items-center gap-1" style={{ color: colors.text }}>
+                    <Phone size={10} /> {ticket.assignedTo.phone}
+                  </div>
+                )}
+                {onUnassign && isAdmin && (
+                  <button 
+                    onClick={() => onUnassign(ticket.ticketId)}
+                    className="text-[10px] text-red-500 hover:text-red-700 font-medium mt-1 underline"
+                  >
+                    Unassign
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="flex items-center justify-center">
-                <span className="text-[10px] italic" style={{ color: colors.text }}>Not completed</span>
+                <span className="text-[10px] italic" style={{ color: colors.text }}>Unassigned</span>
               </div>
             )}
           </div>

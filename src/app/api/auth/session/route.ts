@@ -18,6 +18,7 @@ export async function GET() {
       authenticated: true,
       user: {
         username: session.username,
+        displayName: session.displayName,
         isSuperAdmin: session.isSuperAdmin,
         permissions: session.permissions,
         // Access control fields

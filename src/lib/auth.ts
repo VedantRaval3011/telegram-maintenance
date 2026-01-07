@@ -14,6 +14,7 @@ const SESSION_DURATION = 60 * 60 * 24 * 7; // 7 days in seconds
 export interface SessionPayload {
   userId: string;
   username: string;
+  displayName: string;
   isSuperAdmin: boolean;
   permissions: SectionKey[];
   // Location-based access control
@@ -50,6 +51,7 @@ export async function createSession(user: IAdminUser): Promise<string> {
   const payload: Omit<SessionPayload, "exp"> = {
     userId: user._id.toString(),
     username: user.username,
+    displayName: user.displayName,
     isSuperAdmin: user.isSuperAdmin,
     permissions: user.isSuperAdmin 
       ? Object.keys(APP_SECTIONS) as SectionKey[] 

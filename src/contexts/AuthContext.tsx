@@ -10,6 +10,7 @@ interface NavLink {
 
 interface User {
   username: string;
+  displayName: string;
   isSuperAdmin: boolean;
   permissions: string[];
   // Location-based access control

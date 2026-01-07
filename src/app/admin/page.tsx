@@ -54,13 +54,27 @@ interface LocationNode extends LocationData {
 // Helper to extract parent ID from either string or populated object
 function getParentId(parentLocationId: any): string | null {
   if (!parentLocationId) return null;
-  // If it's already a string, return it
   if (typeof parentLocationId === 'string') return parentLocationId;
-  // If it's a populated object, extract _id
   if (typeof parentLocationId === 'object' && parentLocationId._id) {
     return parentLocationId._id.toString();
   }
   return null;
+}
+
+// Helper to get all descendant IDs of a node
+function getAllDescendantIds(node: LocationNode): string[] {
+  const ids: string[] = [node._id];
+  node.children.forEach(child => {
+    ids.push(...getAllDescendantIds(child));
+  });
+  return ids;
+}
+
+// Helper to check if a node has any selected descendants
+function hasSelectedDescendants(node: LocationNode, selectedIds: string[]): boolean {
+  return node.children.some(child => 
+    selectedIds.includes(child._id) || hasSelectedDescendants(child, selectedIds)
+  );
 }
 
 // Build hierarchical tree from flat locations array
@@ -104,52 +118,74 @@ function LocationTreeSelector({
 }: { 
   nodes: LocationNode[]; 
   selectedIds: string[]; 
-  onToggle: (id: string) => void; 
+  onToggle: (id: string, node: LocationNode) => void; 
   depth: number; 
 }) {
   return (
-    <div className={depth > 0 ? "ml-4 border-l-2 border-slate-200 pl-2" : ""}>
-      {nodes.map((node) => (
-        <div key={node._id}>
-          <label
-            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors mb-1 ${
-              selectedIds.includes(node._id)
-                ? "bg-rose-100 border border-rose-300"
-                : "bg-white border border-slate-200 hover:bg-slate-100"
-            }`}
-          >
-            {depth > 0 && (
-              <CornerDownRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-            )}
-            <input
-              type="checkbox"
-              checked={selectedIds.includes(node._id)}
-              onChange={() => onToggle(node._id)}
-              className="sr-only"
-            />
-            <div
-              className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                selectedIds.includes(node._id)
-                  ? "bg-rose-600 border-rose-600"
-                  : "border-slate-300"
-              }`}
-            >
-              {selectedIds.includes(node._id) && (
-                <Check className="w-3 h-3 text-white" />
+    <div className={depth > 0 ? "mt-2" : ""}>
+      {nodes.map((node) => {
+        const isSelected = selectedIds.includes(node._id);
+        const hasChildren = node.children.length > 0;
+
+        return (
+          <div key={node._id} className="mb-2 last:mb-0">
+            <div className="flex items-start">
+              {depth > 0 && (
+                <div className="flex items-center mt-4 mr-1">
+                  <div className="w-4 border-l-2 border-b-2 border-slate-200 h-2 rounded-bl-lg -mt-4 ml-1"></div>
+                  <CornerDownRight className="w-3.5 h-3.5 text-slate-400 -ml-1" />
+                </div>
               )}
+              <div className="flex-1">
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border shadow-sm w-full ${
+                    isSelected
+                      ? "bg-rose-50 border-rose-200 ring-1 ring-rose-100"
+                      : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => onToggle(node._id, node)}
+                    className="sr-only"
+                  />
+                  <div
+                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                      isSelected
+                        ? "bg-rose-600 border-rose-600"
+                        : "border-slate-300 bg-white"
+                    }`}
+                  >
+                    {isSelected && (
+                      <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                    )}
+                  </div>
+                  <span className={`text-sm font-medium ${isSelected ? "text-rose-900" : "text-slate-700"}`}>
+                    {node.name}
+                  </span>
+                  {isSelected && hasChildren && (
+                    <span className="ml-auto text-[10px] font-bold text-rose-600 bg-rose-100 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                      +{getAllDescendantIds(node).length - 1} sub-areas
+                    </span>
+                  )}
+                </label>
+                
+                {hasChildren && (
+                  <div className={depth === 0 ? "ml-6" : "ml-8"}>
+                    <LocationTreeSelector
+                      nodes={node.children}
+                      selectedIds={selectedIds}
+                      onToggle={onToggle}
+                      depth={depth + 1}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="text-sm text-slate-700">{node.name}</span>
-          </label>
-          {node.children.length > 0 && (
-            <LocationTreeSelector
-              nodes={node.children}
-              selectedIds={selectedIds}
-              onToggle={onToggle}
-              depth={depth + 1}
-            />
-          )}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -831,44 +867,51 @@ export default function AdminPage() {
                       </button>
                     </div>
 
-                    {/* Location Restrictions - Only show when user has location-based permissions */}
-                    {(formData.permissions.includes('dashboard') || formData.permissions.includes('locations')) && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <MapPin className="w-4 h-4 text-rose-600" />
-                          <label className="block text-sm font-medium text-slate-700">
-                            Allowed Locations
-                          </label>
-                          <span className="text-xs text-slate-400">(empty = all locations)</span>
-                        </div>
-                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
-                          {locations.length === 0 ? (
-                            <div className="text-center text-sm text-slate-400 py-4">
-                              No locations found
-                            </div>
-                          ) : (
-                            <LocationTreeSelector
-                              nodes={buildLocationTree(locations)}
-                              selectedIds={formData.allowedLocationIds}
-                              onToggle={(id) => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  allowedLocationIds: prev.allowedLocationIds.includes(id)
-                                    ? prev.allowedLocationIds.filter(locId => locId !== id)
-                                    : [...prev.allowedLocationIds, id]
-                                }));
-                              }}
-                              depth={0}
-                            />
-                          )}
-                        </div>
-                        {formData.allowedLocationIds.length > 0 && (
-                          <div className="mt-2 text-xs text-slate-500">
-                            {formData.allowedLocationIds.length} location(s) selected - child locations automatically included
+                    {/* Location Restrictions */}
+                    <div className="border-t border-slate-200 pt-5 mt-2">
+                      <div className="flex items-center gap-2 mb-3">
+                        <MapPin className="w-4 h-4 text-rose-600" />
+                        <label className="block text-sm font-bold text-slate-800">
+                          Allowed Locations
+                        </label>
+                        <span className="text-xs text-slate-400 font-normal">(empty = all locations)</span>
+                      </div>
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl max-h-[400px] overflow-y-auto shadow-inner">
+                        {locations.length === 0 ? (
+                          <div className="text-center text-sm text-slate-400 py-8">
+                            No locations found
                           </div>
+                        ) : (
+                          <LocationTreeSelector
+                            nodes={buildLocationTree(locations)}
+                            selectedIds={formData.allowedLocationIds}
+                            onToggle={(id, node) => {
+                              const descendantIds = getAllDescendantIds(node);
+                              const isSelected = formData.allowedLocationIds.includes(id);
+                              
+                              setFormData(prev => {
+                                let newIds = [...prev.allowedLocationIds];
+                                if (isSelected) {
+                                  // Unselect this and all descendants
+                                  newIds = newIds.filter(locId => !descendantIds.includes(locId));
+                                } else {
+                                  // Select this and all descendants
+                                  newIds = Array.from(new Set([...newIds, ...descendantIds]));
+                                }
+                                return { ...prev, allowedLocationIds: newIds };
+                              });
+                            }}
+                            depth={0}
+                          />
                         )}
                       </div>
-                    )}
+                      {formData.allowedLocationIds.length > 0 && (
+                        <div className="mt-3 px-1 text-xs text-slate-500 font-medium flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                          {formData.allowedLocationIds.length} location(s) selected - child locations automatically included
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
 
