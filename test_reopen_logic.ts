@@ -36,6 +36,10 @@ async function testReopen() {
   await ticket.save();
   
   const updatedTicket = await Ticket.findOne({ ticketId });
+  if (!updatedTicket) {
+    console.log("Updated ticket not found");
+    process.exit(1);
+  }
   console.log("New status:", updatedTicket.status);
   console.log("New history count:", updatedTicket.reopenedHistory.length);
   
