@@ -9,7 +9,10 @@ import TicketCard from "@/components/TicketCard";
 import Capsule from "@/components/Capsule";
 import SharePendingWorkModal from "@/components/SharePendingWorkModal";
 import { useAuth } from "@/contexts/AuthContext";
-import { BarChart3, Info, Activity, CheckCircle2, Share2 } from "lucide-react";
+import { 
+  BarChart3, Info, Activity, CheckCircle2, Share2, X, 
+  Camera, Video, FileText, Trash2, Download, Plus, Upload, Loader2, Link
+} from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -61,7 +64,16 @@ function DashboardContent() {
     priority: '',
     status: '',
     description: '',
+    photos: [] as string[],
+    videos: [] as string[],
+    documents: [] as string[],
   });
+
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+
+  const [showCategoryAudit, setShowCategoryAudit] = useState(false);
+  const [auditCategoryData, setAuditCategoryData] = useState<any>(null);
 
   const [initialAgencyName, setInitialAgencyName] = useState<string>('');
 
@@ -109,6 +121,7 @@ function DashboardContent() {
     timeFrom: "",
     timeTo: "",
     sortBy: "",
+    reopenedOnly: false,
   });
 
   const setFilters = useCallback((patch: Partial<typeof filters>) => {
@@ -130,6 +143,7 @@ function DashboardContent() {
       timeFrom: "",
       timeTo: "",
       sortBy: "",
+      reopenedOnly: false,
     });
   }, []);
 
@@ -208,8 +222,9 @@ function DashboardContent() {
       const category = searchParams.get('category');
       const priority = searchParams.get('priority');
       const status = searchParams.get('status');
+      const name = searchParams.get('name');
 
-      if (category || priority || status) {
+      if (category || priority || status || name) {
         const newFilters: Partial<typeof filters> = {};
 
         if (category) {
@@ -230,7 +245,13 @@ function DashboardContent() {
           // Set showCompleted based on status
           if (status === 'COMPLETED') {
             setShowCompleted(true);
+          } else {
+            setShowCompleted(false);
           }
+        }
+
+        if (name) {
+          newFilters.name = name;
         }
 
         // Apply filters immediately
@@ -255,27 +276,88 @@ function DashboardContent() {
   const subCategories = subCategoriesData?.data || [];
   const agencies = agenciesData?.data || [];
 
-  // Sync edit form data when selected ticket changes
+  // Sync edit form data when selected ticket changes or list updates
   useEffect(() => {
-    if (selectedTicketId) {
-      const ticket = tickets.find((t: any) => t.ticketId === selectedTicketId);
-      if (ticket) {
-        setEditFormData({
-          category: ticket.category || '',
-          subCategory: ticket.subCategory || '',
-          location: ticket.location || '',
-          agencyName: ticket.agencyName || '',
-          agencyDate: ticket.agencyDate ? new Date(ticket.agencyDate).toISOString().split('T')[0] : '',
-          agencyTime: ticket.agencyTime || '',
-          priority: (ticket.priority || 'medium').toLowerCase(),
-          status: ticket.status || 'PENDING',
-          description: ticket.description || '',
-        });
-        setInitialAgencyName(ticket.agencyName || '');
-      }
+    if (!selectedTicketId || !tickets || tickets.length === 0) return;
+    
+    const ticket = tickets.find((t: any) => t.ticketId === selectedTicketId);
+    if (ticket) {
+      console.log(`Syncing form for ${selectedTicketId}`, { 
+        photos: ticket.photos?.length, 
+        docs: ticket.documents?.length 
+      });
+      
+      setEditFormData({
+        category: ticket.category || '',
+        subCategory: ticket.subCategory || '',
+        location: ticket.location || '',
+        agencyName: ticket.agencyName || '',
+        agencyDate: ticket.agencyDate ? new Date(ticket.agencyDate).toISOString().split('T')[0] : '',
+        agencyTime: ticket.agencyTime || '',
+        priority: (ticket.priority || 'medium').toLowerCase(),
+        status: ticket.status || 'PENDING',
+        description: ticket.description || '',
+        photos: ticket.photos || [],
+        videos: ticket.videos || [],
+        documents: ticket.documents || [],
+      });
+      setInitialAgencyName(ticket.agencyName || '');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTicketId]); // Only run when modal opens for a new ticket, don't reset on SWR refreshes while editing
+  }, [selectedTicketId, tickets]); // Sync whenever selection or the data list changes
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'photos' | 'videos' | 'documents') => {
+    if (!selectedTicketId) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingFiles(true);
+    setUploadProgress(`Uploading ${files.length} file(s)...`);
+
+    try {
+      const formData = new FormData();
+      formData.append("ticketId", selectedTicketId);
+      formData.append("mediaField", type);
+      formData.append("uploadedBy", "Dashboard Admin");
+      Array.from(files).forEach(file => {
+        formData.append("files", file);
+      });
+
+      const response = await fetch("/api/tickets/upload-media", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      const result = await response.json();
+      
+      // Update local state to reflect new URLs immediately
+      setEditFormData(prev => ({
+        ...prev,
+        [type]: [...(prev[type as keyof typeof editFormData] as string[]), ...result.data.urls]
+      }));
+
+      // Refresh data
+      await mutate();
+      setUploadProgress("Upload complete!");
+      setTimeout(() => setUploadProgress(null), 3000);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const removeAttachment = (url: string, type: 'photos' | 'videos' | 'documents') => {
+    setEditFormData(prev => ({
+      ...prev,
+      [type]: (prev[type as keyof typeof editFormData] as string[]).filter(u => u !== url)
+    }));
+  };
 
   // Helper to calculate stats
   const calculateStats = useCallback((subset: any[]) => {
@@ -286,14 +368,14 @@ function DashboardContent() {
       low: subset.filter((t: any) => (t.priority || "").toLowerCase() === "low").length,
     };
 
-    // Source calculation based on category agency
+    // Source calculation based on ticket's assigned agency
     let inHouse = 0;
     let outsource = 0;
 
     subset.forEach((t: any) => {
-      const catName = (t.category || "").toLowerCase();
-      const cat = categories.find((c: any) => c.name.toLowerCase() === catName);
-      if (cat && cat.agency) {
+      const agencyName = (t.agencyName || "").toString().trim();
+      // Ticket is outsourced if it has a valid agency name
+      if (agencyName && !["NONE", "__NONE__", ""].includes(agencyName.toUpperCase())) {
         outsource++;
       } else {
         inHouse++;
@@ -301,22 +383,48 @@ function DashboardContent() {
     });
 
     return { total, priority, source: { inHouse, outsource } };
-  }, [categories]);
+  }, []);
+
+  // Helper to get audit summary for a category or group
+  const getAuditSummary = (subset: any[]) => {
+    const pending = subset.filter((t: any) => t.status === "PENDING").length;
+    const completed = subset.filter((t: any) => t.status === "COMPLETED").length;
+    const total = subset.length;
+    
+    // Priority breakdown for pending
+    const pendingHigh = subset.filter((t: any) => t.status === "PENDING" && (t.priority || "").toLowerCase() === "high").length;
+    const pendingMedium = subset.filter((t: any) => t.status === "PENDING" && (t.priority || "").toLowerCase() === "medium").length;
+    const pendingLow = subset.filter((t: any) => t.status === "PENDING" && (t.priority || "").toLowerCase() === "low").length;
+
+    // Last activity
+    const lastCreated = subset.length > 0 ? new Date(Math.max(...subset.map((t: any) => new Date(t.createdAt).getTime()))).toLocaleDateString() : "Never";
+    const lastCompleted = subset.filter(t => t.status === "COMPLETED").length > 0 
+      ? new Date(Math.max(...subset.filter((t: any) => t.status === "COMPLETED").map((t: any) => new Date(t.completedAt).getTime()))).toLocaleDateString()
+      : "None";
+
+    return { total, pending, completed, pendingHigh, pendingMedium, pendingLow, lastCreated, lastCompleted };
+  };
 
   // Filter logic split into base (global filters) and full (including category/sub selection)
   const baseFiltered = useMemo(() => {
     const {
       location, status, priority, user, name,
-      dateFrom, dateTo, timeFrom, timeTo
+      dateFrom, dateTo, timeFrom, timeTo, reopenedOnly
     } = filters;
 
     let out = tickets.slice();
 
-    // Apply showCompleted filter first - this overrides status filter
-    if (showCompleted) {
-      out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "completed");
-    } else {
-      out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "pending");
+    if (reopenedOnly) {
+      out = out.filter((t: any) => (t.reopenedHistory?.length || 0) > 0);
+    }
+
+    // Apply showCompleted filter - but bypass if reopenedOnly is true to show all historical reopened tickets
+    if (!reopenedOnly) {
+      if (showCompleted) {
+        out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "completed");
+      } else {
+        out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "pending");
+      }
     }
 
     if (location) out = out.filter((t: any) => (t.location || "").toString().toLowerCase() === location.toLowerCase());
@@ -333,9 +441,10 @@ function DashboardContent() {
     if (name) {
       const q = name.toLowerCase();
       out = out.filter((t: any) => {
+        const ticketId = (t.ticketId || "").toString().toLowerCase();
         const createdBy = (t.createdBy || "").toString().toLowerCase();
         const description = (t.description || "").toString().toLowerCase();
-        return createdBy.includes(q) || description.includes(q);
+        return ticketId.includes(q) || createdBy.includes(q) || description.includes(q);
       });
     }
 
@@ -704,7 +813,9 @@ function DashboardContent() {
       };
     }).filter((a: any) => a.stats.total > 0); // Only show agencies with pending work
 
-    return { totalStats, pendingStats, completedStats, categoryStats, userStats, subCategoryStats, agencyStats };
+    const reopenedStats = calculateStats(globalStatsBase.filter((t: any) => (t.reopenedHistory?.length || 0) > 0));
+
+    return { totalStats, pendingStats, completedStats, reopenedStats, categoryStats, userStats, subCategoryStats, agencyStats };
   }, [fullyFiltered, baseFiltered, categoryStatsBase, globalStatsBase, categories, users, subCategories, selectedCategory, calculateStats, agencies, ticketToAgencyMap]);
 
   if (error)
@@ -769,78 +880,78 @@ function DashboardContent() {
         {/* Summary Stats */}
         <div className="mb-8 sm:mb-12">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-            {!showCompleted ? (
-              <div id="pending-capsule">
-                <Capsule
-                  title="Pending"
-                  {...stats.pendingStats}
-                  onClick={() => {
-                    // Save reference to pending capsule and scroll to ticket list
-                    const pendingDiv = document.getElementById('pending-capsule');
-                    if (pendingDiv) {
-                      clickedElementRef.current = pendingDiv;
-                    }
-                    const newStatus = "";
-                    setFilters({ category: "", status: newStatus, priority: "" });
-                    setSelectedCategory(null);
-                    scrollToTicketList();
-                    // Update URL
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.delete('category');
-                    params.delete('priority');
-                    if (newStatus) params.set('status', newStatus); else params.delete('status');
-                    router.push(`/dashboard?${params.toString()}`);
-                  }}
-                  onPriorityClick={(p) => {
-                    const newPriority = p; // Clicked priority
-                    setFilters({ priority: newPriority });
-                    scrollToTicketList();
-                    // Update URL - user request: redirect to tickets page (dashboard with filter)
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.set('priority', newPriority);
-                    router.push(`/dashboard?${params.toString()}`);
-                  }}
-                  selectedPriority={filters.priority}
-                  color="#3b82f6"
-                  className={filters.status === "PENDING" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-                  onScrollBack={scrollBackToTop}
-                />
-              </div>
-            ) : (
-              <div id="completed-capsule">
-                <Capsule
-                  title="Completed"
-                  {...stats.completedStats}
-                  onClick={() => {
-                    // Save reference to completed capsule and scroll to ticket list
-                    const completedDiv = document.getElementById('completed-capsule');
-                    if (completedDiv) {
-                      clickedElementRef.current = completedDiv;
-                    }
-                    const newStatus = filters.status === "COMPLETED" ? "" : "COMPLETED";
-                    setFilters({ status: newStatus, priority: "" });
-                    scrollToTicketList();
-                    // Update URL
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.delete('priority');
-                    if (newStatus) params.set('status', newStatus); else params.delete('status');
-                    router.push(`/dashboard?${params.toString()}`);
-                  }}
-                  onPriorityClick={(p) => {
-                    const newPriority = p;
-                    setFilters({ priority: newPriority });
-                    scrollToTicketList();
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.set('priority', newPriority);
-                    router.push(`/dashboard?${params.toString()}`);
-                  }}
-                  selectedPriority={filters.priority}
-                  color="#14b8a6"
-                  className={filters.status === "COMPLETED" ? "ring-2 ring-gray-900 ring-offset-2" : ""}
-                  onScrollBack={scrollBackToTop}
-                />
-              </div>
-            )}
+            <div id="pending-capsule">
+              <Capsule
+                title="Pending"
+                {...stats.pendingStats}
+                onAuditClick={() => {
+                  const pendingTickets = globalStatsBase.filter((t: any) => t.status === "PENDING");
+                  setAuditCategoryData({ name: "Pending Work", ...getAuditSummary(pendingTickets), color: "#3b82f6" });
+                  setShowCategoryAudit(true);
+                }}
+                onClick={() => {
+                  setFilters({ status: "PENDING", reopenedOnly: false, priority: "" });
+                  setShowCompleted(false);
+                  scrollToTicketList();
+                }}
+                onPriorityClick={(p) => {
+                  setFilters({ priority: p, status: "PENDING", reopenedOnly: false });
+                  setShowCompleted(false);
+                  scrollToTicketList();
+                }}
+                selectedPriority={!filters.reopenedOnly && !showCompleted ? filters.priority : ""}
+                color="#3b82f6"
+                className={!showCompleted && !filters.reopenedOnly ? "ring-2 ring-blue-500 ring-offset-2" : "opacity-70 hover:opacity-100"}
+              />
+            </div>
+
+            <div id="completed-capsule">
+              <Capsule
+                title="Completed"
+                {...stats.completedStats}
+                onAuditClick={() => {
+                  const completedTickets = globalStatsBase.filter((t: any) => t.status === "COMPLETED");
+                  setAuditCategoryData({ name: "Completed Work", ...getAuditSummary(completedTickets), color: "#10b981" });
+                  setShowCategoryAudit(true);
+                }}
+                onClick={() => {
+                  setFilters({ status: "COMPLETED", reopenedOnly: false, priority: "" });
+                  setShowCompleted(true);
+                  scrollToTicketList();
+                }}
+                onPriorityClick={(p) => {
+                  setFilters({ priority: p, status: "COMPLETED", reopenedOnly: false });
+                  setShowCompleted(true);
+                  scrollToTicketList();
+                }}
+                selectedPriority={showCompleted && !filters.reopenedOnly ? filters.priority : ""}
+                color="#10b981"
+                className={showCompleted && !filters.reopenedOnly ? "ring-2 ring-emerald-500 ring-offset-2" : "opacity-70 hover:opacity-100"}
+              />
+            </div>
+
+            <div id="reopened-capsule">
+              <Capsule
+                title="Reopened"
+                {...stats.reopenedStats}
+                onAuditClick={() => {
+                  const reopenedTickets = globalStatsBase.filter((t: any) => t.reopenedHistory && t.reopenedHistory.length > 0);
+                  setAuditCategoryData({ name: "Reopened Tickets", ...getAuditSummary(reopenedTickets), color: "#f59e0b" });
+                  setShowCategoryAudit(true);
+                }}
+                onClick={() => {
+                  setFilters({ reopenedOnly: true, priority: "" });
+                  scrollToTicketList();
+                }}
+                onPriorityClick={(p) => {
+                  setFilters({ priority: p, reopenedOnly: true });
+                  scrollToTicketList();
+                }}
+                selectedPriority={filters.reopenedOnly ? filters.priority : ""}
+                color="#f59e0b"
+                className={filters.reopenedOnly ? "ring-2 ring-amber-500 ring-offset-2" : "opacity-70 hover:opacity-100"}
+              />
+            </div>
           </div>
         </div>
 
@@ -854,6 +965,17 @@ function DashboardContent() {
                   <Capsule
                     title={cat.name}
                     {...cat.stats}
+                    color={cat.color}
+                    selectedPriority={filters.priority}
+                    onAuditClick={() => {
+                      const catTickets = globalStatsBase.filter((t: any) => (t.category || "").toLowerCase() === cat.internalName.toLowerCase());
+                      setAuditCategoryData({
+                        name: cat.name,
+                        ...getAuditSummary(catTickets),
+                        color: cat.color
+                      });
+                      setShowCategoryAudit(true);
+                    }}
                     onClick={() => {
                       const isAll = cat.id === "all";
                       const isCurrentlySelected = selectedCategory === cat.id ||
@@ -911,8 +1033,6 @@ function DashboardContent() {
                       params.set('category', cat.internalName);
                       router.push(`/dashboard?${params.toString()}`);
                     }}
-                    selectedPriority={filters.priority}
-                    color={cat.color || "#6b7280"}
                     className={(selectedCategory === cat.id || (cat.id === "all" ? filters.category === "" : filters.category === cat.internalName)) ? "ring-2 ring-gray-900 ring-offset-2" : ""}
                   />
                 </div>
@@ -1728,6 +1848,133 @@ function DashboardContent() {
                     </div>
                   </div>
 
+                  {/* Attachments Section */}
+                  <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-green-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <Link className="w-5 h-5 text-green-600" />
+                        Media & Attachments
+                      </h3>
+                      {uploadingFiles && (
+                        <div className="flex items-center gap-2 text-xs font-bold text-blue-600 animate-pulse">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          {uploadProgress}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Photos */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold uppercase text-gray-500 flex items-center gap-1">
+                            <Camera size={14} /> Photos ({editFormData.photos?.length || 0})
+                          </label>
+                          <label className="p-1 hover:bg-green-50 rounded cursor-pointer transition-colors text-green-600" title="Upload Photo">
+                            <Plus size={16} />
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/*" 
+                              multiple 
+                              onChange={(e) => handleFileUpload(e, 'photos')}
+                              disabled={uploadingFiles}
+                            />
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {editFormData.photos?.map((url, idx) => (
+                            <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                              <img src={url} alt="Photo" className="w-full h-full object-cover" />
+                              <button 
+                                onClick={() => removeAttachment(url, 'photos')}
+                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Videos */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold uppercase text-gray-500 flex items-center gap-1">
+                            <Video size={14} /> Videos ({editFormData.videos?.length || 0})
+                          </label>
+                          <label className="p-1 hover:bg-green-50 rounded cursor-pointer transition-colors text-green-600" title="Upload Video">
+                            <Plus size={16} />
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="video/*" 
+                              onChange={(e) => handleFileUpload(e, 'videos')}
+                              disabled={uploadingFiles}
+                            />
+                          </label>
+                        </div>
+                        <div className="space-y-2 text-[10px] text-gray-500">
+                          {editFormData.videos?.map((url, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200">
+                              <span className="truncate flex-1">Video {idx + 1}</span>
+                              <button 
+                                onClick={() => removeAttachment(url, 'videos')}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Documents */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold uppercase text-gray-500 flex items-center gap-1">
+                            <FileText size={14} /> Documents ({editFormData.documents?.length || 0})
+                          </label>
+                          <label className="p-1 hover:bg-green-50 rounded cursor-pointer transition-colors text-green-600" title="Upload Document">
+                            <Plus size={16} />
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept=".pdf,.xlsx,.xls,.docx,.doc,.txt" 
+                              multiple 
+                              onChange={(e) => handleFileUpload(e, 'documents')}
+                              disabled={uploadingFiles}
+                            />
+                          </label>
+                        </div>
+                        <div className="space-y-2">
+                          {editFormData.documents?.map((url, idx) => {
+                            const name = url.split('/').pop()?.split('_').pop() || `Doc ${idx + 1}`;
+                            return (
+                              <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200 text-xs">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <FileText size={12} className="text-gray-400" />
+                                  <span className="truncate text-gray-700">{name}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 p-1">
+                                    <Download size={12} />
+                                  </a>
+                                  <button 
+                                    onClick={() => removeAttachment(url, 'documents')}
+                                    className="text-red-500 hover:text-red-700 p-1"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Notes Section */}
                   <div className="bg-white rounded-2xl p-6 shadow-md border-2 border-indigo-200">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -1788,6 +2035,9 @@ function DashboardContent() {
                               agencyName: editFormData.agencyName,
                               agencyDate: editFormData.agencyDate || null,
                               agencyTime: editFormData.agencyTime || null,
+                              photos: editFormData.photos,
+                              videos: editFormData.videos,
+                              documents: editFormData.documents,
                             };
                             
                             const newNoteEl = document.querySelector('textarea[placeholder="Add a new note..."]') as HTMLTextAreaElement;
@@ -1838,6 +2088,115 @@ function DashboardContent() {
       agencyName={shareModalAgency?.name || ""}
       tickets={tickets}
     />
+      {/* Category Audit Summary Modal */}
+      {showCategoryAudit && auditCategoryData && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6" onClick={() => setShowCategoryAudit(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative max-w-md w-full rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 bg-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: `${auditCategoryData.color}15`, borderBottom: `1px solid ${auditCategoryData.color}30` }}>
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: `${auditCategoryData.color}20` }}>
+                  <Activity size={20} style={{ color: auditCategoryData.color }} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold leading-none text-gray-900">{auditCategoryData.name}</h2>
+                  <p className="text-[10px] font-semibold mt-1 uppercase tracking-wider text-gray-500">Aggregate Summary</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowCategoryAudit(false)}
+                className="p-2 rounded-full hover:bg-black/5 transition-colors text-gray-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-6">
+              {/* Main Breakdown */}
+              <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="text-center">
+                  <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Total</p>
+                  <p className="text-2xl font-black text-gray-900">{auditCategoryData.total}</p>
+                </div>
+                <div className="h-10 w-px bg-gray-200" />
+                <div className="text-center">
+                  <p className="text-[10px] font-bold uppercase text-teal-500 mb-1">Completed</p>
+                  <p className="text-2xl font-black text-teal-600">{auditCategoryData.completed}</p>
+                </div>
+                <div className="h-10 w-px bg-gray-200" />
+                <div className="text-center">
+                  <p className="text-[10px] font-bold uppercase text-amber-500 mb-1">Pending</p>
+                  <p className="text-2xl font-black text-amber-600">{auditCategoryData.pending}</p>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold text-gray-600">
+                  <span>Completion Progress</span>
+                  <span>{auditCategoryData.total > 0 ? Math.round((auditCategoryData.completed / auditCategoryData.total) * 100) : 0}%</span>
+                </div>
+                <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                  <div 
+                    className="h-full transition-all duration-1000 ease-out"
+                    style={{ 
+                      width: `${auditCategoryData.total > 0 ? (auditCategoryData.completed / auditCategoryData.total) * 100 : 0}%`,
+                      backgroundColor: auditCategoryData.color || '#14b8a6'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Pending Priority Breakdown */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Pending by Priority</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="p-2 rounded-lg bg-rose-50 border border-rose-100 text-center">
+                    <p className="text-[10px] font-bold text-rose-600 uppercase">High</p>
+                    <p className="text-lg font-black text-rose-700">{auditCategoryData.pendingHigh}</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-amber-50 border border-amber-100 text-center">
+                    <p className="text-[10px] font-bold text-amber-600 uppercase">Med</p>
+                    <p className="text-lg font-black text-amber-700">{auditCategoryData.pendingMedium}</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-100 text-center">
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase">Low</p>
+                    <p className="text-lg font-black text-emerald-700">{auditCategoryData.pendingLow}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Activity Info */}
+              <div className="pt-4 border-t border-dashed border-gray-200 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">Last Entry</p>
+                  <p className="text-xs font-semibold text-gray-700">{auditCategoryData.lastCreated}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">Last Fix</p>
+                  <p className="text-xs font-semibold text-gray-700">{auditCategoryData.lastCompleted}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 flex items-center justify-end border-t border-gray-100">
+              <button
+                onClick={() => setShowCategoryAudit(false)}
+                className="px-6 py-2 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 active:scale-95 shadow-md"
+                style={{ backgroundColor: auditCategoryData.color || '#1f2937' }}
+              >
+                Close Summary
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

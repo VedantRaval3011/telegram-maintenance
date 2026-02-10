@@ -33,7 +33,7 @@ const CategorySchema = new Schema<ICategory>(
   { timestamps: true }
 );
 
-CategorySchema.index({ name: 1 }, { unique: true });
+// Index for name is already created by 'unique: true' in schema definition
 CategorySchema.index({ isActive: 1 });
 CategorySchema.index({ priority: 1 });
 

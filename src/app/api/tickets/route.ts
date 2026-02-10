@@ -4,6 +4,7 @@ import { connectToDB } from "../../../lib/mongodb";
 import { Ticket } from "../../../models/Ticket";
 import { Location } from "../../../models/Location";
 import { getSession } from "@/lib/auth";
+import mongoose from "mongoose";
 
 // Helper to get parent ID from either string or populated object
 function getParentId(parentLocationId: any): string | null {
@@ -122,6 +123,12 @@ export async function GET(request: NextRequest) {
     console.log('[TICKETS API] Filtered tickets count:', tickets.length);
   }
   
+  // Ensure required fields exist in every ticket (especially for lean queries)
+  tickets = tickets.map((ticket: any) => ({
+    ...ticket,
+    reopenedHistory: ticket.reopenedHistory || []
+  }));
+
   // Remove time details if user has hideTimeDetails restriction
   if (session && session.hideTimeDetails && !session.isSuperAdmin) {
     tickets = tickets.map((ticket: any) => {

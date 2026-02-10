@@ -15,6 +15,9 @@ export const APP_SECTIONS = {
   agencies: { label: "Agencies", path: "/masters/agencies" },
   purchase: { label: "Purchase", path: "/purchase" },
   summary: { label: "Summary", path: "/summary" },
+  reopened_tickets: { label: "Reopened Tickets", path: "/reopened-tickets" },
+  performance_analytics: { label: "Performance & Analytics", path: "/performance-analytics" },
+  audit_logs: { label: "Audit Logs", path: "/audit-logs" },
   settings: { label: "Settings", path: "/settings" },
   admin: { label: "Super Admin", path: "/admin" },
 } as const;

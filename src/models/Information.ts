@@ -8,6 +8,9 @@ export interface IInformation extends Document {
   type: "general" | "audit"; // Classification type
   telegramMessageId?: number | null; // Original message that contained the info
   telegramChatId?: number | null;
+  photos?: string[];
+  videos?: string[];
+  documents?: string[];
 }
 
 const InformationSchema = new mongoose.Schema<IInformation>({
@@ -17,6 +20,9 @@ const InformationSchema = new mongoose.Schema<IInformation>({
   type: { type: String, enum: ["general", "audit"], default: "general" },
   telegramMessageId: { type: Number, default: null },
   telegramChatId: { type: Number, default: null },
+  photos: { type: [String], default: [] },
+  videos: { type: [String], default: [] },
+  documents: { type: [String], default: [] },
 });
 
 // Add text index for search functionality

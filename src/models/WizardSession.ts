@@ -57,6 +57,7 @@ export interface IWizardSession extends Document {
 
   photos: string[];
   videos: string[];
+  documents: string[];
 
   /**
    * Current step of the wizard
@@ -161,6 +162,7 @@ const WizardSessionSchema = new Schema<IWizardSession>(
 
     photos: { type: [String], default: [] },
     videos: { type: [String], default: [] },
+    documents: { type: [String], default: [] },
 
     /** Dynamic step system */
     currentStep: { type: String, default: "category" },

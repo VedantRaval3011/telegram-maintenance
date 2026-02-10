@@ -26,7 +26,16 @@ import {
   MessageCircle,
   Send,
   Copy,
-  Phone
+  Phone,
+  Activity,
+  History,
+  ArrowUpCircle,
+  FileSearch,
+  Monitor,
+  MessageSquare,
+  File,
+  Download,
+  ExternalLink
 } from "lucide-react";
 
 interface Note {
@@ -46,6 +55,16 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     }
     : null;
 }
+
+// Helper function to determine if user is from Telegram or Dashboard
+const getUserType = (username: string): "telegram" | "dashboard" | "system" => {
+  if (!username || username === "Unknown") return "system";
+  if (username.toLowerCase() === "system") return "system";
+  // Dashboard users typically have structured usernames (admin, user1, etc.)
+  // Telegram users often have display names with spaces or special characters
+  if (username.includes(" ") || username.match(/[^\w\s]/)) return "telegram";
+  return "dashboard";
+};
 
 // Helper function to create a lighter version of a color
 function lightenColor(hex: string, percent: number): string {
@@ -109,6 +128,7 @@ export default function TicketCard({
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
+  const [showAuditModal, setShowAuditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -166,12 +186,29 @@ export default function TicketCard({
   };
 
   const reopenTicket = async () => {
-    await fetch(`/api/tickets/${ticket.ticketId}`, {
+    const reason = prompt("Please enter the reason for reopening this ticket:");
+    if (reason === null) return; // User cancelled
+    
+    const url = `/api/tickets/${ticket._id || ticket.ticketId}`;
+    alert(`DEBUG: Fetching URL: ${url}`);
+    
+    const response = await fetch(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "PENDING", reopen: true, reopenedBy: currentUsername }),
+      body: JSON.stringify({ 
+        status: "PENDING", 
+        reopen: true, 
+        reopenedBy: currentUsername,
+        reopenedReason: reason || "Not specified"
+      }),
     });
-    onStatusChange?.();
+    
+    if (response.ok) {
+      onStatusChange?.();
+    } else {
+      const errData = await response.json();
+      alert(`Failed to reopen ticket: ${errData.error || "Unknown error"}`);
+    }
   };
 
   const handleEdit = async () => {
@@ -296,25 +333,36 @@ export default function TicketCard({
               >
                 {ticket.status}
               </span>
+
+              {ticket.reopenedHistory && ticket.reopenedHistory.length > 0 && (
+                <span 
+                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 bg-amber-100 text-amber-700 border border-amber-300"
+                  title={`This ticket was reopened ${ticket.reopenedHistory.length} time(s)`}
+                >
+                  <RotateCcw size={10} /> REOPENED {ticket.reopenedHistory.length > 1 ? `(${ticket.reopenedHistory.length})` : ''}
+                </span>
+              )}
               
               {onScrollBack && (
                 <button
                   onClick={() => onScrollBack()}
-                  className="p-0.5 rounded-full hover:bg-black/10 transition-colors"
+                  className="p-1 rounded-full hover:bg-black/10 transition-colors"
                   title="Scroll back to category"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    style={{ color: colors.textDark }}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z" />
-                  </svg>
+                  <ArrowUpCircle size={18} style={{ color: colors.textDark }} />
                 </button>
               )}
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAuditModal(true);
+                }}
+                className="p-1 rounded-full hover:bg-black/10 transition-colors"
+                title="View ticket audit insights"
+              >
+                <Activity size={18} style={{ color: colors.textDark }} />
+              </button>
             </div>
 
             {/* Action Buttons - Compact icon-only buttons */}
@@ -440,8 +488,20 @@ export default function TicketCard({
               <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.text }}>
                 <User size={12} /> Created By
               </div>
-              <div className="font-bold truncate" style={{ color: colors.textDark }}>
+              <div className="font-bold truncate flex items-center gap-1.5" style={{ color: colors.textDark }}>
                 {ticket.createdBy || "-"}
+                {ticket.createdBy && getUserType(ticket.createdBy) !== "system" && (
+                  <span 
+                    className="inline-flex items-center justify-center p-0.5 rounded shadow-sm flex-shrink-0"
+                    title={getUserType(ticket.createdBy) === 'telegram' ? 'Telegram' : 'Dashboard'}
+                    style={{
+                      backgroundColor: getUserType(ticket.createdBy) === 'telegram' ? '#dbeafe' : '#f3e8ff',
+                      color: getUserType(ticket.createdBy) === 'telegram' ? '#1d4ed8' : '#7e22ce',
+                    }}
+                  >
+                    {getUserType(ticket.createdBy) === 'telegram' ? <MessageSquare size={10} /> : <Monitor size={10} />}
+                  </span>
+                )}
               </div>
               {!hideTimeDetails && (
                 <div className="text-[10px]" style={{ color: colors.text }}>
@@ -456,11 +516,39 @@ export default function TicketCard({
                 <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.text }}>
                   <Clock size={12} /> Time
                 </div>
-                <div className="font-bold" style={{ color: colors.textDark }}>
-                  {ticket.createdAt
-                    ? `${Math.floor((Date.now() - new Date(ticket.createdAt).getTime()) / (1000 * 60 * 60))}h ago`
-                    : "-"
-                  }
+                <div className="font-bold whitespace-nowrap" style={{ color: colors.textDark }}>
+                  {ticket.createdAt ? (() => {
+                    const creationTime = new Date(ticket.createdAt).getTime();
+                    
+                    // Use current completion time if COMPLETED, else Now
+                    const endTime = ticket.status === "COMPLETED" && ticket.completedAt 
+                      ? new Date(ticket.completedAt).getTime() 
+                      : Date.now();
+
+                    // Calculate total inactive time (periods when it was COMPLETED)
+                    let totalInactiveMs = 0;
+                    if (ticket.reopenedHistory && ticket.reopenedHistory.length > 0) {
+                      ticket.reopenedHistory.forEach((h: any) => {
+                        if (h.reopenedAt && h.previousCompletedAt) {
+                          const start = new Date(h.previousCompletedAt).getTime();
+                          const end = new Date(h.reopenedAt).getTime();
+                          if (end > start) {
+                            totalInactiveMs += (end - start);
+                          }
+                        }
+                      });
+                    }
+
+                    const activeMs = Math.max(0, endTime - creationTime - totalInactiveMs);
+                    const hoursExact = activeMs / (1000 * 60 * 60);
+                    const hoursRounded = Math.floor(hoursExact);
+                    
+                    if (hoursRounded >= 24) {
+                      const daysDecimal = (hoursExact / 24).toFixed(1);
+                      return `${daysDecimal}d ago (${hoursRounded}h)`;
+                    }
+                    return `${hoursRounded}h ago`;
+                  })() : "-"}
                 </div>
                 <div className="text-[10px]" style={{ color: colors.text }}>
                   {ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
@@ -478,8 +566,20 @@ export default function TicketCard({
                 <div className="text-[10px] font-semibold uppercase mb-0.5 flex items-center gap-1" style={{ color: colors.textDark }}>
                   <CheckCircle2 size={12} /> Completed By
                 </div>
-                <div className="font-bold truncate" style={{ color: colors.textDark }}>
+                <div className="font-bold truncate flex items-center gap-1.5" style={{ color: colors.textDark }}>
                   {ticket.completedBy}
+                  {ticket.completedBy && getUserType(ticket.completedBy) !== "system" && (
+                    <span 
+                      className="inline-flex items-center justify-center p-0.5 rounded shadow-sm flex-shrink-0"
+                      title={getUserType(ticket.completedBy) === 'telegram' ? 'Telegram' : 'Dashboard'}
+                      style={{
+                        backgroundColor: getUserType(ticket.completedBy) === 'telegram' ? '#dbeafe' : '#f3e8ff',
+                        color: getUserType(ticket.completedBy) === 'telegram' ? '#1d4ed8' : '#7e22ce',
+                      }}
+                    >
+                      {getUserType(ticket.completedBy) === 'telegram' ? <MessageSquare size={10} /> : <Monitor size={10} />}
+                    </span>
+                  )}
                 </div>
                 {!hideTimeDetails && (
                   <div className="text-[10px]" style={{ color: colors.text }}>
@@ -567,6 +667,36 @@ export default function TicketCard({
             </div>
           )}
 
+          {/* Documents */}
+          {ticket.documents && ticket.documents.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] font-semibold mb-1.5 uppercase flex items-center gap-1" style={{ color: colors.text }}>
+                <FileText size={12} /> Documents ({ticket.documents.length})
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {ticket.documents.map((url: string, idx: number) => {
+                  const fileName = url.split('/').pop()?.split('?')[0] || `Document ${idx + 1}`;
+                  return (
+                    <a
+                      key={idx}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-2 px-3 py-2 rounded border border-dashed hover:bg-black/5 transition"
+                      style={{ borderColor: colors.border }}
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <File size={14} style={{ color: colors.text }} />
+                        <span className="text-xs truncate font-medium" style={{ color: colors.textDark }}>{fileName}</span>
+                      </div>
+                      <Download size={12} style={{ color: colors.text }} />
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Completion Photos */}
           {ticket.completionPhotos && ticket.completionPhotos.length > 0 && (
             <div className="mb-3 p-2.5 rounded-lg" style={{ backgroundColor: colors.accentMedium }}>
@@ -614,6 +744,36 @@ export default function TicketCard({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Completion Documents */}
+          {ticket.completionDocuments && ticket.completionDocuments.length > 0 && (
+            <div className="mb-3 p-2.5 rounded-lg" style={{ backgroundColor: colors.accentMedium }}>
+              <div className="text-[10px] font-semibold mb-1.5 uppercase flex items-center gap-1" style={{ color: colors.textDark }}>
+                <CheckCircle2 size={12} /> After-fix Documents ({ticket.completionDocuments.length})
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {ticket.completionDocuments.map((url: string, idx: number) => {
+                  const fileName = url.split('/').pop()?.split('?')[0] || `Document ${idx + 1}`;
+                  return (
+                    <a
+                      key={idx}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-2 px-3 py-2 rounded border border-dashed hover:bg-black/5 transition shadow-sm bg-white/50"
+                      style={{ borderColor: colors.borderDark }}
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <FileText size={14} style={{ color: colors.textDark }} />
+                        <span className="text-xs truncate font-medium" style={{ color: colors.textDark }}>{fileName}</span>
+                      </div>
+                      <Download size={12} style={{ color: colors.textDark }} />
+                    </a>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1114,6 +1274,184 @@ export default function TicketCard({
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Audit Summary Modal */}
+      {showAuditModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6" onClick={() => setShowAuditModal(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative max-w-lg w-full rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200"
+            style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: colors.accentMedium, borderBottom: `1px solid ${colors.border}` }}>
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-white/50">
+                  <FileSearch size={20} style={{ color: colors.textDark }} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold leading-none" style={{ color: colors.textDark }}>Audit Insights</h2>
+                  <p className="text-[10px] font-semibold mt-1 uppercase tracking-wider opacity-70" style={{ color: colors.text }}>Ticket #{ticket.ticketId}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowAuditModal(false)}
+                className="p-2 rounded-full hover:bg-black/5 transition-colors"
+                style={{ color: colors.textDark }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Quick Status Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl border border-dashed flex flex-col items-center justify-center text-center" style={{ borderColor: colors.borderDark, backgroundColor: colors.bgLight }}>
+                  <span className="text-[10px] font-bold uppercase opacity-60 mb-1" style={{ color: colors.text }}>Age</span>
+                  <span className="text-sm font-black" style={{ color: colors.textDark }}>
+                    {ticket.createdAt ? (() => {
+                      const totalHours = Math.floor((Date.now() - new Date(ticket.createdAt).getTime()) / (1000 * 60 * 60));
+                      if (totalHours >= 72) {
+                        const days = Math.floor(totalHours / 24);
+                        const remainingHours = totalHours % 24;
+                        return `${days}d ${remainingHours}h`;
+                      }
+                      return `${totalHours}h`;
+                    })() : "N/A"}
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl border border-dashed flex flex-col items-center justify-center text-center" style={{ borderColor: colors.borderDark, backgroundColor: colors.bgLight }}>
+                  <span className="text-[10px] font-bold uppercase opacity-60 mb-1" style={{ color: colors.text }}>Updates</span>
+                  <span className="text-sm font-black" style={{ color: colors.textDark }}>{notes.length} Notes</span>
+                </div>
+              </div>
+
+              {/* Lifecycle Timeline */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-center" style={{ color: colors.text }}>Lifecycle Timeline</h3>
+                
+                <div className="relative space-y-6 before:absolute before:inset-0 before:ml-4 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
+                  {/* Created */}
+                  <div className="relative flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="absolute left-0 w-8 h-8 rounded-full border-4 flex items-center justify-center bg-white" style={{ borderColor: colors.accent }}>
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.accent }}></div>
+                      </div>
+                      <div className="ml-12">
+                        <p className="text-sm font-bold" style={{ color: colors.textDark }}>Ticket Created</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs opacity-70" style={{ color: colors.text }}>by {ticket.createdBy || "System"}</p>
+                          {ticket.createdBy && getUserType(ticket.createdBy) !== "system" && (
+                            <span 
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-tight"
+                              style={{
+                                backgroundColor: getUserType(ticket.createdBy) === 'telegram' ? '#dbeafe' : '#f3e8ff',
+                                color: getUserType(ticket.createdBy) === 'telegram' ? '#1d4ed8' : '#7e22ce',
+                                border: `1px solid ${getUserType(ticket.createdBy) === 'telegram' ? '#bfdbfe' : '#e9d5ff'}`
+                              }}
+                            >
+                              {getUserType(ticket.createdBy) === 'telegram' ? <MessageSquare size={10} /> : <Monitor size={10} />}
+                              {getUserType(ticket.createdBy) === 'telegram' ? 'Telegram' : 'Dashboard'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold" style={{ color: colors.text }}>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}</p>
+                      <p className="text-[10px] opacity-60" style={{ color: colors.text }}>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}</p>
+                    </div>
+                  </div>
+
+                  {/* Assigned */}
+                  {ticket.assignedTo && (
+                    <div className="relative flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="absolute left-0 w-8 h-8 rounded-full border-4 flex items-center justify-center bg-white" style={{ borderColor: colors.textDark }}>
+                          <User size={12} style={{ color: colors.textDark }} />
+                        </div>
+                        <div className="ml-12">
+                          <p className="text-sm font-bold" style={{ color: colors.textDark }}>Assigned to Team</p>
+                          <p className="text-xs opacity-70" style={{ color: colors.text }}>{ticket.assignedTo.firstName || ticket.assignedTo.username || "Staff"}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold" style={{ color: colors.text }}>
+                          {ticket.assignedAt ? new Date(ticket.assignedAt).toLocaleDateString() : (ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : "")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Completed */}
+                  {ticket.status === "COMPLETED" && (
+                    <div className="relative flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="absolute left-0 w-8 h-8 rounded-full border-4 flex items-center justify-center bg-emerald-500" style={{ borderColor: "#10b981" }}>
+                          <Check size={14} className="text-white" />
+                        </div>
+                        <div className="ml-12">
+                          <p className="text-sm font-bold text-emerald-700">Maintenance Completed</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-emerald-600 opacity-80">by {ticket.completedBy || "Unknown"}</p>
+                            {ticket.completedBy && getUserType(ticket.completedBy) !== "system" && (
+                              <span 
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-tight"
+                                style={{
+                                  backgroundColor: getUserType(ticket.completedBy) === 'telegram' ? '#dbeafe' : '#f3e8ff',
+                                  color: getUserType(ticket.completedBy) === 'telegram' ? '#1d4ed8' : '#7e22ce',
+                                  border: `1px solid ${getUserType(ticket.completedBy) === 'telegram' ? '#bfdbfe' : '#e9d5ff'}`
+                                }}
+                              >
+                                {getUserType(ticket.completedBy) === 'telegram' ? <MessageSquare size={10} /> : <Monitor size={10} />}
+                                {getUserType(ticket.completedBy) === 'telegram' ? 'Telegram' : 'Dashboard'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold text-emerald-700">{ticket.completedAt ? new Date(ticket.completedAt).toLocaleDateString() : ""}</p>
+                        <p className="text-[10px] text-emerald-600 opacity-60">{ticket.completedAt ? new Date(ticket.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Media Summary */}
+              <div className="pt-4 border-t border-dashed" style={{ borderColor: colors.border }}>
+                <div className="grid grid-cols-3 gap-2 text-[10px] sm:text-xs font-semibold" style={{ color: colors.text }}>
+                  <div className="flex flex-col items-center gap-1 border-r border-dashed" style={{ borderColor: colors.border }}>
+                    <div className="flex items-center gap-1"><Camera size={14} /> {(ticket.photos?.length || 0) + (ticket.completionPhotos?.length || 0)}</div>
+                    <span className="text-[8px] opacity-60 uppercase">Photos</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1 border-r border-dashed" style={{ borderColor: colors.border }}>
+                    <div className="flex items-center gap-1"><Video size={14} /> {(ticket.videos?.length || 0) + (ticket.completionVideos?.length || 0)}</div>
+                    <span className="text-[8px] opacity-60 uppercase">Videos</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-1"><FileText size={14} /> {(ticket.documents?.length || 0) + (ticket.completionDocuments?.length || 0)}</div>
+                    <span className="text-[8px] opacity-60 uppercase">Files</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-gray-50 flex items-center justify-end border-t" style={{ borderColor: colors.border }}>
+              <button
+                onClick={() => setShowAuditModal(false)}
+                className="px-6 py-2 rounded-xl text-sm font-bold text-white transition-transform hover:scale-105 active:scale-95"
+                style={{ backgroundColor: colors.textDark }}
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

@@ -8,14 +8,26 @@ import { uploadToBunny } from "@/lib/bunnyStorage";
 const CONFIG = {
   maxImageSize: 10 * 1024 * 1024, // 10MB for images
   maxVideoSize: 100 * 1024 * 1024, // 100MB for videos
+  maxDocSize: 20 * 1024 * 1024, // 20MB for documents
   maxFilesPerUpload: 10,
   allowedImageTypes: ["image/jpeg", "image/jpg", "image/png"],
   allowedVideoTypes: ["video/mp4", "video/quicktime"], // MP4 and MOV
+  allowedDocTypes: [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+    "application/msword", // .doc
+    "application/vnd.ms-excel", // .xls
+    "application/vnd.ms-powerpoint", // .ppt
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+    "text/plain", // .txt
+    "application/rtf", // .rtf
+  ],
 };
 
 interface MediaUploadMetadata {
   ticketId: string;
-  mediaType: "image" | "video";
+  mediaType: "image" | "video" | "document";
   uploadedBy: string;
   uploadTimestamp: Date;
   source: "manual_upload";
@@ -29,8 +41,19 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const ticketId = formData.get("ticketId") as string;
     const uploadedBy = formData.get("uploadedBy") as string || "Dashboard Admin";
-    const mediaField = formData.get("mediaField") as string || "photos"; // 'photos' or 'videos'
+    const mediaField = formData.get("mediaField") as string || "photos"; // 'photos', 'videos', or 'documents'
     const files = formData.getAll("files") as File[];
+
+    // Check if BunnyCDN is configured
+    if (!process.env.BUNNY_STORAGE_ZONE || !process.env.BUNNY_STORAGE_API_KEY || !process.env.BUNNY_STORAGE_HOST || !process.env.BUNNY_CDN_HOSTNAME) {
+      return NextResponse.json(
+        { 
+          ok: false, 
+          error: "BunnyCDN is not configured on the server. Please add BUNNY_STORAGE_ZONE, BUNNY_STORAGE_API_KEY, BUNNY_STORAGE_HOST, and BUNNY_CDN_HOSTNAME to your .env.local file." 
+        },
+        { status: 500 }
+      );
+    }
 
     // Validation
     if (!ticketId) {
@@ -75,8 +98,9 @@ export async function POST(req: NextRequest) {
       // Determine if image or video
       const isImage = CONFIG.allowedImageTypes.includes(fileType);
       const isVideo = CONFIG.allowedVideoTypes.includes(fileType);
+      const isDoc = CONFIG.allowedDocTypes.includes(fileType);
 
-      if (!isImage && !isVideo) {
+      if (!isImage && !isVideo && !isDoc) {
         errors.push(`${fileName}: Unsupported file type (${fileType})`);
         continue;
       }
@@ -92,6 +116,11 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      if (isDoc && fileSize > CONFIG.maxDocSize) {
+        errors.push(`${fileName}: Document exceeds ${CONFIG.maxDocSize / (1024 * 1024)}MB limit`);
+        continue;
+      }
+
       try {
         // Convert file to buffer
         const arrayBuffer = await file.arrayBuffer();
@@ -103,6 +132,15 @@ export async function POST(req: NextRequest) {
         else if (fileType === "image/jpeg" || fileType === "image/jpg") extension = "jpg";
         else if (fileType === "video/mp4") extension = "mp4";
         else if (fileType === "video/quicktime") extension = "mov";
+        else if (fileType === "application/pdf") extension = "pdf";
+        else if (fileType.includes("spreadsheetml")) extension = "xlsx";
+        else if (fileType.includes("wordprocessingml")) extension = "docx";
+        else {
+          // Extract extension from fileName as fallback
+          const parts = fileName.split('.');
+          if (parts.length > 1) extension = parts.pop() || "bin";
+          else extension = "bin";
+        }
 
         // Upload to Bunny CDN
         const folder = `telegram-maintenance/manual-uploads/${ticketId}`;
@@ -113,7 +151,7 @@ export async function POST(req: NextRequest) {
         // Create metadata
         metadata.push({
           ticketId,
-          mediaType: isVideo ? "video" : "image",
+          mediaType: isVideo ? "video" : (isDoc ? "document" : "image"),
           uploadedBy,
           uploadTimestamp: new Date(),
           source: "manual_upload",
@@ -132,16 +170,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Separate URLs by type based on extension
+    // Separate URLs by type
+    const docExtensions = ["pdf", "xlsx", "xls", "docx", "doc", "txt", "rtf", "ppt", "pptx"];
     const imageUrls = uploadedUrls.filter(url => 
       url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.png')
     );
     const videoUrls = uploadedUrls.filter(url => 
       url.endsWith('.mp4') || url.endsWith('.mov')
     );
+    const docUrls = uploadedUrls.filter(url => 
+      docExtensions.some(ext => url.toLowerCase().endsWith(`.${ext}`))
+    );
 
     // Update ticket with new media
-    if (mediaField === "completionPhotos" || mediaField === "completionVideos") {
+    if (mediaField.startsWith("completion")) {
       // Add to completion media
       if (imageUrls.length > 0) {
         ticket.completionPhotos = [...(ticket.completionPhotos || []), ...imageUrls];
@@ -149,13 +191,19 @@ export async function POST(req: NextRequest) {
       if (videoUrls.length > 0) {
         ticket.completionVideos = [...(ticket.completionVideos || []), ...videoUrls];
       }
+      if (docUrls.length > 0) {
+        ticket.completionDocuments = [...(ticket.completionDocuments || []), ...docUrls];
+      }
     } else {
-      // Add to regular photos/videos
+      // Add to regular media
       if (imageUrls.length > 0) {
         ticket.photos = [...(ticket.photos || []), ...imageUrls];
       }
       if (videoUrls.length > 0) {
         ticket.videos = [...(ticket.videos || []), ...videoUrls];
+      }
+      if (docUrls.length > 0) {
+        ticket.documents = [...(ticket.documents || []), ...docUrls];
       }
     }
 
@@ -168,6 +216,7 @@ export async function POST(req: NextRequest) {
         uploadedCount: uploadedUrls.length,
         imageCount: imageUrls.length,
         videoCount: videoUrls.length,
+        docCount: docUrls.length,
         urls: uploadedUrls,
         metadata,
         errors: errors.length > 0 ? errors : undefined,
@@ -191,11 +240,14 @@ export async function GET() {
     config: {
       maxImageSize: CONFIG.maxImageSize,
       maxVideoSize: CONFIG.maxVideoSize,
+      maxDocSize: CONFIG.maxDocSize,
       maxFilesPerUpload: CONFIG.maxFilesPerUpload,
       allowedImageTypes: CONFIG.allowedImageTypes,
       allowedVideoTypes: CONFIG.allowedVideoTypes,
+      allowedDocTypes: CONFIG.allowedDocTypes,
       allowedImageExtensions: ["jpg", "jpeg", "png"],
       allowedVideoExtensions: ["mp4", "mov"],
+      allowedDocExtensions: ["pdf", "xlsx", "xls", "docx", "doc", "txt", "rtf", "ppt", "pptx"],
     },
   });
 }

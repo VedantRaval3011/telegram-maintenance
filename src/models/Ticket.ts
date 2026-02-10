@@ -1,6 +1,18 @@
 // models/Ticket.ts
 import mongoose, { Document, Model } from "mongoose";
 
+export interface IReopenedHistory {
+  reopenedAt: Date;
+  reopenedBy: string;
+  reopenedReason?: string;
+  previousStatus: "PENDING" | "COMPLETED";
+  previousCompletedAt?: Date | null;
+  previousCompletedBy?: string | null;
+  completedAtAfterReopening?: Date | null;
+  completedByAfterReopening?: string | null;
+  phaseDuration?: number; // duration in milliseconds for the cycle before this reopening
+}
+
 export interface ITicket extends Document {
   ticketId: string; // T1
   description: string;
@@ -10,8 +22,10 @@ export interface ITicket extends Document {
   location?: string | null;
   photos: string[]; // saved file URLs or file paths
   videos: string[]; // saved video URLs
+  documents: string[]; // saved document URLs (PDF, Excel, Word, etc.)
   completionPhotos?: string[]; // Photos uploaded when completed
   completionVideos?: string[]; // Videos uploaded when completed
+  completionDocuments?: string[]; // Documents uploaded when completed
   createdBy?: string | null; // Telegram username or name
   createdAt: Date;
   status: "PENDING" | "COMPLETED";
@@ -29,6 +43,7 @@ export interface ITicket extends Document {
   addOrRepairChoice?: "add" | "repair" | null; // Add new or Repair choice
   assignedTo?: mongoose.Types.ObjectId | null; // Assigned user for purchase tickets
   assignedAt?: Date | null; // When the ticket was assigned
+  reopenedHistory: IReopenedHistory[];
 }
 
 const TicketSchema = new mongoose.Schema<ITicket>({
@@ -44,11 +59,16 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   location: { type: String, default: null },
   photos: { type: [String], default: [] },
   videos: { type: [String], default: [] },
+  documents: { type: [String], default: [] },
   completionPhotos: {
     type: [String],
     default: []
   },
   completionVideos: {
+    type: [String],
+    default: []
+  },
+  completionDocuments: {
     type: [String],
     default: []
   },
@@ -69,6 +89,17 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   addOrRepairChoice: { type: String, enum: ["add", "repair", null], default: null },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   assignedAt: { type: Date, default: null },
+  reopenedHistory: [{
+    reopenedAt: { type: Date, default: Date.now },
+    reopenedBy: { type: String, default: null },
+    reopenedReason: { type: String, default: null },
+    previousStatus: { type: String, enum: ["PENDING", "COMPLETED"], default: "COMPLETED" },
+    previousCompletedAt: { type: Date, default: null },
+    previousCompletedBy: { type: String, default: null },
+    completedAtAfterReopening: { type: Date, default: null },
+    completedByAfterReopening: { type: String, default: null },
+    phaseDuration: { type: Number, default: 0 },
+  }],
 });
 
 export const Ticket: Model<ITicket> =

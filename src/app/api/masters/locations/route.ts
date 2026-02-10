@@ -41,15 +41,24 @@ export async function GET(req: NextRequest) {
 
     // Execute query with pagination
     const skip = (page - 1) * limit;
-    const [locations, total] = await Promise.all([
-      Location.find(query)
-        .populate("parentLocationId")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Location.countDocuments(query),
-    ]);
+    
+    console.log(`[LOCATIONS API] Fetching locations: page=${page}, limit=${limit}, query=`, JSON.stringify(query));
+    
+    const startTime = Date.now();
+    const locationsPromise = Location.find(query)
+      .populate("parentLocationId", "name type isActive")
+      .sort({ name: 1 })
+      .skip(skip)
+      .limit(limit)
+      .maxTimeMS(20000) // 20s timeout for query
+      .lean();
+      
+    const countPromise = Location.countDocuments(query).maxTimeMS(20000);
+    
+    const [locations, total] = await Promise.all([locationsPromise, countPromise]);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[LOCATIONS API] Fetch completed in ${duration}ms. Locations: ${locations.length}, Total: ${total}`);
 
     return NextResponse.json({
       success: true,

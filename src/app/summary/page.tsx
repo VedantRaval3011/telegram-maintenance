@@ -25,7 +25,7 @@ import {
   Area,
   ReferenceLine,
 } from "recharts";
-import { Clock, TrendingUp, CheckCircle2, BarChart3, PieChart as PieChartIcon, Info, Activity, ChevronDown, Users, Building2 } from "lucide-react";
+import { Clock, TrendingUp, CheckCircle2, BarChart3, PieChart as PieChartIcon, Info, Activity, ChevronDown, Users, Building2, RotateCcw } from "lucide-react";
 
 const fetcher = (url: string) =>
   fetch(url)
@@ -48,6 +48,7 @@ interface Ticket {
   agencyName?: string | null;
   agencyDate?: string | null;
   agencyTime?: string | null;
+  reopenedHistory?: any[];
 }
 
 interface CategorySummary {
@@ -65,6 +66,7 @@ interface CategorySummary {
     inHouse: number;
     outsource: number;
   };
+  reopenedCount: number;
 }
 
 // Custom Tooltip Component
@@ -277,10 +279,27 @@ export default function SummaryPage() {
   };
 
   // Calculate time difference in hours
-  const calculateTimeDiff = (createdAt: string, completedAt: string): number => {
-    const created = new Date(createdAt);
-    const completed = new Date(completedAt);
-    return (completed.getTime() - created.getTime()) / (1000 * 60 * 60);
+  const calculateTimeDiff = (ticket: any): number => {
+    if (!ticket.createdAt || !ticket.completedAt) return 0;
+    
+    const creationTime = new Date(ticket.createdAt).getTime();
+    const completionTime = new Date(ticket.completedAt).getTime();
+    
+    let inactiveTime = 0;
+    if (ticket.reopenedHistory && ticket.reopenedHistory.length > 0) {
+      ticket.reopenedHistory.forEach((h: any) => {
+        if (h.reopenedAt && h.previousCompletedAt) {
+          const start = new Date(h.previousCompletedAt).getTime();
+          const end = new Date(h.reopenedAt).getTime();
+          if (end > start) {
+            inactiveTime += (end - start);
+          }
+        }
+      });
+    }
+    
+    const activeMs = Math.max(0, completionTime - creationTime - inactiveTime);
+    return activeMs / (1000 * 60 * 60); // hours
   };
 
   // Format hours to readable format
@@ -290,9 +309,7 @@ export default function SummaryPage() {
     } else if (hours < 24) {
       return `${hours.toFixed(1)}h`;
     } else {
-      const days = Math.floor(hours / 24);
-      const remainingHours = Math.round(hours % 24);
-      return `${days}d ${remainingHours}h`;
+      return `${(hours / 24).toFixed(1)}d (${Math.floor(hours)}h)`;
     }
   };
 
@@ -308,7 +325,7 @@ export default function SummaryPage() {
 
     completedTickets.forEach((ticket) => {
       const category = ticket.category || "Uncategorized";
-      const timeDiff = calculateTimeDiff(ticket.createdAt, ticket.completedAt!);
+      const timeDiff = calculateTimeDiff(ticket);
 
       if (!categoryMap.has(category)) {
         const categoryData = categories.find((c: any) => c.name === category);
@@ -320,6 +337,7 @@ export default function SummaryPage() {
           color: categoryData?.color || "#6b7280",
           priority: { high: 0, medium: 0, low: 0 },
           source: { inHouse: 0, outsource: 0 },
+          reopenedCount: 0,
         });
       }
 
@@ -338,6 +356,11 @@ export default function SummaryPage() {
         catData.source.inHouse++;
       }
 
+      // Update reopened count
+      if ((ticket.reopenedHistory?.length || 0) > 0) {
+        catData.reopenedCount += ticket.reopenedHistory!.length;
+      }
+
       // Update category average
       catData.averageTimeHours =
         (catData.averageTimeHours * (catData.totalCompleted - 1) + timeDiff) /
@@ -350,11 +373,11 @@ export default function SummaryPage() {
   // Calculate overall stats
   const overallStats = useMemo(() => {
     if (!Array.isArray(tickets)) {
-      return { total: 0, priority: { high: 0, medium: 0, low: 0 }, source: { inHouse: 0, outsource: 0 } };
+      return { total: 0, priority: { high: 0, medium: 0, low: 0 }, source: { inHouse: 0, outsource: 0 }, reopened: 0 };
     }
 
     const completedTickets = tickets.filter(t => t.status === "COMPLETED" && !excludedTicketIds.has(t.ticketId));
-    const totalTimeHours = completedTickets.reduce((acc, t) => acc + calculateTimeDiff(t.createdAt, t.completedAt!), 0);
+    const totalTimeHours = completedTickets.reduce((acc, t) => acc + calculateTimeDiff(t), 0);
 
     return {
       total: completedTickets.length,
@@ -367,7 +390,8 @@ export default function SummaryPage() {
       source: {
         inHouse: completedTickets.filter(t => !t.agencyName || ["NONE", "__NONE__"].includes(t.agencyName)).length,
         outsource: completedTickets.filter(t => t.agencyName && !["NONE", "__NONE__"].includes(t.agencyName)).length,
-      }
+      },
+      reopened: tickets.filter(t => (t.reopenedHistory?.length || 0) > 0).length
     };
   }, [tickets, excludedTicketIds]);
 
@@ -385,7 +409,7 @@ export default function SummaryPage() {
     completedTickets.forEach((ticket) => {
       const category = ticket.category || "Uncategorized";
       const subCategory = ticket.subCategory || "Others";
-      const timeDiff = calculateTimeDiff(ticket.createdAt, ticket.completedAt!);
+      const timeDiff = calculateTimeDiff(ticket);
 
       if (!categorySubMap.has(category)) {
         categorySubMap.set(category, new Map());
@@ -529,7 +553,7 @@ export default function SummaryPage() {
       }
 
       const agencyName = ticket.agencyName;
-      const timeDiff = calculateTimeDiff(ticket.createdAt, ticket.completedAt!);
+      const timeDiff = calculateTimeDiff(ticket);
       const category = ticket.category || "Uncategorized";
 
       if (!agencyMap.has(agencyName)) {
@@ -679,6 +703,13 @@ export default function SummaryPage() {
                 <div>
                   <div className="text-[9px] sm:text-[10px] text-orange-600 font-bold uppercase leading-none">Outsource</div>
                   <div className="text-base sm:text-lg font-bold text-orange-900 leading-none mt-0.5">{overallStats.source.outsource}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-gradient-to-r from-red-50 to-red-100 px-3 sm:px-4 py-2.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-red-300 shadow-sm col-span-2 sm:col-span-1">
+                <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0" />
+                <div>
+                  <div className="text-[9px] sm:text-[10px] text-red-600 font-bold uppercase leading-none">Reopened</div>
+                  <div className="text-base sm:text-lg font-bold text-red-900 leading-none mt-0.5">{overallStats.reopened}</div>
                 </div>
               </div>
             </div>

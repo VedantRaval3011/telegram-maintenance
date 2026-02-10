@@ -56,6 +56,9 @@ export async function POST(req: NextRequest) {
       createdBy: body.createdBy || "Unknown",
       telegramMessageId: body.telegramMessageId || null,
       telegramChatId: body.telegramChatId || null,
+      photos: body.photos || [],
+      videos: body.videos || [],
+      documents: body.documents || [],
     });
 
     return NextResponse.json(information, { status: 201 });

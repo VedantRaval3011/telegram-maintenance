@@ -54,6 +54,7 @@ const LocationSchema = new Schema<ILocation>(
 );
 
 // Indexes for performance
+LocationSchema.index({ type: 1 });
 LocationSchema.index({ name: 1 });
 LocationSchema.index({ code: 1 }, { sparse: true });
 LocationSchema.index({ parentLocationId: 1 });

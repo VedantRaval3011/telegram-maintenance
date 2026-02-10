@@ -20,7 +20,7 @@ import {
   escapeHTML,
 } from "@/lib/telegram";
 import { uploadBufferToCloudinary } from "@/lib/uploadBufferToCloudinary";
-import { fastProcessTelegramPhoto, fastProcessTelegramVideo } from "@/lib/fastImageUpload";
+import { fastProcessTelegramPhoto, fastProcessTelegramVideo, fastProcessTelegramDocument } from "@/lib/fastImageUpload";
 import { triggerTicketCreatedNotification } from "@/lib/notificationScheduler";
 
 /**
@@ -854,6 +854,10 @@ const completedFields = fields.filter(f =>
   if (session.videos && session.videos.length > 0) {
     message += `🎬 Videos: ${session.videos.length} attached\n`;
   }
+  
+  if (session.documents && session.documents.length > 0) {
+    message += `📄 Documents: ${session.documents.length} attached\n`;
+  }
 
   return message;
 }
@@ -1073,6 +1077,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
     description: session.originalText,
     photosCount: session.photos?.length || 0,
     videosCount: session.videos?.length || 0,
+    documentsCount: session.documents?.length || 0,
     photos: session.photos,
   });
 
@@ -1088,6 +1093,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
     createdBy,
     photos: session.photos || [],
     videos: session.videos || [],
+    documents: session.documents || [],
     additionalFields: session.additionalFieldValues || {},
     originalMessageId: session.originalMessageId, // Store original message ID
   };
@@ -1128,6 +1134,7 @@ async function createTicketFromSession(session: any, createdBy: string) {
     description: ticket.description,
     photosCount: ticket.photos?.length || 0,
     videosCount: ticket.videos?.length || 0,
+    documentsCount: ticket.documents?.length || 0,
   });
 
   // ✅ Trigger WhatsApp notification to users assigned to this sub-category
@@ -1948,6 +1955,9 @@ export async function POST(req: NextRequest) {
               if (sessionData.videos && sessionData.videos.length > 0) {
                 updateData.videos = sessionData.videos;
               }
+              if (sessionData.documents && sessionData.documents.length > 0) {
+                updateData.documents = sessionData.documents;
+              }
 
               if (category) updateData.category = category.name;
               if (subcategory) updateData.subCategory = subcategory.name;
@@ -1993,6 +2003,7 @@ export async function POST(req: NextRequest) {
               updateFields: Object.keys(updateData),
               descriptionUpdate: updateData.description,
               photosUpdate: updateData.photos?.length || 0,
+              documentsUpdate: updateData.documents?.length || 0,
             });
             
             ticket = await Ticket.findOneAndUpdate(
@@ -2006,6 +2017,7 @@ export async function POST(req: NextRequest) {
               description: ticket.description,
               photosCount: ticket.photos?.length || 0,
               videosCount: ticket.videos?.length || 0,
+              documentsCount: ticket.documents?.length || 0,
             });
           } else {
             // Check if category is "information" - save to Information model instead of creating ticket
@@ -2021,6 +2033,9 @@ export async function POST(req: NextRequest) {
                 type: infoType,
                 telegramMessageId: sessionData.originalMessageId,
                 telegramChatId: chatId,
+                photos: sessionData.photos || [],
+                videos: sessionData.videos || [],
+                documents: sessionData.documents || [],
               };
               
               await Information.create(informationData);
@@ -2094,14 +2109,17 @@ export async function POST(req: NextRequest) {
             }
           }
           
-          // Show photo/video counts if present
+          // Show photo/video/document counts if present
           const photoCount = ticket.photos?.length || 0;
           const videoCount = ticket.videos?.length || 0;
-          if (photoCount > 0 || videoCount > 0) {
+          const docCount = ticket.documents?.length || 0;
+          if (photoCount > 0 || videoCount > 0 || docCount > 0) {
             let mediaInfo = '';
             if (photoCount > 0) mediaInfo += `📸 ${photoCount} photo${photoCount > 1 ? 's' : ''}`;
-            if (photoCount > 0 && videoCount > 0) mediaInfo += ' • ';
+            if (photoCount > 0 && (videoCount > 0 || docCount > 0)) mediaInfo += ' • ';
             if (videoCount > 0) mediaInfo += `🎬 ${videoCount} video${videoCount > 1 ? 's' : ''}`;
+            if (videoCount > 0 && docCount > 0) mediaInfo += ' • ';
+            if (docCount > 0) mediaInfo += `📄 ${docCount} document${docCount > 1 ? 's' : ''}`;
             ticketMsg += `${mediaInfo}\n`;
           }
           
@@ -2172,33 +2190,76 @@ export async function POST(req: NextRequest) {
     const incomingText = (msg.text || msg.caption || "").trim();
 
 // ========== INFO COMMAND HANDLING ==========
-// Captures any message starting with /info and stores the content
+// Captures any message starting with /info and stores the content and any attachments
 // Format: /info <any text here>
-if (incomingText.toLowerCase().startsWith("/info ")) {
-  const infoContent = incomingText.substring(6).trim(); // Remove "/info " prefix
+if (incomingText.toLowerCase().startsWith("/info")) {
+  const infoContent = incomingText.substring(5).trim(); // Remove "/info" prefix
   
-  if (infoContent.length > 0) {
+  const hasPhoto = !!msg.photo;
+  const hasVideo = !!msg.video;
+  const hasDocument = !!msg.document;
+  const isImageDoc = hasDocument && msg.document?.mime_type?.startsWith("image/");
+  
+  if (infoContent.length > 0 || hasPhoto || hasVideo || hasDocument) {
     const createdBy = msg.from?.username || 
                      `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() ||
                      "Unknown";
     
     try {
+      // Show processing message for media
+      let processingMsgId: number | null = null;
+      if (hasPhoto || hasVideo || hasDocument) {
+        const procRes = await telegramSendMessage(chat.id, "⏳ Processing information with media...", msg.message_id);
+        processingMsgId = (procRes as any)?.result?.message_id;
+      }
+
+      // Process media in parallel
+      let photoPromise: Promise<string | null> = Promise.resolve(null);
+      if (hasPhoto || isImageDoc) {
+        const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
+        if (fileId) photoPromise = fastProcessTelegramPhoto(fileId);
+      }
+
+      let docPromise: Promise<string | null> = Promise.resolve(null);
+      if (hasDocument && !isImageDoc) {
+        if (msg.document?.file_id) {
+          docPromise = fastProcessTelegramDocument(msg.document.file_id, msg.document.file_name);
+        }
+      }
+
+      let videoPromise: Promise<string | null> = Promise.resolve(null);
+      if (msg.video?.file_id) {
+        videoPromise = fastProcessTelegramVideo(msg.video.file_id);
+      }
+
+      const [photoUrl, videoUrl, docUrl] = await Promise.all([photoPromise, videoPromise, docPromise]);
+
       // Store the information
       await Information.create({
-        content: infoContent,
+        content: infoContent || (photoUrl ? "Photo attachment" : (videoUrl ? "Video attachment" : (docUrl ? "Document attachment" : "Information"))),
         createdBy,
         telegramMessageId: msg.message_id,
         telegramChatId: chat.id,
+        photos: photoUrl ? [photoUrl] : [],
+        videos: videoUrl ? [videoUrl] : [],
+        documents: docUrl ? [docUrl] : [],
       });
       
-      const displayContent = infoContent.length > 100 ? infoContent.substring(0, 100) + "..." : infoContent;
+      const displayContent = infoContent ? (infoContent.length > 100 ? infoContent.substring(0, 100) + "..." : infoContent) : "Media attachment";
       
+      // Delete processing message if it exists
+      if (processingMsgId) {
+        await telegramDeleteMessage(chat.id, processingMsgId).catch(() => {});
+      }
+
       // Send confirmation
-      await telegramSendMessage(
-        chat.id,
-        `✅ <b>Information Saved</b>\n\n📝 ${escapeHTML(displayContent)}\n\n👤 By: ${escapeHTML(createdBy)}`,
-        msg.message_id
-      );
+      let confirmMsg = `✅ <b>Information Saved</b>\n\n📝 ${escapeHTML(displayContent)}\n`;
+      if (photoUrl) confirmMsg += "📸 Photo attached\n";
+      if (videoUrl) confirmMsg += "🎬 Video attached\n";
+      if (docUrl) confirmMsg += "📄 Document attached\n";
+      confirmMsg += `\n👤 By: ${escapeHTML(createdBy)}`;
+
+      await telegramSendMessage(chat.id, confirmMsg, msg.message_id);
     } catch (error) {
       console.error("Error saving information:", error);
       await telegramSendMessage(
@@ -2208,10 +2269,10 @@ if (incomingText.toLowerCase().startsWith("/info ")) {
       );
     }
   } else {
-    // No content provided
+    // No content and no media provided
     await telegramSendMessage(
       chat.id,
-      "📝 Please provide some information after /info\n\nExample: <code>/info Meeting scheduled at 3 PM</code>",
+      "📝 Please provide some information or attach a file after /info\n\nExample: <code>/info Meeting scheduled at 3 PM</code>",
       msg.message_id
     );
   }
@@ -2609,9 +2670,11 @@ if (msg.reply_to_message) {
           // Process any media attached to the /edit command message itself
           const hasPhoto = !!(msg.photo || (msg.document && msg.document.mime_type?.startsWith('image/')));
           const hasVideo = !!msg.video;
+          const hasDocument = !!msg.document && !(msg.document.mime_type?.startsWith('image/'));
           
           let initialPhotos = [...(ticket.photos || [])];
           let initialVideos = [...(ticket.videos || [])];
+          let initialDocuments = [...(ticket.documents || [])];
           
           if (hasPhoto) {
             const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
@@ -2624,6 +2687,11 @@ if (msg.reply_to_message) {
           if (hasVideo && msg.video?.file_id) {
             const videoUrl = await fastProcessTelegramVideo(msg.video.file_id);
             if (videoUrl) initialVideos.push(videoUrl);
+          }
+
+          if (hasDocument && msg.document?.file_id) {
+            const docUrl = await fastProcessTelegramDocument(msg.document.file_id, msg.document.file_name);
+            if (docUrl) initialDocuments.push(docUrl);
           }
 
           // Parse location back to path format if it exists
@@ -2691,6 +2759,7 @@ if (msg.reply_to_message) {
             // Pre-fill media from existing ticket + any new media in the /edit message
             photos: initialPhotos,
             videos: initialVideos,
+            documents: initialDocuments,
 
             // Preserve location data - but RESET if this is a partial edit for that field
             locationPath: targetField === "location" ? [] : locationPath,
@@ -2807,50 +2876,45 @@ if (msg.reply_to_message) {
       const completedBy = msg.from.username || 
                          `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
       
-      // Handle completion photo if present
-      let completionPhotoUrl: string | null = null;
-      if (msg.photo || msg.document) {
-        try {
-          const { downloadTelegramFileBuffer } = await import("@/lib/downloadTelegramFileBuffer");
-          const { uploadBufferToCloudinary } = await import("@/lib/uploadBufferToCloudinary");
-          const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
-          if (fileId) {
-            const buffer = await downloadTelegramFileBuffer(fileId);
-            completionPhotoUrl = await uploadBufferToCloudinary(buffer);
-          }
-        } catch (err) {
-          console.error("Completion photo upload failed:", err);
-        }
+      // Build media processing tasks
+      const isImageDoc = !!msg.document && msg.document.mime_type?.startsWith("image/");
+      const hasDoc = !!msg.document && !isImageDoc;
+
+      let photoPromise = Promise.resolve<string | null>(null);
+      if (msg.photo || isImageDoc) {
+        const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
+        if (fileId) photoPromise = fastProcessTelegramPhoto(fileId);
       }
 
-      // Handle completion video if present
-      let completionVideoUrl: string | null = null;
-      if (msg.video?.file_id) {
-        try {
-          completionVideoUrl = await fastProcessTelegramVideo(msg.video.file_id);
-        } catch (err) {
-          console.error("Completion video upload failed:", err);
-        }
+      let docPromise = Promise.resolve<string | null>(null);
+      if (hasDoc && msg.document?.file_id) {
+        docPromise = fastProcessTelegramDocument(msg.document.file_id, msg.document.file_name);
       }
+
+      let videoPromise = Promise.resolve<string | null>(null);
+      if (msg.video?.file_id) {
+        videoPromise = fastProcessTelegramVideo(msg.video.file_id);
+      }
+
+      const [photoUrl, videoUrl, docUrl] = await Promise.all([photoPromise, videoPromise, docPromise]);
 
       ticket.status = "COMPLETED";
       ticket.completedBy = completedBy;
       ticket.completedAt = new Date();
       
-      // ✅ Add completion photo with proper null check
-      if (completionPhotoUrl) {
-        if (!ticket.completionPhotos || !Array.isArray(ticket.completionPhotos)) {
-          ticket.completionPhotos = [];
-        }
-        ticket.completionPhotos.push(completionPhotoUrl);
+      if (photoUrl) {
+        if (!ticket.completionPhotos) ticket.completionPhotos = [];
+        ticket.completionPhotos.push(photoUrl);
       }
 
-      // ✅ Add completion video with proper null check
-      if (completionVideoUrl) {
-        if (!ticket.completionVideos || !Array.isArray(ticket.completionVideos)) {
-          ticket.completionVideos = [];
-        }
-        ticket.completionVideos.push(completionVideoUrl);
+      if (videoUrl) {
+        if (!ticket.completionVideos) ticket.completionVideos = [];
+        ticket.completionVideos.push(videoUrl);
+      }
+
+      if (docUrl) {
+        if (!ticket.completionDocuments) ticket.completionDocuments = [];
+        ticket.completionDocuments.push(docUrl);
       }
       
       await ticket.save();
@@ -2858,12 +2922,9 @@ if (msg.reply_to_message) {
       let completionMsg = `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
                          `👤 Completed by: ${escapeHTML(completedBy)}`;
       
-      if (completionPhotoUrl) {
-        completionMsg += `\n📸 After-fix photo attached`;
-      }
-      if (completionVideoUrl) {
-        completionMsg += `\n🎬 After-fix video attached`;
-      }
+      if (photoUrl) completionMsg += `\n📸 After-fix photo attached`;
+      if (videoUrl) completionMsg += `\n🎬 After-fix video attached`;
+      if (docUrl) completionMsg += `\n📄 After-fix document attached`;
 
       // Send completion message and store its ID
       const completionMsgResult = await telegramSendMessage(
@@ -2918,11 +2979,13 @@ if (msg.reply_to_message) {
     }
 
     // ========== NEW TICKET HANDLING (OPTIMIZED) ==========
-    const hasPhoto = !!(msg.photo || msg.document);
+    const hasPhoto = !!msg.photo;
     const hasVideo = !!msg.video;
+    const hasDocument = !!msg.document;
+    const isImageDoc = hasDocument && msg.document?.mime_type?.startsWith("image/");
     const hasText = incomingText.length > 1; // Responsive threshold
     
-    if (hasPhoto || hasVideo || hasText) {
+    if (hasPhoto || hasVideo || hasDocument || hasText) {
       // Check if this is a reply to an existing ticket
       let replyTicket = null;
       if (msg.reply_to_message) {
@@ -2944,14 +3007,20 @@ if (msg.reply_to_message) {
       }).sort({ createdAt: -1 }); // Get the most recent session for this user
 
       // === CASE 1: User has an existing session - add media to it ===
-      if (existingSession && (hasPhoto || hasVideo)) {
+      if (existingSession && (hasPhoto || hasVideo || hasDocument)) {
         let photoUrl: string | null = null;
         let videoUrl: string | null = null;
+        let docUrl: string | null = null;
         
-        if (hasPhoto) {
+        if (hasPhoto || isImageDoc) {
           const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
           if (fileId) photoUrl = await fastProcessTelegramPhoto(fileId);
+        } else if (hasDocument) {
+          if (msg.document?.file_id) {
+            docUrl = await fastProcessTelegramDocument(msg.document.file_id, msg.document.file_name);
+          }
         }
+
         if (hasVideo && msg.video?.file_id) {
           videoUrl = await fastProcessTelegramVideo(msg.video.file_id);
         }
@@ -2959,10 +3028,11 @@ if (msg.reply_to_message) {
         const updateData: any = {};
         if (photoUrl) updateData.$push = { ...updateData.$push, photos: photoUrl };
         if (videoUrl) updateData.$push = { ...updateData.$push, videos: videoUrl };
+        if (docUrl) updateData.$push = { ...updateData.$push, documents: docUrl };
         
         // Update description only if it's currently a placeholder
         const currentText = existingSession.originalText;
-        const isPlaceholder = !currentText || ["Photo attachment", "Video attachment", "New Ticket", "New entry"].includes(currentText);
+        const isPlaceholder = !currentText || ["Photo attachment", "Video attachment", "Document attachment", "New Ticket", "New entry"].includes(currentText);
         if (isPlaceholder && hasText) {
           updateData.originalText = incomingText;
         }
@@ -2976,7 +3046,7 @@ if (msg.reply_to_message) {
       }
 
       // === CASE 1.5: Reply to ticket with media (but no active session) ===
-      if (replyTicket && (hasPhoto || hasVideo)) {
+      if (replyTicket && (hasPhoto || hasVideo || hasDocument)) {
         // Auto-start an edit session so media is linked to THIS ticket
         const initialMsg = `✏️ <b>Adding media to #${replyTicket.ticketId}</b>\n⚡ Processing...`;
         const botRes = await telegramSendMessage(chat.id, initialMsg, msg.message_id, []);
@@ -2985,11 +3055,17 @@ if (msg.reply_to_message) {
         if (botMessageId) {
           let photoUrl: string | null = null;
           let videoUrl: string | null = null;
+          let docUrl: string | null = null;
           
-          if (hasPhoto) {
+          if (hasPhoto || isImageDoc) {
             const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
             if (fileId) photoUrl = await fastProcessTelegramPhoto(fileId);
+          } else if (hasDocument) {
+            if (msg.document?.file_id) {
+              docUrl = await fastProcessTelegramDocument(msg.document.file_id, msg.document.file_name);
+            }
           }
+
           if (hasVideo && msg.video?.file_id) {
             videoUrl = await fastProcessTelegramVideo(msg.video.file_id);
           }
@@ -3068,6 +3144,7 @@ if (msg.reply_to_message) {
             priority: replyTicket.priority,
             photos: [...(replyTicket.photos || []), ...(photoUrl ? [photoUrl] : [])],
             videos: [...(replyTicket.videos || []), ...(videoUrl ? [videoUrl] : [])],
+            documents: [...(replyTicket.documents || []), ...(docUrl ? [docUrl] : [])],
             // Preserve location data
             locationPath,
             locationComplete: locationPath.length > 0,
@@ -3102,10 +3179,18 @@ if (msg.reply_to_message) {
       
       // 1. Photo Processing (if applicable)
       let photoPromise: Promise<string | null> = Promise.resolve(null);
-      if (hasPhoto) {
+      if (hasPhoto || isImageDoc) {
         const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
         if (fileId) {
           photoPromise = fastProcessTelegramPhoto(fileId);
+        }
+      }
+
+      // 1b. Document Processing (if applicable and NOT treated as photo)
+      let docPromise: Promise<string | null> = Promise.resolve(null);
+      if (hasDocument && !isImageDoc) {
+        if (msg.document?.file_id) {
+          docPromise = fastProcessTelegramDocument(msg.document.file_id, msg.document.file_name);
         }
       }
       
@@ -3132,27 +3217,31 @@ if (msg.reply_to_message) {
       })();
 
       // Wait for everything to complete
-      const [botRes, photoUrl, videoUrl, detectedCategory] = await Promise.all([
+      const [botRes, photoUrl, videoUrl, docUrl, detectedCategory] = await Promise.all([
         botResPromise,
         photoPromise,
         videoPromise,
+        docPromise,
         categoryPromise
       ]);
 
       const botMessageId = (botRes as any)?.result?.message_id;
 
       if (botMessageId) {
-        const description = incomingText || (photoUrl ? "Photo attachment" : (videoUrl ? "Video attachment" : "New Ticket"));
+        const description = incomingText || (photoUrl ? "Photo attachment" : (videoUrl ? "Video attachment" : (docUrl ? "Document attachment" : "New Ticket")));
         const initialPhotos = photoUrl ? [photoUrl] : [];
         const initialVideos = videoUrl ? [videoUrl] : [];
+        const initialDocuments = docUrl ? [docUrl] : [];
         
         // 🔍 DEBUG: Log new ticket session creation
         console.log('[NEW TICKET] Creating wizard session:', {
           description,
           photoUrl,
           videoUrl,
+          docUrl,
           photosCount: initialPhotos.length,
           videosCount: initialVideos.length,
+          docsCount: initialDocuments.length,
         });
         
         // Create session with THIS user's ID to ensure proper association
@@ -3164,6 +3253,7 @@ if (msg.reply_to_message) {
           originalText: description,
           photos: initialPhotos,
           videos: initialVideos,
+          documents: initialDocuments,
           category: detectedCategory?.id || null,
           categoryDisplay: detectedCategory?.name || null,
           createdAt: new Date(),

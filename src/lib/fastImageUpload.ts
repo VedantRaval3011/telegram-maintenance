@@ -103,3 +103,25 @@ export async function fastProcessTelegramVideo(fileId: string): Promise<string |
     return null;
   }
 }
+
+/**
+ * Combined fast download + upload for documents (PDF, Excel, etc.)
+ * Returns URL or null if failed
+ */
+export async function fastProcessTelegramDocument(fileId: string, fileName?: string): Promise<string | null> {
+  try {
+    const buffer = await fastDownloadTelegramFile(fileId);
+    
+    // Extract extension from fileName if provided, otherwise default to "bin"
+    let ext = "bin";
+    if (fileName && fileName.includes(".")) {
+      ext = fileName.split(".").pop() || "bin";
+    }
+    
+    const url = await uploadToBunny(buffer, "telegram-maintenance-docs", ext);
+    return url;
+  } catch (err) {
+    console.error("[FAST DOCUMENT] Processing failed:", err);
+    return null;
+  }
+}

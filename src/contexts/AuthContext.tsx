@@ -51,6 +51,7 @@ const SECTION_PATHS: Record<string, string[]> = {
   agencies: ["/masters/agencies"],
   purchase: ["/purchase"],
   summary: ["/summary"],
+  audit_logs: ["/audit-logs"],
   settings: ["/settings"],
   admin: ["/admin"],
 };

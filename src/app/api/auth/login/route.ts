@@ -34,8 +34,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Login error:", error);
+    
+    // Check if it's a database connection error
+    if (error.message?.includes('Unable to connect to MongoDB') || 
+        error.code === 'ETIMEOUT' || 
+        error.syscall === 'querySrv') {
+      return NextResponse.json(
+        { error: "Database connection failed. Please check your internet connection." },
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: "Login failed" },
+      { error: "Login failed. Please try again." },
       { status: 500 }
     );
   }

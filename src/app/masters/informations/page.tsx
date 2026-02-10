@@ -13,7 +13,12 @@ import {
     ChevronLeft,
     ChevronRight,
     Info,
-    X
+    X,
+    Image as ImageIcon,
+    Video,
+    File as FileIcon,
+    Download,
+    ExternalLink
 } from "lucide-react";
 
 // --- Types ---
@@ -24,6 +29,9 @@ interface InformationItem {
     createdAt: string;
     telegramMessageId?: number | null;
     telegramChatId?: number | null;
+    photos?: string[];
+    videos?: string[];
+    documents?: string[];
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -246,6 +254,90 @@ export default function InformationsPage() {
                                                     >
                                                         {isExpanded ? "Show less" : "Show more"}
                                                     </button>
+                                                )}
+
+                                                {/* Attachments */}
+                                                {(info.photos?.length || 0) > 0 && (
+                                                    <div className="mt-4">
+                                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                                            <ImageIcon className="w-3 h-3" />
+                                                            Photos ({info.photos?.length})
+                                                        </p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {info.photos?.map((photo, idx) => (
+                                                                <a 
+                                                                    key={idx} 
+                                                                    href={photo} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 hover:border-blue-400 transition-all group/photo"
+                                                                >
+                                                                    <img src={photo} alt="" className="w-full h-full object-cover" />
+                                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/photo:opacity-100 flex items-center justify-center transition-opacity">
+                                                                        <ExternalLink className="w-4 h-4 text-white" />
+                                                                    </div>
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {(info.videos?.length || 0) > 0 && (
+                                                    <div className="mt-4">
+                                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                                            <Video className="w-3 h-3" />
+                                                            Videos ({info.videos?.length})
+                                                        </p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {info.videos?.map((video, idx) => (
+                                                                <a 
+                                                                    key={idx} 
+                                                                    href={video} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-blue-400 transition-all group/video"
+                                                                >
+                                                                    <Video className="w-4 h-4 text-blue-500" />
+                                                                    <span>Video {idx + 1}</span>
+                                                                    <ExternalLink className="w-3 h-3 opacity-0 group-hover/video:opacity-100 transition-opacity" />
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {(info.documents?.length || 0) > 0 && (
+                                                    <div className="mt-4">
+                                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                                            <FileIcon className="w-3 h-3" />
+                                                            Documents ({info.documents?.length})
+                                                        </p>
+                                                        <div className="flex flex-col gap-2">
+                                                            {info.documents?.map((doc, idx) => {
+                                                                const fileName = doc.split('/').pop()?.split('?')[0] || `Document ${idx + 1}`;
+                                                                const isPdf = fileName.toLowerCase().endsWith('.pdf');
+                                                                return (
+                                                                    <a 
+                                                                        key={idx} 
+                                                                        href={doc} 
+                                                                        target="_blank" 
+                                                                        rel="noopener noreferrer"
+                                                                        className="flex items-center justify-between gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-blue-400 group/doc transition-all"
+                                                                    >
+                                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                                            <div className={`p-2 rounded-lg ${isPdf ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>
+                                                                                <FileIcon className="w-5 h-5" />
+                                                                            </div>
+                                                                            <span className="text-sm font-medium text-gray-700 truncate">{fileName}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Download className="w-4 h-4 text-gray-400 group-hover/doc:text-blue-500 transition-colors" />
+                                                                        </div>
+                                                                    </a>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
