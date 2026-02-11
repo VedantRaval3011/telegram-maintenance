@@ -183,7 +183,12 @@ export async function POST(req: NextRequest) {
     );
 
     // Update ticket with new media
-    if (mediaField.startsWith("completion")) {
+    if (mediaField === "completionProofImages") {
+      // Add to completion proof images (special field for verified completion)
+      if (imageUrls.length > 0) {
+        ticket.completionProofImages = [...(ticket.completionProofImages || []), ...imageUrls];
+      }
+    } else if (mediaField.startsWith("completion")) {
       // Add to completion media
       if (imageUrls.length > 0) {
         ticket.completionPhotos = [...(ticket.completionPhotos || []), ...imageUrls];

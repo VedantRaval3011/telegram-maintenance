@@ -26,6 +26,8 @@ export interface ITicket extends Document {
   completionPhotos?: string[]; // Photos uploaded when completed
   completionVideos?: string[]; // Videos uploaded when completed
   completionDocuments?: string[]; // Documents uploaded when completed
+  completedWithProof?: boolean; // Whether ticket was completed with proof
+  completionProofImages?: string[]; // Images uploaded as proof of completion
   createdBy?: string | null; // Telegram username or name
   createdAt: Date;
   status: "PENDING" | "COMPLETED";
@@ -69,6 +71,14 @@ const TicketSchema = new mongoose.Schema<ITicket>({
     default: []
   },
   completionDocuments: {
+    type: [String],
+    default: []
+  },
+  completedWithProof: {
+    type: Boolean,
+    default: false
+  },
+  completionProofImages: {
     type: [String],
     default: []
   },

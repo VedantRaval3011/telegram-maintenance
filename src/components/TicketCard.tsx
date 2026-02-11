@@ -35,7 +35,8 @@ import {
   MessageSquare,
   File,
   Download,
-  ExternalLink
+  ExternalLink,
+  Loader2
 } from "lucide-react";
 
 interface Note {
@@ -134,6 +135,10 @@ export default function TicketCard({
   const [copied, setCopied] = useState(false);
   const [notes, setNotes] = useState<Note[]>(ticket.notes || []);
   const [newNote, setNewNote] = useState("");
+  const [showCompleteWithProofModal, setShowCompleteWithProofModal] = useState(false);
+  const [proofImages, setProofImages] = useState<File[]>([]);
+  const [uploadingProof, setUploadingProof] = useState(false);
+
 
   const [editForm, setEditForm] = useState({
     description: ticket.description || "",
@@ -184,6 +189,58 @@ export default function TicketCard({
     });
     onStatusChange?.();
   };
+
+  const completeWithProof = async () => {
+    if (proofImages.length === 0) {
+      alert("Please upload at least one image as proof of completion");
+      return;
+    }
+
+    setUploadingProof(true);
+    try {
+      // First, upload the proof images
+      const formData = new FormData();
+      formData.append("ticketId", ticket.ticketId);
+      formData.append("mediaField", "completionProofImages");
+      formData.append("uploadedBy", currentUsername);
+      proofImages.forEach(file => {
+        formData.append("files", file);
+      });
+
+      const uploadResponse = await fetch("/api/tickets/upload-media", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload proof images");
+      }
+
+      const uploadResult = await uploadResponse.json();
+
+      // Then, mark the ticket as completed with proof
+      await fetch(`/api/tickets/${ticket.ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          status: "COMPLETED", 
+          completedBy: currentUsername,
+          completedWithProof: true,
+          completionProofImages: uploadResult.data.urls
+        }),
+      });
+
+      setShowCompleteWithProofModal(false);
+      setProofImages([]);
+      onStatusChange?.();
+    } catch (error) {
+      console.error("Error completing with proof:", error);
+      alert("Failed to complete ticket with proof. Please try again.");
+    } finally {
+      setUploadingProof(false);
+    }
+  };
+
 
   const reopenTicket = async () => {
     const reason = prompt("Please enter the reason for reopening this ticket:");
@@ -394,14 +451,23 @@ export default function TicketCard({
                   <Share2 size={12} />
                 </button>
                 {ticket.status !== "COMPLETED" && (
-                  <button
-                    onClick={markCompleted}
-                    className="p-1.5 rounded-md hover:opacity-95 transition-all text-white"
-                    style={{ backgroundColor: colors.textDark }}
-                    title="Mark as completed"
-                  >
-                    <Check size={12} />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowCompleteWithProofModal(true)}
+                      className="p-1.5 rounded-md hover:opacity-95 transition-all text-white bg-emerald-600"
+                      title="Complete with proof (requires image)"
+                    >
+                      <CheckCircle2 size={12} />
+                    </button>
+                    <button
+                      onClick={markCompleted}
+                      className="p-1.5 rounded-md hover:opacity-95 transition-all text-white"
+                      style={{ backgroundColor: colors.textDark }}
+                      title="Mark as completed"
+                    >
+                      <Check size={12} />
+                    </button>
+                  </>
                 )}
                 {ticket.status === "COMPLETED" && (
                   <button
@@ -779,6 +845,30 @@ export default function TicketCard({
           )}
 
 
+          {/* Completion Proof Images - Special Section */}
+          {ticket.completionProofImages && ticket.completionProofImages.length > 0 && (
+            <div className="mb-3 p-3 rounded-lg border-2 border-emerald-500 bg-emerald-50">
+              <div className="text-xs font-bold mb-2 uppercase flex items-center gap-2 text-emerald-700">
+                <CheckCircle2 size={14} className="text-emerald-600" />
+                ✓ Completion Proof ({ticket.completionProofImages.length})
+              </div>
+              <div className="text-[10px] text-emerald-600 mb-2 font-medium">
+                Completed by: {ticket.completedBy || "Unknown"}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {ticket.completionProofImages.map((url: string, idx: number) => (
+                  <img
+                    key={idx}
+                    src={url}
+                    alt={`Proof ${idx + 1}`}
+                    className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-90 transition border-2 border-emerald-400 shadow-md"
+                    onClick={() => setSelectedPhoto(url)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Notes Section */}
           <div className="pt-3" style={{ borderTopWidth: '1px', borderTopColor: colors.border }}>
             <div className="flex items-center justify-between mb-2">
@@ -1002,6 +1092,105 @@ export default function TicketCard({
                 style={{ backgroundColor: colors.textDark }}
               >
                 Add Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complete with Proof Modal */}
+      {showCompleteWithProofModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => !uploadingProof && setShowCompleteWithProofModal(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative max-w-lg w-full rounded-2xl p-8 shadow-xl bg-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold mb-4 text-gray-800 flex items-center gap-2">
+              <CheckCircle2 size={28} className="text-emerald-600" />
+              Complete with Proof
+            </h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Upload at least one image as proof of completion before marking this ticket as completed.
+            </p>
+
+            {/* Image Upload Area */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold mb-2 text-gray-700">
+                Upload Proof Images *
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  if (e.target.files) {
+                    setProofImages(Array.from(e.target.files));
+                  }
+                }}
+                className="w-full px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-emerald-400 transition-colors cursor-pointer bg-gray-50 text-sm"
+                disabled={uploadingProof}
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                You can select multiple images. Accepted formats: JPG, PNG, GIF
+              </p>
+            </div>
+
+            {/* Image Preview */}
+            {proofImages.length > 0 && (
+              <div className="mb-6">
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  Selected Images ({proofImages.length})
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {proofImages.map((file, idx) => (
+                    <div key={idx} className="relative">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Preview ${idx + 1}`}
+                        className="w-20 h-20 object-cover rounded-lg border-2 border-emerald-400"
+                      />
+                      <button
+                        onClick={() => setProofImages(proofImages.filter((_, i) => i !== idx))}
+                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors text-xs font-bold"
+                        disabled={uploadingProof}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowCompleteWithProofModal(false);
+                  setProofImages([]);
+                }}
+                className="px-6 py-2 rounded-xl font-medium hover:opacity-80 transition-all bg-gray-200 text-gray-700"
+                disabled={uploadingProof}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={completeWithProof}
+                className="px-6 py-2 rounded-xl shadow-lg hover:opacity-95 transition-all font-bold text-white bg-emerald-600 flex items-center gap-2"
+                disabled={uploadingProof || proofImages.length === 0}
+              >
+                {uploadingProof ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    Complete Ticket
+                  </>
+                )}
               </button>
             </div>
           </div>

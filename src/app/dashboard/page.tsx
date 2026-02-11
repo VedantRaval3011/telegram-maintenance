@@ -76,6 +76,7 @@ function DashboardContent() {
   const [auditCategoryData, setAuditCategoryData] = useState<any>(null);
 
   const [initialAgencyName, setInitialAgencyName] = useState<string>('');
+  const [showSearch, setShowSearch] = useState(false);
 
   // Global state for excluded tickets from summary (persisted in localStorage)
   const [excludedTicketIds, setExcludedTicketIds] = useState<Set<string>>(() => {
@@ -214,6 +215,13 @@ function DashboardContent() {
     document.addEventListener('dblclick', handleDoubleClickReset);
     return () => document.removeEventListener('dblclick', handleDoubleClickReset);
   }, []);
+
+  // Auto-show search field when there's an active search query
+  useEffect(() => {
+    if (filters.name && !showSearch) {
+      setShowSearch(true);
+    }
+  }, [filters.name, showSearch]);
 
   // Initialize filters from URL parameters (e.g., when navigating from summary page)
   useEffect(() => {
@@ -438,13 +446,36 @@ function DashboardContent() {
       });
     }
 
+
     if (name) {
-      const q = name.toLowerCase();
+      const q = name.toLowerCase().trim();
       out = out.filter((t: any) => {
+        // Search across all relevant fields
         const ticketId = (t.ticketId || "").toString().toLowerCase();
         const createdBy = (t.createdBy || "").toString().toLowerCase();
         const description = (t.description || "").toString().toLowerCase();
-        return ticketId.includes(q) || createdBy.includes(q) || description.includes(q);
+        const category = (t.category || "").toString().toLowerCase();
+        const subCategory = (t.subCategory || "").toString().toLowerCase();
+        const location = (t.location || "").toString().toLowerCase();
+        const agencyName = (t.agencyName || "").toString().toLowerCase();
+        const priority = (t.priority || "").toString().toLowerCase();
+        const status = (t.status || "").toString().toLowerCase();
+        
+        // Support multi-keyword search (e.g., "electrical high" or "T5 plumbing")
+        const keywords = q.split(/\s+/).filter(k => k.length > 0);
+        
+        // Check if all keywords match at least one field (AND logic for multiple keywords)
+        return keywords.every(keyword => 
+          ticketId.includes(keyword) ||
+          createdBy.includes(keyword) ||
+          description.includes(keyword) ||
+          category.includes(keyword) ||
+          subCategory.includes(keyword) ||
+          location.includes(keyword) ||
+          agencyName.includes(keyword) ||
+          priority.includes(keyword) ||
+          status.includes(keyword)
+        );
       });
     }
 
@@ -830,6 +861,32 @@ function DashboardContent() {
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 dashboard-content">
         {/* Top Filters: Advanced Toggle */}
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 mb-3 sm:mb-6">
+          {/* Search Icon Button */}
+          <button
+            onClick={() => {
+              setShowSearch(!showSearch);
+              if (showSearch) {
+                // Clear search when closing
+                setFilters({ name: "" });
+              }
+            }}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-sm sm:text-base font-medium transition-all border shadow-sm ${
+              showSearch || filters.name
+                ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            }`}
+            title="Search tickets"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span className="hidden sm:inline">Search</span>
+            {filters.name && (
+              <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs font-bold">
+                {fullyFiltered.length}
+              </span>
+            )}
+          </button>
           {/* Advanced Filters Toggle */}
           <button
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
@@ -1340,6 +1397,48 @@ function DashboardContent() {
             </div>
           </div>
         </div>
+
+        {/* Inline Search Field */}
+        {showSearch && (
+          <div className="mb-4 sm:mb-6 animate-in slide-in-from-top duration-200">
+            <div className="bg-white rounded-lg shadow-sm border-2 border-blue-500 p-3 sm:p-4">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={filters.name}
+                  onChange={(e) => setFilters({ name: e.target.value })}
+                  placeholder="Search: ticket #, description, category, agency, location, priority..."
+                  className="flex-1 text-sm sm:text-base text-gray-900 placeholder-gray-400 outline-none bg-transparent"
+                  autoFocus
+                />
+                {filters.name && (
+                  <button
+                    onClick={() => setFilters({ name: "" })}
+                    className="flex-shrink-0 p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                    title="Clear search"
+                  >
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              {filters.name && (
+                <div className="mt-2 flex items-center justify-between text-xs sm:text-sm">
+                  <span className="text-gray-600">
+                    <span className="font-semibold text-blue-600">{fullyFiltered.length}</span> result{fullyFiltered.length !== 1 ? 's' : ''} found
+                  </span>
+                  <span className="text-gray-500">
+                    💡 Use multiple keywords (e.g., "T5 electrical")
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tickets grid */}
         <div ref={ticketListRef} className="grid grid-cols-1 gap-3 sm:gap-6">
