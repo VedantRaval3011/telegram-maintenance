@@ -423,10 +423,14 @@ function DashboardContent() {
     let out = tickets.slice();
 
     if (reopenedOnly) {
-      out = out.filter((t: any) => (t.reopenedHistory?.length || 0) > 0);
+      // Show only tickets that have been reopened AND are currently PENDING
+      out = out.filter((t: any) => 
+        (t.reopenedHistory?.length || 0) > 0 && 
+        (t.status || "").toString().toLowerCase() === "pending"
+      );
     }
 
-    // Apply showCompleted filter - but bypass if reopenedOnly is true to show all historical reopened tickets
+    // Apply showCompleted filter - but bypass if reopenedOnly is true since we already filtered above
     if (!reopenedOnly) {
       if (showCompleted) {
         out = out.filter((t: any) => (t.status || "").toString().toLowerCase() === "completed");
@@ -844,7 +848,14 @@ function DashboardContent() {
       };
     }).filter((a: any) => a.stats.total > 0); // Only show agencies with pending work
 
-    const reopenedStats = calculateStats(globalStatsBase.filter((t: any) => (t.reopenedHistory?.length || 0) > 0));
+
+    // Reopened Stats - only count tickets that have been reopened AND are currently PENDING
+    const reopenedStats = calculateStats(
+      globalStatsBase.filter((t: any) => 
+        (t.reopenedHistory?.length || 0) > 0 && 
+        t.status === "PENDING"
+      )
+    );
 
     return { totalStats, pendingStats, completedStats, reopenedStats, categoryStats, userStats, subCategoryStats, agencyStats };
   }, [fullyFiltered, baseFiltered, categoryStatsBase, globalStatsBase, categories, users, subCategories, selectedCategory, calculateStats, agencies, ticketToAgencyMap]);
@@ -992,7 +1003,11 @@ function DashboardContent() {
                 title="Reopened"
                 {...stats.reopenedStats}
                 onAuditClick={() => {
-                  const reopenedTickets = globalStatsBase.filter((t: any) => t.reopenedHistory && t.reopenedHistory.length > 0);
+                  const reopenedTickets = globalStatsBase.filter((t: any) => 
+                    t.reopenedHistory && 
+                    t.reopenedHistory.length > 0 && 
+                    t.status === "PENDING"
+                  );
                   setAuditCategoryData({ name: "Reopened Tickets", ...getAuditSummary(reopenedTickets), color: "#f59e0b" });
                   setShowCategoryAudit(true);
                 }}
