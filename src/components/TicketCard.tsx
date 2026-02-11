@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Edit2,
@@ -138,6 +138,50 @@ export default function TicketCard({
   const [showCompleteWithProofModal, setShowCompleteWithProofModal] = useState(false);
   const [proofImages, setProofImages] = useState<File[]>([]);
   const [uploadingProof, setUploadingProof] = useState(false);
+
+  // Draggable Audit Modal State
+  const auditModalRef = useRef<HTMLDivElement>(null);
+  const isDraggingAudit = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const currentOffset = useRef({ x: 0, y: 0 });
+  const initialOffset = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingAudit.current || !auditModalRef.current) return;
+      
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      
+      currentOffset.current = {
+        x: initialOffset.current.x + dx,
+        y: initialOffset.current.y + dy
+      };
+      
+      auditModalRef.current.style.transform = `translate(${currentOffset.current.x}px, ${currentOffset.current.y}px)`;
+    };
+
+    const handleMouseUp = () => {
+      isDraggingAudit.current = false;
+    };
+
+    if (showAuditModal) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [showAuditModal]);
+
+  const handleAuditDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingAudit.current = true;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    initialOffset.current = { ...currentOffset.current };
+  };
 
 
   const [editForm, setEditForm] = useState({
@@ -1469,15 +1513,19 @@ export default function TicketCard({
       )}
       {/* Audit Summary Modal */}
       {showAuditModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6" onClick={() => setShowAuditModal(false)}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 pointer-events-none">
           <div
-            className="relative max-w-lg w-full rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200"
+            ref={auditModalRef}
+            className="relative max-w-lg w-full rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 pointer-events-auto"
             style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}` }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: colors.accentMedium, borderBottom: `1px solid ${colors.border}` }}>
+            <div 
+              onMouseDown={handleAuditDragStart}
+              className="px-6 py-4 flex items-center justify-between cursor-move select-none"
+              style={{ backgroundColor: colors.accentMedium, borderBottom: `1px solid ${colors.border}` }}
+            >
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-lg bg-white/50">
                   <FileSearch size={20} style={{ color: colors.textDark }} />
