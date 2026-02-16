@@ -121,6 +121,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
       ticket.completionPhotos = payload.completionPhotos;
     }
     
+    // Send Telegram Notification
+    if (ticket.telegramChatId) {
+      try {
+        const msgText = `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
+                       `📝 ${escapeHTML(ticket.description)}\n` +
+                       `👤 Completed by: ${escapeHTML(ticket.completedBy)}\n` +
+                       `📍 ${escapeHTML(ticket.location || "No location")}\n` +
+                       `📂 ${escapeHTML(ticket.category || "Uncategorized")}`;
+
+        const res = await telegramSendMessage(ticket.telegramChatId, msgText, ticket.telegramMessageId || undefined);
+        
+        if (res && res.ok && res.result && res.result.message_id) {
+          ticket.completionMessageId = res.result.message_id;
+        }
+      } catch (err) {
+        console.error("Failed to send Telegram notification for completion:", err);
+      }
+    }
+
     await ticket.save();
     return NextResponse.json({ ok: true, data: ticket });
   }
