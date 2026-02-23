@@ -121,14 +121,28 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
       ticket.completionPhotos = payload.completionPhotos;
     }
     
+    if (payload.completedWithProof !== undefined) {
+      ticket.completedWithProof = payload.completedWithProof;
+    }
+    
+    if (payload.completionProofImages && Array.isArray(payload.completionProofImages)) {
+      ticket.completionProofImages = payload.completionProofImages;
+    }
+    
     // Send Telegram Notification
     if (ticket.telegramChatId) {
       try {
-        const msgText = `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
+        let msgText = `✅ <b>Ticket #${ticket.ticketId} Completed</b>\n\n` +
                        `📝 ${escapeHTML(ticket.description)}\n` +
                        `👤 Completed by: ${escapeHTML(ticket.completedBy)}\n` +
                        `📍 ${escapeHTML(ticket.location || "No location")}\n` +
                        `📂 ${escapeHTML(ticket.category || "Uncategorized")}`;
+
+        if (ticket.completionProofImages && ticket.completionProofImages.length > 0) {
+          msgText += `\n\n📸 <b>After-fix proof attached (${ticket.completionProofImages.length} images)</b>`;
+        } else if (ticket.completionPhotos && ticket.completionPhotos.length > 0) {
+          msgText += `\n\n📸 <b>After-fix photo attached</b>`;
+        }
 
         const res = await telegramSendMessage(ticket.telegramChatId, msgText, ticket.telegramMessageId || undefined);
         
