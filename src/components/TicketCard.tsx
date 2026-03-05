@@ -1276,17 +1276,42 @@ export default function TicketCard({
 
       {/* Photo Lightbox */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90" onClick={() => setSelectedPhoto(null)}>
-          <img src={selectedPhoto} alt="Full size" className="max-w-full max-h-full rounded-xl shadow-2xl" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/95" onClick={() => setSelectedPhoto(null)}>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedPhoto(null);
+            }}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-red-500 rounded-full text-white transition-colors z-[110]"
+            title="Close"
+          >
+            <X size={28} />
+          </button>
+          <img 
+            src={selectedPhoto} 
+            alt="Full size" 
+            className="max-w-full max-h-[90vh] rounded-xl shadow-2xl relative z-[105]" 
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 
       {/* Video Lightbox */}
       {selectedVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90" onClick={() => setSelectedVideo(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/95" onClick={() => setSelectedVideo(null)}>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedVideo(null);
+            }}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-red-500 rounded-full text-white transition-colors z-[110]"
+            title="Close"
+          >
+            <X size={28} />
+          </button>
           <video
             src={selectedVideo}
-            className="max-w-full max-h-full rounded-xl shadow-2xl"
+            className="max-w-[95vw] max-h-[90vh] rounded-xl shadow-2xl relative z-[105]"
             controls
             autoPlay
             onClick={(e) => e.stopPropagation()}
