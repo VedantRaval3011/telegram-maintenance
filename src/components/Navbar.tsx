@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, LogOut, User } from "lucide-react";
+import { Menu, X, LogOut, User, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function Navbar() {
@@ -57,7 +57,7 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-0.5 xl:gap-1 flex-1 lg:justify-start xl:justify-center overflow-x-auto no-scrollbar mx-2">
-            {navLinks.map((link) => (
+            {navLinks.filter((link) => link.name !== "Settings").map((link) => (
               <Link
                 key={link.path}
                 href={link.path}
@@ -88,6 +88,19 @@ export default function Navbar() {
                     </span>
                   )}
                 </div>
+                {navLinks.find(link => link.name === "Settings") && (
+                  <Link
+                    href={navLinks.find(link => link.name === "Settings")?.path || "/settings"}
+                    className={`p-1.5 rounded-md transition-all ${
+                      isActive("/settings")
+                        ? "bg-gray-200 text-gray-900" 
+                        : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                    }`}
+                    title="Settings"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Link>
+                )}
                 <button
                   onClick={logout}
                   className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
@@ -113,7 +126,7 @@ export default function Navbar() {
       {isMobileMenuOpen && (
         <div className="lg:hidden bg-white border-t border-gray-100 animate-in slide-in-from-top duration-300">
           <div className="px-4 py-4 space-y-1">
-            {navLinks.map((link) => (
+            {navLinks.filter((link) => link.name !== "Settings").map((link) => (
               <Link
                 key={link.path}
                 href={link.path}
@@ -142,13 +155,28 @@ export default function Navbar() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onClick={logout}
-                    className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-all text-sm font-medium"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Logout
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {navLinks.find(link => link.name === "Settings") && (
+                      <Link
+                        href={navLinks.find(link => link.name === "Settings")?.path || "/settings"}
+                        className={`p-2 rounded-lg transition-all ${
+                          isActive("/settings")
+                            ? "bg-gray-200 text-gray-900" 
+                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        }`}
+                        title="Settings"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </Link>
+                    )}
+                    <button
+                      onClick={logout}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                      title="Logout"
+                    >
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
