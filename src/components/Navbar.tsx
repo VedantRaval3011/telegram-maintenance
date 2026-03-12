@@ -56,7 +56,7 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-0.5 xl:gap-1 flex-1 lg:justify-start xl:justify-center overflow-x-auto no-scrollbar mx-2">
+          <div className="hidden lg:flex items-center gap-0.5 xl:gap-1 flex-1 min-w-0 lg:justify-start xl:justify-center overflow-x-auto no-scrollbar mx-2">
             {navLinks.filter((link) => link.name !== "Settings").map((link) => (
               <Link
                 key={link.path}
@@ -73,7 +73,7 @@ export default function Navbar() {
           </div>
 
           {/* User Menu & Mobile Toggle */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* User Info (Desktop) */}
             {user && (
               <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
