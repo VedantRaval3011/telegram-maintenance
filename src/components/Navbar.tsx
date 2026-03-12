@@ -26,8 +26,8 @@ export default function Navbar() {
   if (isLoading) {
     return (
       <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 mb-8 shadow-sm">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
+        <div className="w-full max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-6">
+          <div className="flex items-center justify-between h-11">
             <div className="w-8 h-8 rounded-lg bg-gray-200 animate-pulse"></div>
             <div className="flex gap-2">
               {[1, 2, 3].map((i) => (
@@ -42,8 +42,8 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 mb-8 shadow-sm">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14">
+      <div className="w-full max-w-[1920px] mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="flex items-center justify-between h-11">
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2 group flex-shrink-0">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-700 text-white font-bold text-sm group-hover:bg-gray-800 transition-all duration-300">
@@ -56,12 +56,12 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-1 flex-1 justify-center">
+          <div className="hidden lg:flex items-center gap-0.5 xl:gap-1 flex-1 lg:justify-start xl:justify-center overflow-x-auto no-scrollbar mx-2">
             {navLinks.map((link) => (
               <Link
                 key={link.path}
                 href={link.path}
-                className={`px-3 py-2 rounded-md text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                className={`px-2 py-1.5 rounded-md text-[11px] xl:text-xs font-medium transition-all duration-200 whitespace-nowrap ${
                   isActive(link.path)
                     ? "bg-gray-100 text-gray-900"
                     : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
@@ -76,21 +76,21 @@ export default function Navbar() {
           <div className="flex items-center gap-2">
             {/* User Info (Desktop) */}
             {user && (
-              <div className="hidden lg:flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg">
-                  <User className="w-4 h-4 text-gray-500" />
-                  <span className="text-xs font-medium text-gray-700">
+              <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-lg">
+                  <User className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-[11px] xl:text-xs font-medium text-gray-700">
                     {user.username}
                   </span>
                   {user.isSuperAdmin && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-700 rounded">
+                    <span className="px-1 py-0.5 text-[9px] font-medium bg-emerald-100 text-emerald-700 rounded">
                       Admin
                     </span>
                   )}
                 </div>
                 <button
                   onClick={logout}
-                  className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                  className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
                   title="Logout"
                 >
                   <LogOut className="w-4 h-4" />

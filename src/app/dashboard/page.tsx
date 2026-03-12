@@ -714,10 +714,14 @@ function DashboardContent() {
         try { return new Date(raw); } catch { return null; }
       };
 
-      if (sortBy === "created_desc") {
-        out.sort((a: any, b: any) => (parseTicketDate(b)?.getTime() ?? 0) - (parseTicketDate(a)?.getTime() ?? 0));
-      } else if (sortBy === "created_asc") {
-        out.sort((a: any, b: any) => (parseTicketDate(a)?.getTime() ?? 0) - (parseTicketDate(b)?.getTime() ?? 0));
+      const parseCompletedDate = (t: any) => {
+        const raw = t.completedAt || t.updatedAt || t.createdAt;
+        if (!raw) return null;
+        try { return new Date(raw); } catch { return null; }
+      };
+
+      if (sortBy === "completed_desc") {
+        out.sort((a: any, b: any) => (parseCompletedDate(b)?.getTime() ?? 0) - (parseCompletedDate(a)?.getTime() ?? 0));
       } else if (sortBy === "priority_desc") {
         out.sort((a: any, b: any) => (b.priority || 0) - (a.priority || 0));
       } else if (sortBy === "priority_asc") {
@@ -1399,8 +1403,7 @@ function DashboardContent() {
                     className="px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-white border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all hover:border-gray-400"
                   >
                     <option value="">Default</option>
-                    <option value="created_desc">Newest First</option>
-                    <option value="created_asc">Oldest First</option>
+                    <option value="completed_desc">Recently Completed First</option>
                   </select>
                 </div>
               </div>
