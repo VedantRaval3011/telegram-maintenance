@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, LogOut, User, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import NotificationBell from "@/components/NotificationBell";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -74,6 +75,9 @@ export default function Navbar() {
 
           {/* User Menu & Mobile Toggle */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Notification Bell (all screen sizes) */}
+            {user && <NotificationBell />}
+
             {/* User Info (Desktop) */}
             {user && (
               <div className="hidden lg:flex items-center gap-2 flex-shrink-0">

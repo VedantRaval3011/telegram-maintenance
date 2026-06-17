@@ -4,6 +4,8 @@ import type { NextRequest } from "next/server";
 import { Ticket } from "@/models/Ticket";
 import { User } from "@/models/User";
 import { connectToDB } from "@/lib/mongodb";
+import { getSession } from "@/lib/auth";
+import { notifyTicketAssigned } from "@/lib/notify";
 
 /**
  * POST /api/tickets/[id]/assign
@@ -52,6 +54,14 @@ export async function POST(
     ticket.assignedTo = user._id;
     ticket.assignedAt = new Date();
     await ticket.save();
+
+    // In-app notification to all dashboard users (best effort)
+    const session = await getSession();
+    const assigneeName =
+      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+      user.username ||
+      "an agent";
+    await notifyTicketAssigned(ticket, assigneeName, session?.userId);
 
     // Prepare WhatsApp message
     const message = generateTicketMessage(ticket, user);

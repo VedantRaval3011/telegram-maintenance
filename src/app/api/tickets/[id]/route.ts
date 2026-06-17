@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
 import { telegramSendMessage, escapeHTML } from "@/lib/telegram";
+import { getSession } from "@/lib/auth";
+import {
+  notifyReopened,
+  notifyStatusChange,
+  notifyPriorityChange,
+  notifyCategoryChange,
+  notifyAgencyChange,
+  notifyTicketDeleted,
+} from "@/lib/notify";
 
 export async function GET(req: Request, { params }: { params: { id: string } | Promise<{ id: string }> }) {
   await connectToDB();
@@ -37,6 +46,11 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   }
 
   await Ticket.findByIdAndDelete(ticket._id);
+
+  // In-app notification to all dashboard users (best effort)
+  const session = await getSession();
+  await notifyTicketDeleted(ticket, session?.userId);
+
   return NextResponse.json({ ok: true, message: "Ticket deleted successfully" });
 }
 
@@ -94,7 +108,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
                        `❓ Reason: ${escapeHTML(reopenedReason)}`;
         await telegramSendMessage(updatedTicket.telegramChatId, msgText, updatedTicket.telegramMessageId || undefined).catch(() => {});
       }
-      
+
+      // In-app notification (best effort)
+      const session = await getSession();
+      await notifyReopened(updatedTicket || ticket, reopenedReason, session?.userId);
+
       return NextResponse.json({ ok: true, data: updatedTicket });
     } catch (err: any) {
       console.error("[REOPEN ERROR]:", err);
@@ -104,6 +122,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
 
   // 2. Handle COMPLETION Logic
   if (payload.status === "COMPLETED") {
+    const prevStatus = ticket.status;
     const wasReopened = ticket.reopenedHistory && ticket.reopenedHistory.length > 0;
     const lastReopening = wasReopened ? ticket.reopenedHistory[ticket.reopenedHistory.length - 1] : null;
 
@@ -155,11 +174,40 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
     }
 
     await ticket.save();
+
+    // In-app notification (best effort)
+    const session = await getSession();
+    await notifyStatusChange(ticket, prevStatus, "COMPLETED", session?.userId);
+
     return NextResponse.json({ ok: true, data: ticket });
   }
 
-  // 3. Handle General Field Updates
+  // 3. Handle General Field Updates — capture before/after to emit field-change events
+  const before = {
+    status: ticket.status,
+    priority: ticket.priority,
+    category: ticket.category,
+    agencyName: ticket.agencyName,
+  };
+
   Object.assign(ticket, payload);
   await ticket.save();
+
+  // In-app notifications for any changed fields (best effort)
+  const session = await getSession();
+  const actor = session?.userId;
+  if (before.status !== ticket.status) {
+    await notifyStatusChange(ticket, before.status, ticket.status, actor);
+  }
+  if (before.priority !== ticket.priority) {
+    await notifyPriorityChange(ticket, before.priority, ticket.priority, actor);
+  }
+  if (before.category !== ticket.category) {
+    await notifyCategoryChange(ticket, before.category, ticket.category, actor);
+  }
+  if ((before.agencyName || null) !== (ticket.agencyName || null)) {
+    await notifyAgencyChange(ticket, before.agencyName ?? null, ticket.agencyName ?? null, actor);
+  }
+
   return NextResponse.json({ ok: true, data: ticket });
 }

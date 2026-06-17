@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
+import NotificationPermissionPrompt from "@/components/NotificationPermissionPrompt";
 import "./globals.css";
 
 const inter = Inter({ 
@@ -43,8 +45,11 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} antialiased`}>
         <AuthProvider>
-          <Toaster position="top-right" />
-          {children}
+          <NotificationProvider>
+            <Toaster position="top-right" />
+            {children}
+            <NotificationPermissionPrompt />
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

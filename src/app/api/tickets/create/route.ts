@@ -7,6 +7,7 @@ import { Category } from "@/models/Category";
 import { SubCategory } from "@/models/SubCategoryMaster";
 import { getSession } from "@/lib/auth";
 import { triggerTicketCreatedNotification } from "@/lib/notificationScheduler";
+import { notifyTicketCreated } from "@/lib/notify";
 
 /**
  * POST /api/tickets/create
@@ -110,12 +111,15 @@ export async function POST(req: NextRequest) {
 
     const ticket = await Ticket.create(ticketData);
 
-    // Trigger notification to users assigned to this sub-category (best effort)
+    // Trigger external (Telegram/WhatsApp) notification (best effort)
     try {
       await triggerTicketCreatedNotification(ticket);
     } catch (notifyError) {
       console.error("[Create Ticket] Failed to trigger notification:", notifyError);
     }
+
+    // In-app notification to all dashboard users (best effort)
+    await notifyTicketCreated(ticket, session?.userId);
 
     return NextResponse.json({ ok: true, data: ticket });
   } catch (err) {
