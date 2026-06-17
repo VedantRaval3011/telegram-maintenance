@@ -2202,13 +2202,17 @@ function DashboardContent() {
                               throw new Error('Failed to update ticket');
                             }
 
+                            const result = await response.json().catch(() => ({}));
+
                             // Success - refresh data and close modal
                             await mutate();
                             setSelectedTicketId(null);
                             setIsEditMode(false);
-                            
+
                             // Show success message
-                            alert('Ticket updated successfully!');
+                            alert(result?.kind === 'information'
+                              ? 'Ticket moved to the Information section.'
+                              : 'Ticket updated successfully!');
                         } catch (error) {
                           console.error('Error updating ticket:', error);
                           alert('Failed to update ticket. Please try again.');

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
+import { Information } from "@/models/Information";
 import { telegramSendMessage, escapeHTML } from "@/lib/telegram";
 import { getSession } from "@/lib/auth";
 import {
@@ -180,6 +181,74 @@ export async function PATCH(req: Request, { params }: { params: { id: string } |
     await notifyStatusChange(ticket, prevStatus, "COMPLETED", session?.userId);
 
     return NextResponse.json({ ok: true, data: ticket });
+  }
+
+  // 3a. Category changed to "Information" — move the record out of the Tickets
+  // module into the Information section (carrying over content, all attachments
+  // and key metadata), then delete the ticket so it's no longer an active ticket.
+  if (
+    typeof payload.category === "string" &&
+    payload.category.trim().toLowerCase() === "information"
+  ) {
+    try {
+      const session = await getSession();
+
+      const dedupe = (arr: any[]) =>
+        Array.from(new Set((arr || []).filter(Boolean)));
+
+      const photos = dedupe([
+        ...(payload.photos ?? ticket.photos ?? []),
+        ...(ticket.completionPhotos ?? []),
+        ...(ticket.completionProofImages ?? []),
+      ]);
+      const videos = dedupe([
+        ...(payload.videos ?? ticket.videos ?? []),
+        ...(ticket.completionVideos ?? []),
+      ]);
+      const documents = dedupe([
+        ...(payload.documents ?? ticket.documents ?? []),
+        ...(ticket.completionDocuments ?? []),
+      ]);
+
+      const baseContent = (payload.description ?? ticket.description ?? "Information")
+        .toString()
+        .trim();
+
+      // Preserve metadata so nothing is lost and it's visible in Information
+      const metaLines: string[] = [`— Converted from Ticket ${ticket.ticketId}`];
+      const loc = payload.location ?? ticket.location;
+      const prio = payload.priority ?? ticket.priority;
+      const agency = payload.agencyName ?? ticket.agencyName;
+      if (loc) metaLines.push(`Location: ${loc}`);
+      if (prio) metaLines.push(`Priority: ${prio}`);
+      if (agency && agency !== "NONE") metaLines.push(`Agency: ${agency}`);
+      if (ticket.createdBy) metaLines.push(`Originally created by: ${ticket.createdBy}`);
+      if (ticket.createdAt)
+        metaLines.push(`Original date: ${new Date(ticket.createdAt).toLocaleString()}`);
+
+      const content = `${baseContent}\n\n${metaLines.join("\n")}`;
+
+      const information = await Information.create({
+        content,
+        createdBy: ticket.createdBy || session?.displayName || session?.username || "Dashboard Admin",
+        type: "general",
+        photos,
+        videos,
+        documents,
+        telegramMessageId: ticket.telegramMessageId ?? null,
+        telegramChatId: ticket.telegramChatId ?? null,
+      });
+
+      await Ticket.findByIdAndDelete(ticket._id);
+
+      return NextResponse.json({ ok: true, kind: "information", converted: true, data: information });
+    } catch (err: any) {
+      console.error("[Convert to Information] Failed:", err);
+      return NextResponse.json(
+        { ok: false, error: err?.message || "Failed to move ticket to Information" },
+        { status: 500 }
+      );
+    }
   }
 
   // 3. Handle General Field Updates — capture before/after to emit field-change events
