@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Navbar from "@/components/Navbar";
+import DeviceNotificationSettings from "@/components/DeviceNotificationSettings";
 import {
   Settings as SettingsIcon,
   Bell,
@@ -388,12 +389,16 @@ export default function SettingsPage() {
                       Notification Settings
                     </h2>
                     <p className="text-gray-600 text-sm">
-                      Configure when and how you receive Telegram notifications
+                      Manage real-time browser alerts on this device, plus Telegram
+                      alerts and scheduled reports
                     </p>
                   </div>
 
                   <div className="space-y-5">
-                    {/* Master Toggle */}
+                    {/* Real-time browser/push notifications for this device */}
+                    <DeviceNotificationSettings />
+
+                    {/* Master Toggle (Telegram) */}
                     <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-5">
                       <label className="flex items-center justify-between cursor-pointer">
                         <div className="flex items-center gap-3">

@@ -286,6 +286,23 @@ function DashboardContent() {
   const subCategories = subCategoriesData?.data || [];
   const agencies = agenciesData?.data || [];
 
+  // Open a ticket directly when arriving via ?ticketId= (e.g. from a notification)
+  const openedFromUrlRef = useRef(false);
+  useEffect(() => {
+    if (openedFromUrlRef.current) return;
+    if (!tickets || tickets.length === 0) return;
+    const ticketParam = searchParams.get("ticketId");
+    if (!ticketParam) return;
+    const match = tickets.find((t: any) => t.ticketId === ticketParam);
+    if (match) {
+      openedFromUrlRef.current = true;
+      setSelectedTicketId(match.ticketId);
+      setTimeout(() => {
+        scrollToTicketList();
+      }, 300);
+    }
+  }, [tickets, searchParams, scrollToTicketList]);
+
   // Sync edit form data when selected ticket changes or list updates
   useEffect(() => {
     if (!selectedTicketId || !tickets || tickets.length === 0) return;
