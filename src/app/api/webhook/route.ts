@@ -2190,11 +2190,13 @@ export async function POST(req: NextRequest) {
     const incomingText = (msg.text || msg.caption || "").trim();
 
 // ========== INFO COMMAND HANDLING ==========
-// Captures any message starting with /info and stores the content and any attachments
-// Format: /info <any text here>
-if (incomingText.toLowerCase().startsWith("/info")) {
-  const infoContent = incomingText.substring(5).trim(); // Remove "/info" prefix
-  
+// Captures any message starting with /info or /information (optionally /info@bot)
+// and stores the content + any attachments. Does NOT create a maintenance ticket.
+// Format: /info <text>  OR  /information <text>
+const infoCommandMatch = incomingText.match(/^\/info(?:rmation)?(?:@\w+)?\b\s*([\s\S]*)$/i);
+if (infoCommandMatch) {
+  const infoContent = (infoCommandMatch[1] || "").trim(); // text after the command
+
   const hasPhoto = !!msg.photo;
   const hasVideo = !!msg.video;
   const hasDocument = !!msg.document;

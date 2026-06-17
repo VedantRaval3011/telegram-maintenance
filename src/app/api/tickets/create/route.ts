@@ -8,6 +8,7 @@ import { SubCategory } from "@/models/SubCategoryMaster";
 import { getSession } from "@/lib/auth";
 import { triggerTicketCreatedNotification } from "@/lib/notificationScheduler";
 import { notifyTicketCreated } from "@/lib/notify";
+import { Information } from "@/models/Information";
 
 /**
  * POST /api/tickets/create
@@ -55,6 +56,23 @@ export async function POST(req: NextRequest) {
         { ok: false, error: "Category not found" },
         { status: 404 }
       );
+    }
+
+    // If the chosen category is the special "Information" category, store the entry
+    // in the Information module instead of creating a maintenance ticket (mirrors
+    // the Telegram wizard behaviour).
+    if (category.name?.toLowerCase() === "information") {
+      const createdByName =
+        session?.displayName || session?.username || "Dashboard Admin";
+      const information = await Information.create({
+        content: (description && description.trim()) || "Information",
+        createdBy: createdByName,
+        type: "general",
+        photos: Array.isArray(photos) ? photos : [],
+        videos: Array.isArray(videos) ? videos : [],
+        documents: Array.isArray(documents) ? documents : [],
+      });
+      return NextResponse.json({ ok: true, kind: "information", data: information });
     }
 
     const subcategory = subCategoryId

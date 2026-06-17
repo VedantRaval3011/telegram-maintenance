@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   X, Plus, Trash2, Loader2, CheckCircle2, FileText, Camera, Video,
-  ArrowLeft, ArrowRight,
+  ArrowLeft, ArrowRight, Info, Wrench,
 } from "lucide-react";
 
 interface HierarchicalLocation {
@@ -101,6 +101,7 @@ function stepTitle(key: string, rule: WorkflowRule | null): string {
   }
   switch (key) {
     case "description": return "📝 Description & Media";
+    case "info_type": return "ℹ️ Information Type";
     case "category": return "📂 Category";
     case "subcategory": return "🧩 Subcategory";
     case "add_or_repair": return "🔧 Add New or Repair";
@@ -118,6 +119,9 @@ function stepTitle(key: string, rule: WorkflowRule | null): string {
 export default function AddTicketModal({
   isOpen, onClose, onCreated, categories, subCategories, agencies, hierarchicalLocations,
 }: AddTicketModalProps) {
+  // "ticket" = normal maintenance ticket; "information" = save to Information module
+  const [mode, setMode] = useState<"ticket" | "information">("ticket");
+  const [infoType, setInfoType] = useState<"general" | "audit">("general");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [subCategoryId, setSubCategoryId] = useState("");
@@ -145,6 +149,7 @@ export default function AddTicketModal({
   // Reset everything when modal closes
   useEffect(() => {
     if (!isOpen) {
+      setMode("ticket"); setInfoType("general");
       setDescription(""); setCategoryId(""); setSubCategoryId(""); setPriority("medium");
       setLocation(""); setSourceLocation(""); setTargetLocation(""); setAddOrRepairChoice("");
       setAgencyName(""); setAgencyDate(""); setAgencyTime(""); setAdditionalValues({});
@@ -219,6 +224,10 @@ export default function AddTicketModal({
 
   // Build the ordered list of steps based on the workflow rule (mirrors the Telegram wizard order)
   const steps = useMemo(() => {
+    // Information mode: a short fixed flow that bypasses categories/workflow entirely
+    if (mode === "information") {
+      return ["description", "info_type", "review"];
+    }
     const s: string[] = ["description", "category"];
     if (categoryId && rule) {
       if (rule.hasSubcategories) s.push("subcategory");
@@ -235,7 +244,7 @@ export default function AddTicketModal({
       s.push("review");
     }
     return s;
-  }, [categoryId, rule, showAgencyDate]);
+  }, [mode, categoryId, rule, showAgencyDate]);
 
   // Keep the step index inside bounds when the step list changes
   useEffect(() => {
@@ -319,6 +328,41 @@ export default function AddTicketModal({
     setError(null);
     setSubmitting(true);
     try {
+      // ----- Information mode: save to the Information module, not as a ticket -----
+      if (mode === "information") {
+        const res = await fetch("/api/informations/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: description, type: infoType }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save information");
+
+        const infoId = data.data?._id;
+        if (infoId && files.length > 0) {
+          setUploading(true);
+          const fd = new FormData();
+          fd.append("informationId", infoId);
+          files.forEach((f) => fd.append("files", f));
+          const upRes = await fetch("/api/informations/upload-media", { method: "POST", body: fd });
+          const upData = await upRes.json().catch(() => ({}));
+          setUploading(false);
+          if (!upRes.ok || !upData.ok) {
+            onCreated();
+            setError(
+              `Information saved, but attachments failed: ${
+                upData.error || "upload error"
+              }`
+            );
+            return;
+          }
+        }
+
+        onCreated();
+        onClose();
+        return;
+      }
+
       const payload: any = {
         description,
         categoryId,
@@ -342,6 +386,14 @@ export default function AddTicketModal({
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to create ticket");
+
+      // The "Information" category is stored as an Information entry, not a ticket —
+      // there's no ticket to attach media to, so just finish.
+      if (data.kind === "information") {
+        onCreated();
+        onClose();
+        return;
+      }
 
       const newTicketId = data.data.ticketId;
 
@@ -426,13 +478,15 @@ export default function AddTicketModal({
         return (
           <div className="space-y-5">
             <div>
-              <p className="text-sm text-gray-500 mb-3">Describe the issue.</p>
+              <p className="text-sm text-gray-500 mb-3">
+                {mode === "information" ? "Enter the information to save." : "Describe the issue."}
+              </p>
               <textarea
                 autoFocus
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                placeholder="Describe the issue…"
+                placeholder={mode === "information" ? "Type the information…" : "Describe the issue…"}
                 className="w-full px-4 py-3 bg-orange-50 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none"
               />
             </div>
@@ -480,6 +534,26 @@ export default function AddTicketModal({
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        );
+
+      case "info_type":
+        return (
+          <div>
+            <p className="text-sm text-gray-500 mb-3">Classify this information entry.</p>
+            <div className="flex gap-3">
+              {[{ v: "general", l: "📌 General" }, { v: "audit", l: "🛡️ Audit" }].map((o) => (
+                <button
+                  key={o.v}
+                  onClick={() => { setInfoType(o.v as "general" | "audit"); goForward(); }}
+                  className={`px-5 py-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                    infoType === o.v ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
+                  }`}
+                >
+                  {o.l}
+                </button>
+              ))}
             </div>
           </div>
         );
@@ -644,6 +718,26 @@ export default function AddTicketModal({
         );
 
       case "review": {
+        if (mode === "information") {
+          const infoRows: [string, string][] = [
+            ["Content", description || "—"],
+            ["Type", infoType === "audit" ? "Audit" : "General"],
+            ["Attachments", files.length ? `${files.length} file(s)` : "None"],
+          ];
+          return (
+            <div>
+              <p className="text-sm text-gray-500 mb-4">This will be saved to the Information section (not as a ticket).</p>
+              <div className="rounded-xl border-2 border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                {infoRows.map(([k, v]) => (
+                  <div key={k} className="flex items-start gap-3 px-4 py-2.5 bg-white">
+                    <span className="text-xs font-bold uppercase tracking-wide text-gray-400 w-28 shrink-0">{k}</span>
+                    <span className="text-sm text-gray-800 font-medium break-words">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
         const rows: [string, string][] = [
           ["Description", description || "—"],
           ["Category", catName],
@@ -695,7 +789,9 @@ export default function AddTicketModal({
                 <Plus className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">New Ticket</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
+                  {mode === "information" ? "New Information" : "New Ticket"}
+                </h2>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
                   Step {step + 1} of {totalSteps} · {stepTitle(currentKey, rule)}
                 </p>
@@ -716,6 +812,29 @@ export default function AddTicketModal({
 
         {/* Body — only the current step */}
         <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+          {/* Mode selector — choose Ticket vs Information up front */}
+          {step === 0 && (
+            <div className="mb-5 grid grid-cols-2 gap-3">
+              {[
+                { v: "ticket", l: "Maintenance Ticket", icon: <Wrench className="w-4 h-4" />, desc: "Track work to be done" },
+                { v: "information", l: "Information", icon: <Info className="w-4 h-4" />, desc: "Save a note to Information" },
+              ].map((o) => {
+                const activeMode = mode === o.v;
+                return (
+                  <button
+                    key={o.v}
+                    onClick={() => { if (mode !== o.v) { setMode(o.v as "ticket" | "information"); setError(null); setStep(0); } }}
+                    className={`text-left px-4 py-3 rounded-xl border-2 transition-all ${
+                      activeMode ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold text-sm">{o.icon}{o.l}</div>
+                    <div className={`text-[11px] mt-0.5 ${activeMode ? "text-blue-100" : "text-gray-400"}`}>{o.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-md border-2 border-gray-100">
             <h3 className="text-lg font-bold text-gray-900 mb-4">{stepTitle(currentKey, rule)}</h3>
             {renderStep()}
@@ -745,7 +864,7 @@ export default function AddTicketModal({
                 className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 disabled:opacity-60"
               >
                 {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-                {uploading ? "Uploading…" : submitting ? "Creating…" : "Create Ticket"}
+                {uploading ? "Uploading…" : submitting ? "Saving…" : mode === "information" ? "Save Information" : "Create Ticket"}
               </button>
             ) : (
               <button
