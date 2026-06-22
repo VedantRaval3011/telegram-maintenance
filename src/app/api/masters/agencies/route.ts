@@ -31,7 +31,14 @@ export async function GET() {
       subCategories: (agency.subCategories || []).filter((sub: any) => sub !== null && sub !== undefined),
     }));
 
-    return NextResponse.json({ success: true, data: cleanedAgencies });
+    return NextResponse.json(
+      { success: true, data: cleanedAgencies },
+      {
+        headers: {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=300",
+        },
+      }
+    );
   } catch (error: any) {
     console.error("Error fetching agencies:", error);
     return NextResponse.json(

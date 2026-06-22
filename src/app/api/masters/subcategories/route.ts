@@ -15,7 +15,14 @@ export async function GET(req: NextRequest) {
 
   const data = await SubCategory.find(query).lean();
 
-  return NextResponse.json({ success: true, data });
+  return NextResponse.json(
+    { success: true, data },
+    {
+      headers: {
+        "Cache-Control": "private, max-age=30, stale-while-revalidate=300",
+      },
+    }
+  );
 }
 
 const CreateSchema = z.object({

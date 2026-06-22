@@ -112,5 +112,15 @@ const TicketSchema = new mongoose.Schema<ITicket>({
   }],
 });
 
+// Indexes for performance.
+// The dashboard lists tickets sorted by createdAt descending and filters
+// heavily by status / category / location, so back those access patterns.
+TicketSchema.index({ createdAt: -1 });
+TicketSchema.index({ status: 1, createdAt: -1 });
+TicketSchema.index({ category: 1 });
+TicketSchema.index({ location: 1 });
+TicketSchema.index({ assignedTo: 1 });
+// ticketId already has a unique index from the schema field definition.
+
 export const Ticket: Model<ITicket> =
   mongoose.models.Ticket || mongoose.model<ITicket>("Ticket", TicketSchema);

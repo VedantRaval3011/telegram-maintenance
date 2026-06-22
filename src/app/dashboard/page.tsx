@@ -32,12 +32,21 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isReadOnly, hideTimeDetails } = useAuth();
-  const { data, error, mutate } = useSWR("/api/tickets", fetcher, { refreshInterval: 3000 });
-  const { data: usersData } = useSWR("/api/masters/users?limit=100", fetcher);
-  const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher);
-  const { data: subCategoriesData } = useSWR("/api/masters/subcategories?limit=100", fetcher);
-  const { data: agenciesData } = useSWR("/api/masters/agencies?limit=100", fetcher);
-  const { data: locationsData } = useSWR("/api/masters/locations?limit=500", fetcher);
+  const { data, error, mutate } = useSWR("/api/tickets", fetcher, {
+    refreshInterval: 3000,
+    keepPreviousData: true, // avoid loading flash on refresh/navigation
+  });
+  // Master data rarely changes: cache aggressively and skip focus revalidation
+  // so it isn't refetched on every tab switch / navigation.
+  const masterSwrOptions = {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000,
+  };
+  const { data: usersData } = useSWR("/api/masters/users?limit=100", fetcher, masterSwrOptions);
+  const { data: categoriesData } = useSWR("/api/masters/categories?limit=100", fetcher, masterSwrOptions);
+  const { data: subCategoriesData } = useSWR("/api/masters/subcategories?limit=100", fetcher, masterSwrOptions);
+  const { data: agenciesData } = useSWR("/api/masters/agencies?limit=100", fetcher, masterSwrOptions);
+  const { data: locationsData } = useSWR("/api/masters/locations?limit=500", fetcher, masterSwrOptions);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false); // Track if showing completed view

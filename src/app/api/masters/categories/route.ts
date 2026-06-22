@@ -88,16 +88,24 @@ export async function GET(req: NextRequest) {
       Category.countDocuments(query),
     ]);
 
-    return NextResponse.json({
-      success: true,
-      data: categories,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+    return NextResponse.json(
+      {
+        success: true,
+        data: categories,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
       },
-    });
+      {
+        headers: {
+          // Rarely-changing master data: serve fast from cache while revalidating.
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=300",
+        },
+      }
+    );
   } catch (err) {
     console.error("[API] Failed to fetch categories:", err);
     return NextResponse.json(

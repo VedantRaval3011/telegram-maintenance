@@ -88,8 +88,8 @@ export async function GET(request: NextRequest) {
   
   // Apply location-based filtering if user has restricted access
   if (session && session.allowedLocationIds && session.allowedLocationIds.length > 0 && !session.isSuperAdmin) {
-    // Build location map
-    const allLocations = await Location.find({}).lean();
+    // Build location map (only the fields needed to resolve hierarchy/paths)
+    const allLocations = await Location.find({}, { name: 1, parentLocationId: 1 }).lean();
     const locationMap = new Map<string, any>();
     allLocations.forEach((loc: any) => {
       locationMap.set(loc._id.toString(), loc);
@@ -107,20 +107,14 @@ export async function GET(request: NextRequest) {
       allowedPaths.push(buildFullPath(locId, locationMap));
     });
     
-    console.log('[TICKETS API] Original selected:', session.allowedLocationIds);
-    console.log('[TICKETS API] Most specific:', mostSpecificIds);
-    console.log('[TICKETS API] Allowed paths:', allowedPaths);
-    
-    // Filter tickets
+    // Filter tickets using a Set for O(1) path lookups instead of scanning
+    // the allowed-paths array for every ticket.
+    const allowedPathSet = new Set(allowedPaths);
     tickets = tickets.filter((ticket: any) => {
       const ticketLocation = (ticket.location || "").trim();
       if (!ticketLocation) return false;
-      
-      // Check if ticket location matches any allowed path
-      return allowedPaths.some(path => ticketLocation === path);
+      return allowedPathSet.has(ticketLocation);
     });
-    
-    console.log('[TICKETS API] Filtered tickets count:', tickets.length);
   }
   
   // Ensure required fields exist in every ticket (especially for lean queries)
