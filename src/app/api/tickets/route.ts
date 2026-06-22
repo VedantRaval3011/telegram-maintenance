@@ -82,9 +82,21 @@ function buildFullPath(locId: string, locationMap: Map<string, any>): string {
 
 export async function GET(request: NextRequest) {
   await connectToDB();
-  
+
   const session = await getSession();
-  let tickets = await Ticket.find().sort({ createdAt: -1 }).lean();
+
+  // Optional status filter (PENDING | COMPLETED). Lets the dashboard load the
+  // small pending set instantly and stream the large completed history
+  // separately, instead of pulling the entire collection on every request.
+  // Omitting the param preserves the original "return everything" behaviour
+  // that other pages rely on.
+  const statusParam = request.nextUrl.searchParams.get("status");
+  const query: Record<string, any> = {};
+  if (statusParam === "PENDING" || statusParam === "COMPLETED") {
+    query.status = statusParam;
+  }
+
+  let tickets = await Ticket.find(query).sort({ createdAt: -1 }).lean();
   
   // Apply location-based filtering if user has restricted access
   if (session && session.allowedLocationIds && session.allowedLocationIds.length > 0 && !session.isSuperAdmin) {

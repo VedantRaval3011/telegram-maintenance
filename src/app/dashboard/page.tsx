@@ -32,10 +32,25 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isReadOnly, hideTimeDetails } = useAuth();
-  const { data, error, mutate } = useSWR("/api/tickets", fetcher, {
-    refreshInterval: 3000,
-    keepPreviousData: true, // avoid loading flash on refresh/navigation
-  });
+  // Split the ticket fetch so the dashboard becomes interactive in well under a
+  // second instead of waiting on the entire collection. The pending set is tiny
+  // and changes often, so poll it frequently; the completed history is large and
+  // mostly static, so load it in the background and only revalidate on
+  // focus / after an action (via mutate) rather than on a fast timer.
+  const { data: pendingResp, error, mutate: mutatePending } = useSWR(
+    "/api/tickets?status=PENDING",
+    fetcher,
+    { refreshInterval: 3000, keepPreviousData: true }
+  );
+  const { data: completedResp, mutate: mutateCompleted } = useSWR(
+    "/api/tickets?status=COMPLETED",
+    fetcher,
+    { keepPreviousData: true }
+  );
+  const mutate = useCallback(() => {
+    mutatePending();
+    mutateCompleted();
+  }, [mutatePending, mutateCompleted]);
   // Master data rarely changes: cache aggressively and skip focus revalidation
   // so it isn't refetched on every tab switch / navigation.
   const masterSwrOptions = {
@@ -289,7 +304,15 @@ function DashboardContent() {
     }
   }, [searchParams, categoriesData, filtersInitialized, setFilters, scrollToTicketList]);
 
-  const tickets = data && Array.isArray(data.data) ? data.data : [];
+  // Merge pending + completed into the single list the rest of the dashboard
+  // expects. Memoised so the reference stays stable between renders (the heavy
+  // stats/filter memos below depend on it) and only changes when either fetch
+  // actually returns new data.
+  const tickets = useMemo(() => {
+    const pending = pendingResp && Array.isArray(pendingResp.data) ? pendingResp.data : [];
+    const completed = completedResp && Array.isArray(completedResp.data) ? completedResp.data : [];
+    return [...pending, ...completed];
+  }, [pendingResp, completedResp]);
   const users = usersData?.data || [];
   const categories = categoriesData?.data || [];
   const subCategories = subCategoriesData?.data || [];
@@ -894,7 +917,9 @@ function DashboardContent() {
 
   if (error)
     return <div className="p-10 text-center text-red-500">Failed to load</div>;
-  if (!data)
+  // Render as soon as the (fast) pending set arrives; completed history streams
+  // in afterwards without blocking the initial paint.
+  if (!pendingResp)
     return <div className="p-10 text-center text-gray-500 animate-pulse">Loading…</div>;
 
   return (
