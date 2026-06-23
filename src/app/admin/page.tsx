@@ -36,6 +36,7 @@ interface AdminUserData {
   allowedLocationIds?: string[];
   isReadOnly?: boolean;
   hideTimeDetails?: boolean;
+  canAddTicket?: boolean;
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
@@ -217,6 +218,7 @@ export default function AdminPage() {
     allowedLocationIds: [] as string[],
     isReadOnly: false,
     hideTimeDetails: false,
+    canAddTicket: false,
     isActive: true,
   });
   const [formError, setFormError] = useState("");
@@ -273,6 +275,7 @@ export default function AdminPage() {
         allowedLocationIds: userToEdit.allowedLocationIds || [],
         isReadOnly: userToEdit.isReadOnly || false,
         hideTimeDetails: userToEdit.hideTimeDetails || false,
+        canAddTicket: userToEdit.canAddTicket || false,
         isActive: userToEdit.isActive,
       });
     } else {
@@ -288,6 +291,7 @@ export default function AdminPage() {
         allowedLocationIds: [],
         isReadOnly: false,
         hideTimeDetails: false,
+        canAddTicket: false,
         isActive: true,
       });
     }
@@ -323,6 +327,7 @@ export default function AdminPage() {
         allowedLocationIds: formData.allowedLocationIds,
         isReadOnly: formData.isReadOnly,
         hideTimeDetails: formData.hideTimeDetails,
+        canAddTicket: formData.isSuperAdmin ? formData.canAddTicket : false,
         isActive: formData.isActive,
       };
 
@@ -715,7 +720,14 @@ export default function AdminPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, isSuperAdmin: !formData.isSuperAdmin })}
+                    onClick={() => {
+                      const nextIsSuperAdmin = !formData.isSuperAdmin;
+                      setFormData({
+                        ...formData,
+                        isSuperAdmin: nextIsSuperAdmin,
+                        canAddTicket: nextIsSuperAdmin ? formData.canAddTicket : false,
+                      });
+                    }}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       formData.isSuperAdmin ? "bg-emerald-600" : "bg-slate-300"
                     }`}
@@ -727,6 +739,32 @@ export default function AdminPage() {
                     />
                   </button>
                 </div>
+
+                {/* Add Ticket — only configurable for Super Admin users */}
+                {formData.isSuperAdmin && (
+                  <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <Plus className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <div className="font-medium text-slate-900">Add Ticket Button</div>
+                        <div className="text-xs text-slate-500">Show the Add Ticket button on the dashboard</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, canAddTicket: !formData.canAddTicket })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        formData.canAddTicket ? "bg-blue-600" : "bg-slate-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          formData.canAddTicket ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
 
                 {/* Permissions */}
                 {!formData.isSuperAdmin && (

@@ -17,6 +17,7 @@ interface User {
   allowedLocationIds: string[];
   isReadOnly: boolean;
   hideTimeDetails: boolean;
+  canAddTicket: boolean;
 }
 
 interface AuthContextType {
@@ -27,6 +28,7 @@ interface AuthContextType {
   // Access control helpers
   isReadOnly: boolean;
   hideTimeDetails: boolean;
+  canAddTicket: boolean;
   allowedLocationIds: string[];
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -118,6 +120,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, [checkAuth]);
 
+  // Keep permission flags in sync when a Super Admin changes user settings
+  useEffect(() => {
+    if (!user) return;
+
+    const refreshSession = () => {
+      checkAuth();
+    };
+
+    const intervalId = window.setInterval(refreshSession, 10000);
+    window.addEventListener("focus", refreshSession);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshSession);
+    };
+  }, [user, checkAuth]);
+
   // Redirect to login if not authenticated, or to allowed page if no permission
   useEffect(() => {
     if (!isLoading && user) {
@@ -200,6 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Access control helpers - derive from user or default to safe values
     isReadOnly: user?.isReadOnly || false,
     hideTimeDetails: user?.hideTimeDetails || false,
+    canAddTicket: !!(user?.isSuperAdmin && user?.canAddTicket),
     allowedLocationIds: user?.allowedLocationIds || [],
     login,
     logout,

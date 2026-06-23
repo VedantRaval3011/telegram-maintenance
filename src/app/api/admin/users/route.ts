@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     const { 
       username, password, displayName, email, isSuperAdmin, permissions,
       // New access control fields
-      allowedLocationIds, isReadOnly, hideTimeDetails
+      allowedLocationIds, isReadOnly, hideTimeDetails, canAddTicket
     } = body;
 
     // Validation
@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
       allowedLocationIds: allowedLocationIds || [],
       isReadOnly: isReadOnly || false,
       hideTimeDetails: hideTimeDetails || false,
+      canAddTicket: isSuperAdmin ? (canAddTicket || false) : false,
       isActive: true,
       createdBy: session.userId,
     });
@@ -132,6 +133,7 @@ export async function POST(request: NextRequest) {
       allowedLocationIds: newUser.allowedLocationIds,
       isReadOnly: newUser.isReadOnly,
       hideTimeDetails: newUser.hideTimeDetails,
+      canAddTicket: newUser.canAddTicket,
       isActive: newUser.isActive,
       createdAt: newUser.createdAt,
     };

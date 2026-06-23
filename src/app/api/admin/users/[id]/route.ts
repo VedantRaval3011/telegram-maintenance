@@ -70,7 +70,7 @@ export async function PUT(
     const { 
       displayName, email, password, isSuperAdmin, permissions, isActive,
       // New access control fields
-      allowedLocationIds, isReadOnly, hideTimeDetails
+      allowedLocationIds, isReadOnly, hideTimeDetails, canAddTicket
     } = body;
 
     await connectToDB();
@@ -125,12 +125,18 @@ export async function PUT(
       user.hideTimeDetails = hideTimeDetails;
     }
 
+    if (canAddTicket !== undefined && user.isSuperAdmin) {
+      user.canAddTicket = canAddTicket;
+    }
+
     // If super admin, give all permissions and clear restrictions
     if (user.isSuperAdmin) {
       user.permissions = Object.keys(APP_SECTIONS) as SectionKey[];
       user.allowedLocationIds = []; // Super admin can access all locations
       user.isReadOnly = false;
       user.hideTimeDetails = false;
+    } else {
+      user.canAddTicket = false;
     }
 
     await user.save();
@@ -146,6 +152,7 @@ export async function PUT(
       allowedLocationIds: user.allowedLocationIds,
       isReadOnly: user.isReadOnly,
       hideTimeDetails: user.hideTimeDetails,
+      canAddTicket: user.canAddTicket,
       isActive: user.isActive,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

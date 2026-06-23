@@ -38,6 +38,7 @@ export interface IAdminUser extends Document {
   allowedLocationIds: mongoose.Types.ObjectId[]; // Locations this user can access (empty = all locations)
   isReadOnly: boolean; // If true, user cannot edit/delete/complete tickets
   hideTimeDetails: boolean; // If true, time information is hidden from user
+  canAddTicket: boolean; // Super admins only: show the Add Ticket button on the dashboard
   
   // Status
   isActive: boolean;
@@ -96,6 +97,10 @@ const AdminUserSchema = new Schema<IAdminUser>(
       default: false
     },
     hideTimeDetails: {
+      type: Boolean,
+      default: false
+    },
+    canAddTicket: {
       type: Boolean,
       default: false
     },

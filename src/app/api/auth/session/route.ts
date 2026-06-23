@@ -1,10 +1,10 @@
 // app/api/auth/session/route.ts
 import { NextResponse } from "next/server";
-import { getSession, getAllowedNavLinks } from "@/lib/auth";
+import { getEffectiveSession, getAllowedNavLinks } from "@/lib/auth";
 
 export async function GET() {
   try {
-    const session = await getSession();
+    const session = await getEffectiveSession();
     
     if (!session) {
       return NextResponse.json({
@@ -25,6 +25,7 @@ export async function GET() {
         allowedLocationIds: session.allowedLocationIds || [],
         isReadOnly: session.isReadOnly || false,
         hideTimeDetails: session.hideTimeDetails || false,
+        canAddTicket: session.canAddTicket || false,
       },
       navLinks,
     });

@@ -5,7 +5,7 @@ import { connectToDB } from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
 import { Category } from "@/models/Category";
 import { SubCategory } from "@/models/SubCategoryMaster";
-import { getSession } from "@/lib/auth";
+import { getEffectiveSession, canAddTicket } from "@/lib/auth";
 import { triggerTicketCreatedNotification } from "@/lib/notificationScheduler";
 import { notifyTicketCreated } from "@/lib/notify";
 import { Information } from "@/models/Information";
@@ -21,7 +21,14 @@ export async function POST(req: NextRequest) {
   try {
     await connectToDB();
 
-    const session = await getSession();
+    const session = await getEffectiveSession();
+    if (!session || !canAddTicket(session)) {
+      return NextResponse.json(
+        { ok: false, error: "You do not have permission to add tickets" },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
 
     const {

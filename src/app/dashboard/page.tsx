@@ -31,7 +31,7 @@ function DashboardLoading() {
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isReadOnly, hideTimeDetails } = useAuth();
+  const { isReadOnly, hideTimeDetails, canAddTicket } = useAuth();
   // Split the ticket fetch so the dashboard becomes interactive in well under a
   // second instead of waiting on the entire collection. The pending set is tiny
   // and changes often, so poll it frequently; the completed history is large and
@@ -103,6 +103,12 @@ function DashboardContent() {
   const [initialAgencyName, setInitialAgencyName] = useState<string>('');
   const [showSearch, setShowSearch] = useState(false);
   const [showAddTicket, setShowAddTicket] = useState(false);
+
+  useEffect(() => {
+    if (!canAddTicket) {
+      setShowAddTicket(false);
+    }
+  }, [canAddTicket]);
 
   // Global state for excluded tickets from summary (persisted in localStorage)
   const [excludedTicketIds, setExcludedTicketIds] = useState<Set<string>>(() => {
@@ -930,7 +936,7 @@ function DashboardContent() {
         {/* Top Filters: Advanced Toggle */}
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 mb-3 sm:mb-6">
           {/* Add Ticket Button */}
-          {!isReadOnly && (
+          {canAddTicket && (
             <button
               onClick={() => setShowAddTicket(true)}
               className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 mr-auto rounded-xl text-sm sm:text-base font-medium transition-all border shadow-sm bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent hover:from-blue-700 hover:to-purple-700"

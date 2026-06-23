@@ -21,6 +21,7 @@ export interface SessionPayload {
   allowedLocationIds: string[]; // Location IDs user can access (empty = all)
   isReadOnly: boolean; // Cannot edit/delete/complete tickets
   hideTimeDetails: boolean; // Time info hidden
+  canAddTicket: boolean; // Can use the Add Ticket button on the dashboard
   exp: number;
 }
 
@@ -60,6 +61,7 @@ export async function createSession(user: IAdminUser): Promise<string> {
     allowedLocationIds: user.isSuperAdmin ? [] : allowedLocations, // Empty for super admin = all access
     isReadOnly: user.isSuperAdmin ? false : (user.isReadOnly || false),
     hideTimeDetails: user.isSuperAdmin ? false : (user.hideTimeDetails || false),
+    canAddTicket: user.isSuperAdmin ? (user.canAddTicket || false) : false,
   };
 
   const token = await new SignJWT(payload as any)
@@ -93,6 +95,51 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (!token) return null;
   
   return verifySession(token);
+}
+
+/**
+ * Get session with permission fields refreshed from the database so UI and API
+ * checks stay in sync when a Super Admin changes user settings.
+ */
+export async function getEffectiveSession(): Promise<SessionPayload | null> {
+  const session = await getSession();
+  if (!session) return null;
+
+  try {
+    await connectToDB();
+    const user = await AdminUser.findById(session.userId)
+      .select("isSuperAdmin permissions allowedLocationIds isReadOnly hideTimeDetails canAddTicket isActive")
+      .lean();
+
+    if (!user || !user.isActive) return null;
+
+    const permissions = user.isSuperAdmin
+      ? (Object.keys(APP_SECTIONS) as SectionKey[])
+      : [...(user.permissions || [])];
+
+    return {
+      ...session,
+      isSuperAdmin: user.isSuperAdmin,
+      permissions,
+      allowedLocationIds: user.isSuperAdmin
+        ? []
+        : (user.allowedLocationIds || []).map((id) => id.toString()),
+      isReadOnly: user.isSuperAdmin ? false : (user.isReadOnly || false),
+      hideTimeDetails: user.isSuperAdmin ? false : (user.hideTimeDetails || false),
+      canAddTicket: user.isSuperAdmin ? (user.canAddTicket || false) : false,
+    };
+  } catch (error) {
+    console.error("[AUTH] Failed to refresh session permissions:", error);
+    return session;
+  }
+}
+
+/**
+ * Check if user can add tickets from the dashboard
+ */
+export function canAddTicket(session: SessionPayload | null): boolean {
+  if (!session) return false;
+  return session.isSuperAdmin && (session.canAddTicket || false);
 }
 
 /**
