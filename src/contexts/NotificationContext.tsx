@@ -30,6 +30,7 @@ export type PushPermission = NotificationPermission | "unsupported";
 interface NotificationContextType {
   notifications: AppNotification[];
   unreadCount: number;
+  notificationsEnabled: boolean;
   soundEnabled: boolean;
   pushEnabled: boolean;
   pushSupported: boolean;
@@ -42,6 +43,7 @@ interface NotificationContextType {
   remove: (id: string) => void;
   loadMore: () => Promise<void>;
   toggleSound: () => void;
+  toggleNotifications: () => void;
   enablePush: () => Promise<boolean>;
   disablePush: () => Promise<void>;
 }
@@ -50,6 +52,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 const CHANNEL_NAME = "maint-notifications";
 const SOUND_PREF_KEY = "maint-notif-sound";
+const ENABLED_PREF_KEY = "maint-notif-enabled";
 const ANNOUNCED_KEY = "maint-notif-announced";
 const FAST_INTERVAL = 5000; // tab focused
 const SLOW_INTERVAL = 30000; // tab hidden
@@ -104,6 +107,14 @@ function mergeNotifications(
   );
 }
 
+function readEnabledPref(): boolean {
+  try {
+    const pref = localStorage.getItem(ENABLED_PREF_KEY);
+    if (pref !== null) return pref === "1";
+  } catch {}
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
@@ -113,6 +124,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(readEnabledPref);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
@@ -126,6 +138,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const oldestCursorRef = useRef<string | null>(null); // createdAt for pagination
   const knownIdsRef = useRef<Set<string>>(new Set());
   const initialisedRef = useRef(false);
+  const notificationsEnabledRef = useRef(readEnabledPref());
   const soundEnabledRef = useRef(true);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -166,6 +179,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   /** Announce genuinely-new notifications: toast + sound, deduped across tabs. */
   const announce = useCallback(
     (items: AppNotification[]) => {
+      if (!notificationsEnabledRef.current) return;
       let played = false;
       for (const n of items) {
         if (!claimAnnouncement(n._id)) continue;
@@ -182,7 +196,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   /** Apply a poll/broadcast delta to local state, announcing new unread items. */
   const applyDelta = useCallback(
     (items: AppNotification[], opts: { announce: boolean }) => {
-      if (items.length === 0) return;
+      if (items.length === 0 || !notificationsEnabledRef.current) return;
 
       // advance the updatedAt cursor
       for (const n of items) {
@@ -208,6 +222,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // ----- network helpers -------------------------------------------------
 
   const initialLoad = useCallback(async () => {
+    if (!notificationsEnabledRef.current) return;
     try {
       const res = await fetch("/api/notifications?limit=20");
       const data = await res.json();
@@ -230,6 +245,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const poll = useCallback(async () => {
+    if (!notificationsEnabledRef.current) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setConnectionState("offline");
       return;
@@ -273,10 +289,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return;
     }
 
+    if (!notificationsEnabled) {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      return;
+    }
+
     let cancelled = false;
 
     const loop = async () => {
-      if (cancelled) return;
+      if (cancelled || !notificationsEnabledRef.current) return;
       if (!initialisedRef.current) {
         await initialLoad();
         initialisedRef.current = true;
@@ -316,7 +337,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [isAuthenticated, initialLoad, poll]);
+  }, [isAuthenticated, notificationsEnabled, initialLoad, poll]);
 
   // ----- cross-tab sync via BroadcastChannel -----------------------------
 
@@ -331,7 +352,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       switch (msg.kind) {
         case "delta":
           // another tab fetched these; merge silently (it already announced)
-          applyDelta(msg.items as AppNotification[], { announce: false });
+          if (notificationsEnabledRef.current) {
+            applyDelta(msg.items as AppNotification[], { announce: false });
+          }
+          break;
+        case "disabled":
+          notificationsEnabledRef.current = false;
+          setNotificationsEnabled(false);
+          setNotifications([]);
+          setUnreadCount(0);
+          setHasMore(false);
+          knownIdsRef.current = new Set();
+          sinceRef.current = null;
+          initialisedRef.current = false;
+          break;
+        case "enabled":
+          notificationsEnabledRef.current = true;
+          setNotificationsEnabled(true);
+          initialisedRef.current = false;
+          void initialLoad();
           break;
         case "read":
           setNotifications((prev) =>
@@ -353,7 +392,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       channel.close();
       channelRef.current = null;
     };
-  }, [applyDelta]);
+  }, [applyDelta, initialLoad]);
 
   // ----- support detection + service worker registration -----------------
 
@@ -457,6 +496,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return next;
     });
   }, []);
+
+  const toggleNotifications = useCallback(() => {
+    const next = !notificationsEnabledRef.current;
+    notificationsEnabledRef.current = next;
+    try {
+      localStorage.setItem(ENABLED_PREF_KEY, next ? "1" : "0");
+    } catch {}
+    channelRef.current?.postMessage({ kind: next ? "enabled" : "disabled" });
+    setNotificationsEnabled(next);
+
+    if (next) {
+      initialisedRef.current = false;
+      void initialLoad();
+      toast.success("Notifications enabled");
+    } else {
+      setNotifications([]);
+      setUnreadCount(0);
+      setHasMore(false);
+      knownIdsRef.current = new Set();
+      sinceRef.current = null;
+      initialisedRef.current = false;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      toast("Notifications disabled", { icon: "🔕", duration: 3000 });
+    }
+  }, [initialLoad]);
 
   const enablePush = useCallback(async (): Promise<boolean> => {
     try {
@@ -567,6 +631,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const value: NotificationContextType = {
     notifications,
     unreadCount,
+    notificationsEnabled,
     soundEnabled,
     pushEnabled,
     pushSupported,
@@ -579,6 +644,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     remove,
     loadMore,
     toggleSound,
+    toggleNotifications,
     enablePush,
     disablePush,
   };

@@ -7,6 +7,7 @@ import {
   Volume2,
   VolumeX,
   BellRing,
+  BellOff,
   Loader2,
   Wifi,
   WifiOff,
@@ -106,6 +107,7 @@ export default function NotificationPanel({ onClose }: Props) {
   const {
     notifications,
     unreadCount,
+    notificationsEnabled,
     soundEnabled,
     pushEnabled,
     connectionState,
@@ -116,6 +118,7 @@ export default function NotificationPanel({ onClose }: Props) {
     remove,
     loadMore,
     toggleSound,
+    toggleNotifications,
     enablePush,
   } = useNotifications();
 
@@ -144,7 +147,7 @@ export default function NotificationPanel({ onClose }: Props) {
           <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
             Notifications
           </h3>
-          {unreadCount > 0 && (
+          {notificationsEnabled && unreadCount > 0 && (
             <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-500 text-white">
               {unreadCount}
             </span>
@@ -161,9 +164,25 @@ export default function NotificationPanel({ onClose }: Props) {
         </div>
         <div className="flex items-center gap-1">
           <button
+            onClick={toggleNotifications}
+            title={notificationsEnabled ? "Disable notifications" : "Enable notifications"}
+            className={`p-1.5 rounded-md transition-colors ${
+              notificationsEnabled
+                ? "text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800"
+                : "text-amber-600 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-950/60"
+            }`}
+          >
+            {notificationsEnabled ? (
+              <BellOff className="w-4 h-4" />
+            ) : (
+              <BellRing className="w-4 h-4" />
+            )}
+          </button>
+          <button
             onClick={toggleSound}
+            disabled={!notificationsEnabled}
             title={soundEnabled ? "Mute sound" : "Unmute sound"}
-            className="p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {soundEnabled ? (
               <Volume2 className="w-4 h-4" />
@@ -173,7 +192,7 @@ export default function NotificationPanel({ onClose }: Props) {
           </button>
           <button
             onClick={markAllRead}
-            disabled={unreadCount === 0}
+            disabled={!notificationsEnabled || unreadCount === 0}
             title="Mark all as read"
             className="p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -182,8 +201,19 @@ export default function NotificationPanel({ onClose }: Props) {
         </div>
       </div>
 
+      {/* Disabled banner */}
+      {!notificationsEnabled && (
+        <button
+          onClick={toggleNotifications}
+          className="flex items-center gap-2 px-4 py-2 text-[11px] font-medium text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-950/60 border-b border-amber-100 dark:border-amber-900 transition-colors"
+        >
+          <BellOff className="w-3.5 h-3.5" />
+          Notifications are disabled. Click to enable and receive ticket updates.
+        </button>
+      )}
+
       {/* Enable push banner */}
-      {mounted && !pushEnabled && (
+      {mounted && notificationsEnabled && !pushEnabled && (
         <button
           onClick={enablePush}
           className="flex items-center gap-2 px-4 py-2 text-[11px] font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-950/60 border-b border-blue-100 dark:border-blue-900 transition-colors"
@@ -197,8 +227,17 @@ export default function NotificationPanel({ onClose }: Props) {
       <div className="flex-1 overflow-y-auto">
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-400 dark:text-gray-500">
-            <BellRing className="w-8 h-8 opacity-50" />
-            <p className="text-xs">No notifications yet</p>
+            {notificationsEnabled ? (
+              <>
+                <BellRing className="w-8 h-8 opacity-50" />
+                <p className="text-xs">No notifications yet</p>
+              </>
+            ) : (
+              <>
+                <BellOff className="w-8 h-8 opacity-50" />
+                <p className="text-xs">Notifications are turned off</p>
+              </>
+            )}
           </div>
         ) : (
           <>

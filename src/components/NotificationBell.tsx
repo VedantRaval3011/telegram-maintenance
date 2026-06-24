@@ -5,7 +5,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import NotificationPanel from "./NotificationPanel";
 
 export default function NotificationBell() {
-  const { unreadCount } = useNotifications();
+  const { unreadCount, notificationsEnabled } = useNotifications();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +42,7 @@ export default function NotificationBell() {
         }`}
       >
         <Bell className="w-4 h-4" />
-        {unreadCount > 0 && (
+        {notificationsEnabled && unreadCount > 0 && (
           <>
             <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[15px] h-[15px] px-1 text-[9px] font-bold leading-none text-white bg-red-500 rounded-full ring-2 ring-white dark:ring-gray-900">
               {badge}
