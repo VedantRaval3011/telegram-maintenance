@@ -164,6 +164,7 @@ export default function NotificationPanel({ onClose }: Props) {
         </div>
         <div className="flex items-center gap-1">
           <button
+            type="button"
             onClick={toggleNotifications}
             title={notificationsEnabled ? "Disable notifications" : "Enable notifications"}
             className={`p-1.5 rounded-md transition-colors ${
@@ -173,9 +174,9 @@ export default function NotificationPanel({ onClose }: Props) {
             }`}
           >
             {notificationsEnabled ? (
-              <BellOff className="w-4 h-4" />
-            ) : (
               <BellRing className="w-4 h-4" />
+            ) : (
+              <BellOff className="w-4 h-4" />
             )}
           </button>
           <button
