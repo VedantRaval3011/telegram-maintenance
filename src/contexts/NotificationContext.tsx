@@ -10,6 +10,11 @@ import React, {
 } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  readNotificationEnabledPref,
+  writeNotificationEnabledPref,
+  syncNotificationEnabledToServiceWorker,
+} from "@/lib/notificationPref";
 
 export interface AppNotification {
   _id: string;
@@ -52,7 +57,6 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 const CHANNEL_NAME = "maint-notifications";
 const SOUND_PREF_KEY = "maint-notif-sound";
-const ENABLED_PREF_KEY = "maint-notif-enabled";
 const ANNOUNCED_KEY = "maint-notif-announced";
 const FAST_INTERVAL = 5000; // tab focused
 const SLOW_INTERVAL = 30000; // tab hidden
@@ -107,14 +111,6 @@ function mergeNotifications(
   );
 }
 
-function readEnabledPref(): boolean {
-  try {
-    const pref = localStorage.getItem(ENABLED_PREF_KEY);
-    if (pref !== null) return pref === "1";
-  } catch {}
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
@@ -148,12 +144,38 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const lastSoundRef = useRef(0);
   const notificationsRef = useRef<AppNotification[]>([]);
 
+  const unsubscribePush = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    try {
+      if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe().catch(() => {});
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint }),
+        }).catch(() => {});
+      }
+      setPushEnabled(false);
+      if (!silent) toast.success("Push notifications disabled on this device");
+    } catch (err) {
+      console.error("[push] disable failed:", err);
+    }
+  }, []);
+
   // Load persisted preferences (client-only; avoids SSR/localStorage hydration mismatch)
   useEffect(() => {
     try {
-      const enabled = readEnabledPref();
+      const enabled = readNotificationEnabledPref();
       notificationsEnabledRef.current = enabled;
       setNotificationsEnabled(enabled);
+      void syncNotificationEnabledToServiceWorker(enabled);
+      if (!enabled) {
+        void unsubscribePush({ silent: true });
+      }
 
       const soundPref = localStorage.getItem(SOUND_PREF_KEY);
       if (soundPref !== null) {
@@ -168,7 +190,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       audioRef.current = new Audio(SOUND_URL);
       audioRef.current.volume = 0.5;
     }
-  }, []);
+  }, [unsubscribePush]);
 
   const playSound = useCallback(() => {
     if (!soundEnabledRef.current) return;
@@ -190,6 +212,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (!notificationsEnabledRef.current) return;
       let played = false;
       for (const n of items) {
+        if (!notificationsEnabledRef.current) break;
         if (!claimAnnouncement(n._id)) continue;
         toast(`${n.title}`, { icon: "🔔", duration: 4000 });
         if (!played) {
@@ -275,9 +298,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     (active: boolean, opts?: { broadcast?: boolean; toast?: boolean }) => {
       const { broadcast = true, toast: showToast = true } = opts ?? {};
       notificationsEnabledRef.current = active;
-      try {
-        localStorage.setItem(ENABLED_PREF_KEY, active ? "1" : "0");
-      } catch {}
+      void writeNotificationEnabledPref(active);
       setNotificationsEnabled(active);
 
       if (broadcast) {
@@ -290,10 +311,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (showToast) toast.success("Notifications enabled");
       } else {
         clearNotificationState();
+        void unsubscribePush({ silent: true });
         if (showToast) toast("Notifications disabled", { icon: "🔕", duration: 3000 });
       }
     },
-    [clearNotificationState, initialLoad]
+    [clearNotificationState, initialLoad, unsubscribePush]
   );
 
   const poll = useCallback(async () => {
@@ -320,7 +342,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       setUnreadCount(data.unreadCount || 0);
 
       const items: AppNotification[] = data.items || [];
-      if (items.length > 0) {
+      if (items.length > 0 && notificationsEnabledRef.current) {
         applyDelta(items, { announce: true });
         // tell other tabs so they update without waiting for their own poll
         channelRef.current?.postMessage({ kind: "delta", items });
@@ -554,6 +576,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const enablePush = useCallback(async (): Promise<boolean> => {
     try {
+      if (!notificationsEnabledRef.current) {
+        toast.error("Turn on notifications first using the bell menu");
+        return false;
+      }
+
       if (typeof Notification === "undefined" || !("serviceWorker" in navigator)) {
         toast.error("Push notifications are not supported on this browser");
         return false;
@@ -633,25 +660,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const disablePush = useCallback(async (): Promise<void> => {
-    try {
-      if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        const endpoint = sub.endpoint;
-        await sub.unsubscribe().catch(() => {});
-        await fetch("/api/push/unsubscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint }),
-        }).catch(() => {});
-      }
-      setPushEnabled(false);
-      toast.success("Push notifications disabled on this device");
-    } catch (err) {
-      console.error("[push] disable failed:", err);
-    }
-  }, []);
+    await unsubscribePush();
+  }, [unsubscribePush]);
 
   // keep a ref of notifications for the markRead count calc
   useEffect(() => {

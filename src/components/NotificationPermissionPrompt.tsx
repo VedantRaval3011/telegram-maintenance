@@ -51,14 +51,14 @@ function isStandalone(): boolean {
 
 export default function NotificationPermissionPrompt() {
   const { isAuthenticated } = useAuth();
-  const { pushSupported, permission, enablePush } = useNotifications();
+  const { pushSupported, permission, enablePush, notificationsEnabled } = useNotifications();
   const [visible, setVisible] = useState(false);
   // "standard" = browser supports push and we can ask; "ios-install" = iPhone/iPad
   // in a Safari tab where push only works once added to the Home Screen.
   const [variant, setVariant] = useState<"standard" | "ios-install">("standard");
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !notificationsEnabled) {
       setVisible(false);
       return;
     }
@@ -87,7 +87,7 @@ export default function NotificationPermissionPrompt() {
 
     const t = setTimeout(() => setVisible(true), SHOW_DELAY_MS);
     return () => clearTimeout(t);
-  }, [isAuthenticated, pushSupported, permission]);
+  }, [isAuthenticated, notificationsEnabled, pushSupported, permission]);
 
   if (!visible) return null;
 

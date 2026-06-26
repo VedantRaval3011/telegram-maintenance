@@ -21,6 +21,7 @@ export default function DeviceNotificationSettings() {
     pushEnabled,
     permission,
     soundEnabled,
+    notificationsEnabled,
     enablePush,
     disablePush,
     toggleSound,
@@ -75,7 +76,7 @@ export default function DeviceNotificationSettings() {
             </div>
           </div>
 
-          {pushSupported && !blocked && (
+          {pushSupported && !blocked && notificationsEnabled && (
             <button
               onClick={() => (pushEnabled ? disablePush() : enablePush())}
               className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 ${
@@ -88,6 +89,16 @@ export default function DeviceNotificationSettings() {
             </button>
           )}
         </div>
+
+        {!notificationsEnabled && (
+          <div className="mt-4 flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <BellOff className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>
+              In-app notifications are turned off. Enable them from the bell menu
+              in the header to receive push alerts on this device.
+            </span>
+          </div>
+        )}
 
         {blocked && (
           <div className="mt-4 flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
@@ -113,7 +124,9 @@ export default function DeviceNotificationSettings() {
       </div>
 
       {/* Sound toggle */}
-      <label className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer">
+      <label className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 transition-colors ${
+        notificationsEnabled ? "hover:bg-gray-100 cursor-pointer" : "opacity-60 cursor-not-allowed"
+      }`}>
         <div className="flex items-center gap-3">
           {soundEnabled ? (
             <Volume2 className="w-4 h-4 text-gray-600" />
@@ -132,6 +145,7 @@ export default function DeviceNotificationSettings() {
             type="checkbox"
             checked={soundEnabled}
             onChange={toggleSound}
+            disabled={!notificationsEnabled}
             className="sr-only peer"
           />
           <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
